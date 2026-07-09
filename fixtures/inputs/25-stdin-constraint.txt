@@ -1,0 +1,1 @@
+- stdin constraint: deploys must be approved.
