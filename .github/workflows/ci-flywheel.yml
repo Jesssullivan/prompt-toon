@@ -85,3 +85,18 @@ jobs:
         run: nix develop --command bash scripts/cache-attachment-contract.sh --strict
       - name: Remote check + test (executor-backed RBE)
         run: nix develop --command just flywheel-executor-check
+      # TIN-2708/2709: the real payload — compile the ptoon Chapel binary on
+      # GF REAPI (Bazel-drives-chpl). //src/ptoon:ptoon is target_compatible_with
+      # linux and its ChapelCompile action is spawn_strategy=remote with no local
+      # fallback, so this step ONLY succeeds by executing chpl on the executor.
+      #
+      # PROBE (continue-on-error): the remote action resolves `chpl` from the
+      # worker env (use_default_shell_env — "nix owns the toolchain version").
+      # This step therefore also measures whether the tinyland-nix RBE worker
+      # image ships chpl. If it does not, the honest fix is a hermetic
+      # rules_nixpkgs chpl toolchain (C3, TIN-2710) — NOT a red non-required
+      # lane. The mint/cache/executor-check steps above are the REAPI plumbing
+      # proof; this step is the toolchain-readiness signal on top of it.
+      - name: Compile ptoon on GF REAPI (Bazel-drives-chpl) [probe]
+        continue-on-error: true
+        run: nix develop --command just flywheel-chapel
