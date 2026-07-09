@@ -1,4 +1,0 @@
-exit_code: 1
-runs_dir_created: False
-stderr:
---input-tier expects PATH=TIER, got: missing-equals

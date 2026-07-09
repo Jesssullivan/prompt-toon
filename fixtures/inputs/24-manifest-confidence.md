@@ -1,2 +1,0 @@
-- alpha must hold
-- plain note line
