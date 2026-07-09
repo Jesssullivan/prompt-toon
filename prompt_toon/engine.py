@@ -18,6 +18,8 @@ of stdin as raw bytes:
 - ``ptoon defang``    -> writes defanged text to stdout, exit 0.
 - ``ptoon redact``    -> writes exactly one line ``findings:<comma-joined
   pattern names or empty>\\n`` then the redacted text verbatim, exit 0.
+- ``ptoon redact-batch`` -> writes length-prefixed per-document redaction
+  results in input order; this is the C2b coforall fan-in entrypoint.
 - ``ptoon caps``      -> writes the engine-caps JSON to stdout, exit 0.
 - unknown subcommand  -> stderr message, exit 2.
 
@@ -162,16 +164,40 @@ class ChapelEngine:
             pos = newline_index + 1
             return line
 
-        count = int(read_line())
+        def read_int(context: str) -> int:
+            try:
+                value = int(read_line())
+            except ValueError as exc:
+                raise EngineError(f"ptoon redact-batch output has invalid {context}") from exc
+            if value < 0:
+                raise EngineError(f"ptoon redact-batch output has negative {context}")
+            return value
+
+        count = read_int("document count")
         results: list[dict[str, Any]] = []
-        for _ in range(count):
+        for expected_i in range(count):
             meta = json.loads(read_line().decode("utf-8"))
-            body_len = int(read_line())
+            if meta.get("i") != expected_i:
+                raise EngineError(
+                    "ptoon redact-batch output index "
+                    f"{meta.get('i')!r} does not match position {expected_i}"
+                )
+            body_len = read_int(f"body length for document {expected_i}")
+            if pos + body_len > len(raw):
+                raise EngineError(
+                    "ptoon redact-batch output truncated: "
+                    f"document {expected_i} declares {body_len} bytes with "
+                    f"{len(raw) - pos} remaining"
+                )
             body = raw[pos : pos + body_len]
             pos += body_len
             if not meta.get("withheld", False):
                 meta["redacted"] = body.decode("utf-8", errors="replace")
             results.append(meta)
+        if pos != len(raw):
+            raise EngineError(
+                f"ptoon redact-batch output has {len(raw) - pos} trailing byte(s)"
+            )
         return results
 
     def engine_caps(self) -> dict[str, Any]:

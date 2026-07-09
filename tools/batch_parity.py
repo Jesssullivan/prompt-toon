@@ -71,6 +71,12 @@ def parse_batch(data: bytes) -> list[tuple[dict, bytes]]:
     for _ in range(n):
         meta = json.loads(read_line().decode("utf-8"))
         blen = int(read_line())
+        if blen < 0:
+            raise AssertionError(f"negative body length for result {len(results)}")
+        if pos + blen > len(data):
+            raise AssertionError(
+                f"result {len(results)} declares {blen} bytes with {len(data) - pos} remaining"
+            )
         blob = data[pos:pos + blen]
         pos += blen
         results.append((meta, blob))

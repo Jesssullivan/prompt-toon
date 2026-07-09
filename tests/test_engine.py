@@ -180,6 +180,21 @@ class ChapelEngineSubprocessErrorTests(_ForcedBinaryAbsentTestCase):
             engine = engine_module.ChapelEngine(binary_path=binary)
             self.assertEqual(engine.engine_caps(), {"engine": "chapel"})
 
+    def test_redact_batch_parser_rejects_truncated_body(self):
+        raw = b'1\n{"i":0,"withheld":false,"findings":[]}\n5\nabc'
+        with self.assertRaises(engine_module.EngineError):
+            engine_module.ChapelEngine._parse_batch(raw)
+
+    def test_redact_batch_parser_rejects_trailing_bytes(self):
+        raw = b"0\ntrailing"
+        with self.assertRaises(engine_module.EngineError):
+            engine_module.ChapelEngine._parse_batch(raw)
+
+    def test_redact_batch_parser_rejects_out_of_order_index(self):
+        raw = b'1\n{"i":1,"withheld":false,"findings":[]}\n0\n'
+        with self.assertRaises(engine_module.EngineError):
+            engine_module.ChapelEngine._parse_batch(raw)
+
     def test_missing_binary_path_raises_engine_error_not_os_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "does-not-exist"

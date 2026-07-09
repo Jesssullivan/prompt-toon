@@ -91,6 +91,8 @@ module Batch {
       }
       pos += len;
     }
+    if pos != total then
+      throw new Error("redact-batch: trailing bytes after document " + n: string);
     return docs;
   }
 

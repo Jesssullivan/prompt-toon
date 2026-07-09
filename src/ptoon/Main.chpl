@@ -44,11 +44,10 @@
  * redact decode stdin to a string first (redactText and defangText are
  * string-typed). For valid UTF-8 this round-trips losslessly.
  *
- * EXTENSIBILITY (C2, do NOT build here): C2 adds a `condense --stream`
- * subcommand — a length-prefixed N-document framing over one process with an
- * internal `coforall` fan-out that owns its own concurrency. The `select`
- * below is the single dispatch point; C2 slots a new `when "condense"` arm in
- * beside the existing ones without touching the per-document engine modules.
+ * C2b adds `redact-batch`: a length-prefixed N-document framing over one
+ * process with an internal `coforall` fan-out that owns its own concurrency.
+ * C2c adds the `condense --stream` budget/cards surface on the same dispatch
+ * point without changing the per-document transform modules.
  */
 module Main {
   use IO, List;
@@ -96,7 +95,7 @@ module Main {
         // Same JSON shape Abi.ptoon_engine_caps emitted, same version source.
         const caps = '{"engine":"chapel","utf8proc":true,"unicode_version":"' +
                      unicodeVersion() +
-                     '","patterns":9,"features":["normalize","redact","defang"]}';
+                     '","patterns":9,"features":["normalize","redact","defang","redact-batch"]}';
         stdout.write(caps);
         return 0;
       }
