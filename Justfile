@@ -43,6 +43,21 @@ package-smoke:
 package-smoke-local:
     cd {{root}} && nix build --builders "" .#prompt-toon
 
+# TIN-2708 C1: libptoon build-lane skeleton (src/ptoon/). Remote-only —
+# chpl compilation never runs locally on darwin (AGENTS.md doctrine); this
+# offloads to the x86_64-linux remote builder, nix cache-first. See also
+# `make build-lib` (thin doctrine-compliant wrapper over this recipe).
+build-lib:
+    cd {{root}} && nix build .#packages.x86_64-linux.libptoon --print-build-logs
+
+# TIN-2708 C1: shared golden-corpus parity runner. Checks the requested
+# --engine (default python, the oracle) against fixtures/golden/; today
+# this is the python-vs-its-own-goldens self-test. Once --engine=chapel
+# lands on the CLI, `just parity --engine chapel` exercises it too — cases
+# it can't yet serve degrade to SKIP, not FAIL.
+parity *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/parity_runner.py {{args}}
+
 # GloriousFlywheel lane checks (TIN-2704). The wrapper comes from the
 # fleet-managed profile per TIN-2482 (no vendored gloriousflywheel-bazel).
 flywheel-check *targets="//:ci_validation_suite":

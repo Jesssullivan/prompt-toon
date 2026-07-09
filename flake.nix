@@ -90,6 +90,83 @@
             runHook postInstall
           '';
         };
+        # C1 (TIN-2708): libptoon build-lane skeleton. Compiles src/ptoon/
+        # (module shell + six-symbol C ABI stubs, no redaction/normalize/
+        # defang semantics yet) into a shared library with `chpl --library
+        # --dynamic`, then greps the exported dynamic symbol table for the
+        # six ptoon_* entry points inside the check phase. This proves the
+        # `chpl --library` toolchain lane end-to-end (remote-only, per
+        # AGENTS.md doctrine) so Phase 2 can drop real semantics into
+        # src/ptoon/Ptoon.chpl without re-deriving the build wiring.
+        #
+        # Defined for every `eachDefaultSystem` system (linux + darwin) so
+        # a darwin variant exists structurally, but only x86_64-linux is
+        # the required/CI-verified target — the pzm darwin builder is
+        # still in burn-in, and `chpl --library --dynamic` on darwin emits
+        # a .dylib with different nm semantics that this check phase does
+        # not fully account for yet.
+        libptoon = pkgs.stdenv.mkDerivation {
+          pname = "libptoon";
+          version = "0.1.0";
+          src = self;
+          nativeBuildInputs = [ chapelWrapped pkgs.binutils ];
+          buildPhase = ''
+            runHook preBuild
+            cd src/ptoon
+            chpl --fast --library --dynamic Ptoon.chpl -o ptoon
+            runHook postBuild
+          '';
+          doCheck = true;
+          # NOTE: nix's stdenv builder runs phases with `shopt -s nullglob`,
+          # so an unmatched `ls lib*.so lib*.dylib` silently degrades to a
+          # bare `ls` (whole-directory listing) rather than empty output —
+          # a real footgun that produced a false-positive "so" value on the
+          # first iteration of this derivation. Use `find` throughout so an
+          # unmatched pattern is unambiguously empty. Chapel's `--library`
+          # mode also does not place output next to the source file (it
+          # defaults to a `lib/` subdirectory of the cwd) — search
+          # recursively rather than assuming a fixed location.
+          checkPhase = ''
+            runHook preCheck
+            echo "== src/ptoon build output (recursive) =="
+            find . -maxdepth 3 -type f | sort
+            so=$(find . -type f \( -name 'lib*.so' -o -name 'lib*.dylib' \) | head -n1)
+            if [ -z "$so" ]; then
+              echo "ERROR: chpl --library --dynamic produced no lib*.so/.dylib anywhere under the build dir" >&2
+              exit 1
+            fi
+            hdr=$(find . -type f -name '*.h' | head -n1)
+            if [ -n "$hdr" ]; then
+              echo "== generated library C header: $hdr =="
+              cat "$hdr"
+            fi
+            echo "== dynamic symbol table: $so =="
+            nm -D "$so" | tee nm-output.txt
+            grep ' T ' nm-output.txt | awk '{print $NF}' | sort -u > exported-symbols.txt
+            missing=0
+            for sym in ptoon_redact ptoon_normalize ptoon_defang ptoon_toon_encode ptoon_free ptoon_engine_caps; do
+              if ! grep -qx "$sym" exported-symbols.txt; then
+                echo "MISSING EXPORTED SYMBOL: $sym" >&2
+                missing=1
+              fi
+            done
+            if [ "$missing" -ne 0 ]; then
+              exit 1
+            fi
+            echo "OK: all six ptoon_* C ABI symbols present in $so"
+            echo "$so" > .ptoon-so-path
+            if [ -n "$hdr" ]; then echo "$hdr" > .ptoon-hdr-path; fi
+            runHook postCheck
+          '';
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/lib $out/include $out/share/ptoon
+            if [ -f .ptoon-so-path ]; then cp "$(cat .ptoon-so-path)" $out/lib/; fi
+            if [ -f .ptoon-hdr-path ]; then cp "$(cat .ptoon-hdr-path)" $out/include/; fi
+            cp exported-symbols.txt $out/share/ptoon/ 2>/dev/null || true
+            runHook postInstall
+          '';
+        };
         promptToon = pkgs.stdenvNoCC.mkDerivation {
           pname = "prompt-toon";
           version = "0.1.0";
@@ -116,6 +193,9 @@
         packages = {
           default = promptToon;
           prompt-toon = promptToon;
+          # C1 (TIN-2708): defined on every system (see libptoon comment
+          # above); x86_64-linux is the required/CI-verified target.
+          libptoon = libptoon;
         } // lib.optionalAttrs (system == "x86_64-linux") {
           ptoon-spike-parity = ptoonSpikeParity;
         };
@@ -135,6 +215,7 @@
           ];
           shellHook = ''
             echo "prompt-toon dev shell"
+            echo "libptoon (TIN-2708 C1 skeleton): 'just build-lib' or 'make build-lib' — remote-only, never local chpl (see AGENTS.md)."
           '';
         };
 
