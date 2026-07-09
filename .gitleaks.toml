@@ -16,4 +16,6 @@ paths = [
   '''fixtures/.*''',
   '''spikes/tin-2707/corpus/.*''',
   '''spikes/tin-2707/gen_corpus\.py''',
+  '''tools/gen_fixtures\.py''',
+  '''tools/gen_golden\.py''',
 ]

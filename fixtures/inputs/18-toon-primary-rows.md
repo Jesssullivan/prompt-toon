@@ -1,3 +1,0 @@
-- alpha must hold
-- beta must hold
-- gamma must hold
