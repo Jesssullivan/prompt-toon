@@ -1,8 +1,12 @@
 """Generate the TIN-2707 parity corpus (deterministic bytes, UTF-8).
 
 Every fixture is synthetic. Cases 06/07 are the RE2-vs-Python `\\b`
-word-boundary divergence corpus — the #1 parity risk. Case 08 is the
-multi-line PEM that forbids line-windowed redaction (INV-5).
+word-boundary divergence corpus — the #1 parity risk. Case 06 is the ASCII
+boundary baseline; case 07 is the full Unicode boundary-anchor adversarial
+set that TIN-2708 C1 closes (CJK/accented neighbors, emoji neighbors,
+adjacent secrets sharing one separator, the underscore-is-a-word-char rule,
+and start/end-of-string anchors). Case 08 is the multi-line PEM that forbids
+line-windowed redaction (INV-5).
 """
 from pathlib import Path
 
@@ -52,14 +56,33 @@ CASES = {
             "clean AKIAIOSFODNN7EXAMPLE clean",
         ]
     ),
+    # RE2 \b is ASCII-only while Python re \b is Unicode-aware. Because RE2's
+    # word class ([A-Za-z0-9_]) is a strict subset of Python's (\p{L}\p{N}_),
+    # RE2 only ever sees EXTRA boundaries — never fewer. Each line pins one
+    # facet of the Unicode-boundary filter. The whole fixture is non-ASCII, so
+    # Chapel takes the filtered path (not fast replaceAndCount) for every line.
     "07-boundary-unicode.txt": "\n".join(
         [
+            # start-of-string secret + ASCII separator + CJK -> REDACT
+            "AKIAIOSFODNN7EXAMPLE 日本",
+            # CJK before / after a secret is a Unicode word char -> NO boundary
             "日本AKIAIOSFODNN7EXAMPLE",
             "AKIAIOSFODNN7EXAMPLE日本",
             "éAKIAIOSFODNN7EXAMPLE",
             "éAKIAIOSFODNN7EXAMPLE",
+            # accented Latin AFTER a secret: a 2-byte UTF-8 word char (é)
+            # -> NO boundary in Python; exercises the 2-byte trailing decode
+            "AKIAIOSFODNN7EXAMPLEé",
+            # emoji neighbor is NOT a word char in either engine -> REDACT
             "\U0001f680AKIAIOSFODNN7EXAMPLE",
+            "\U0001f680AKIAIOSFODNN7EXAMPLE\U0001f680",
+            # two adjacent secrets sharing one ASCII separator -> REDACT both
+            "AKIAIOSFODNN7EXAMPLE AKIAIOSFODNN7EXAMPLE",
+            # secret joined to CJK by '_' (a word char in both) -> NO boundary
+            "中文_ghp_ABCDEFGHIJKLMNOP123456",
             "中文ghp_ABCDEFGHIJKLMNOP123456中文",
+            # end-of-string secret + ASCII separator, CJK-prefixed line -> REDACT
+            "中文 AKIAIOSFODNN7EXAMPLE",
         ]
     ),
     "08-pem-split.txt": "prefix text\n" + FAKE_PEM_LONG + "\nsuffix text",
