@@ -14,4 +14,6 @@ description = "Synthetic adversarial fixtures used to test redaction (TIN-2695);
 paths = [
   '''tests/test_safety_matrix\.py''',
   '''fixtures/.*''',
+  '''spikes/tin-2707/corpus/.*''',
+  '''spikes/tin-2707/gen_corpus\.py''',
 ]
