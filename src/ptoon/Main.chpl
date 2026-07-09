@@ -46,8 +46,10 @@
  *
  * C2b adds `redact-batch`: a length-prefixed N-document framing over one
  * process with an internal `coforall` fan-out that owns its own concurrency.
- * C2c adds the `condense --stream` budget/cards surface on the same dispatch
- * point without changing the per-document transform modules.
+ * C2c adds fail-closed input cap + wall-clock budget policy to
+ * `redact-batch`. The `condense --stream` cards/manifest surface follows on
+ * this same dispatch point without changing the per-document transform
+ * modules.
  */
 module Main {
   use IO, List;
@@ -108,10 +110,29 @@ module Main {
         //   argv[2] = maxInputBytes  — withhold docs over the cap (fail-closed)
         //   argv[3] = budgetMs       — withhold docs past the wall-clock budget
         // With both absent this is byte-identical to C2b (parity gate calls it
-        // with no extra args). A non-numeric arg makes the `:int` cast throw,
-        // so the process exits nonzero (fail-closed on malformed policy args).
-        const maxInputBytes = if args.size >= 3 then args[2]: int else 0;
-        const budgetMs = if args.size >= 4 then args[3]: int else 0;
+        // with no extra args). Policy args are fail-closed: malformed, negative,
+        // too many, or budget-without-cap args exit nonzero before any output.
+        if args.size > 4 {
+          stderr.writeln("ptoon redact-batch: too many policy args (want maxInputBytes budgetMs)");
+          return 2;
+        }
+        var maxInputBytes = 0;
+        var budgetMs = 0;
+        try {
+          if args.size >= 3 then maxInputBytes = args[2]: int;
+          if args.size >= 4 then budgetMs = args[3]: int;
+        } catch e {
+          stderr.writeln("ptoon redact-batch: policy args must be decimal integers");
+          return 2;
+        }
+        if maxInputBytes < 0 || budgetMs < 0 {
+          stderr.writeln("ptoon redact-batch: policy args must be nonnegative");
+          return 2;
+        }
+        if budgetMs > 0 && maxInputBytes == 0 {
+          stderr.writeln("ptoon redact-batch: budgetMs requires positive maxInputBytes");
+          return 2;
+        }
         const raw = stdin.readAll(bytes);
         const docs = parseBatch(raw);
         stdout.write(redactBatch(docs, maxInputBytes, budgetMs));

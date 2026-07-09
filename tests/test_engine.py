@@ -202,6 +202,37 @@ class ChapelEngineSubprocessErrorTests(_ForcedBinaryAbsentTestCase):
             with self.assertRaises(engine_module.EngineError):
                 engine.normalize_text("hello")
 
+    def test_redact_batch_rejects_negative_policy_args_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/does-not-exist"))
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], max_input_bytes=-1)
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], max_input_bytes=1, budget_ms=-1)
+
+    def test_redact_batch_budget_requires_input_cap_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/does-not-exist"))
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], budget_ms=1)
+
+    def test_redact_batch_forwards_policy_args_together(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = self._write_fake_binary(
+                tmp,
+                """#!/bin/sh
+cat >/dev/null
+if [ "$1" != "redact-batch" ] || [ "$2" != "1234" ] || [ "$3" != "60000" ]; then
+  echo "bad args: $*" 1>&2
+  exit 7
+fi
+printf '0\\n'
+""",
+            )
+            engine = engine_module.ChapelEngine(binary_path=binary)
+            self.assertEqual(
+                engine.redact_batch([], max_input_bytes=1234, budget_ms=60000),
+                [],
+            )
+
 
 class ChapelEngineBinaryDependentTests(unittest.TestCase):
     """Only runs meaningfully when a real ptoon binary build artifact is
@@ -263,7 +294,7 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
         # A generous budget must not perturb results: identical to no budget.
         docs = ["token=ghp_abcdefghijklmnopqrstuvwxyz", "plain text"]
         baseline = self.engine.redact_batch(docs)
-        budgeted = self.engine.redact_batch(docs, budget_ms=60000)
+        budgeted = self.engine.redact_batch(docs, max_input_bytes=10000, budget_ms=60000)
         self.assertEqual(budgeted, baseline)
 
 

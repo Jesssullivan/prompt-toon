@@ -148,14 +148,28 @@ class ChapelEngine:
         cap is withheld (reason ``input-cap``) rather than truncated -- a
         truncated PEM could leak its tail. ``budget_ms`` (C2c): a wall-clock
         backstop; a document COMPLETING past the batch deadline is withheld
-        (reason ``budget``). Both default 0 (unlimited); with both 0 the call
-        is byte-identical to the C2b entrypoint. Both are passed as the two
+        (reason ``budget``). Both default 0 (unlimited); a positive budget
+        requires a positive input cap because Chapel tasks cannot be preempted
+        mid-run and the cap bounds per-document work. With both 0 the call is
+        byte-identical to the C2b entrypoint. Both are passed as the two
         positional policy args the binary reads (argv[2], argv[3]).
 
         Wire format mirrors src/ptoon/Batch.chpl: length-prefixed framing,
         which carries embedded newlines (a redacted PEM spans lines) with no
         escaping.
         """
+        if (
+            not isinstance(max_input_bytes, int)
+            or isinstance(max_input_bytes, bool)
+            or not isinstance(budget_ms, int)
+            or isinstance(budget_ms, bool)
+        ):
+            raise ValueError("redact_batch policy args must be integers")
+        if max_input_bytes < 0 or budget_ms < 0:
+            raise ValueError("redact_batch policy args must be nonnegative")
+        if budget_ms > 0 and max_input_bytes == 0:
+            raise ValueError("redact_batch budget_ms requires positive max_input_bytes")
+
         framed = bytearray()
         framed += f"{len(docs)}\n".encode("utf-8")
         for doc in docs:

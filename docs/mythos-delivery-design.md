@@ -307,7 +307,9 @@ mythos/fable synthesis seat sees any of them.
 
 `ptoon redact-batch` takes two optional positional policy args (argv[2]
 `maxInputBytes`, argv[3] `budgetMs`; 0/absent = unlimited, so C2b parity is
-untouched). Both are **fail-closed — every breach withholds, never emits raw**:
+untouched). Policy args are **fail-closed**: malformed, negative, extra, or
+budget-without-cap args exit nonzero before any output. Valid breaches withhold,
+never emit raw:
 
 - **Input cap:** a document whose input exceeds `maxInputBytes` is withheld
   (`reason:"input-cap"`) *before* redaction — never truncated-and-emitted, since
@@ -315,11 +317,11 @@ untouched). Both are **fail-closed — every breach withholds, never emits raw**
 - **Wall-clock budget — completion-time withhold, stated honestly.** Chapel
   `coforall` tasks cannot be preempted mid-run, so this is NOT a hard mid-task
   abort. But redaction is linear-time (RE2) and input-capped, so a single
-  document is bounded; the budget guards *aggregate* wall-clock. A document that
-  *completes* past the batch deadline is withheld (`reason:"budget"`), its
-  redacted text discarded. Rejected the alternative (process-level subprocess
-  kill in engine.py) as worse fail-closed granularity — one straggler would lose
-  every document's result.
+  document is bounded; `budgetMs` therefore requires a positive `maxInputBytes`.
+  The budget guards *aggregate* wall-clock. A document that *completes* past the
+  batch deadline is withheld (`reason:"budget"`), its redacted text discarded.
+  Rejected the alternative (process-level subprocess kill in engine.py) as worse
+  fail-closed granularity — one straggler would lose every document's result.
 
 ### `--stream` honesty (C2c, next)
 

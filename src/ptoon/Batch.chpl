@@ -85,8 +85,11 @@ module Batch {
     var pos = 0;
     const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("redact-batch: negative document count");
-    if n > total - pos then
-      throw new Error("redact-batch: document count overruns input before allocation");
+    // Each declared document needs at least a length line ("0\n"), even when
+    // its body is empty. Bound allocation by the maximum number of documents
+    // the remaining frame could possibly encode, not just by raw bytes.
+    if n > (total - pos) / 2 then
+      throw new Error("redact-batch: document count exceeds possible frame size before allocation");
     var docs: [0..<n] string;
     for i in 0..<n {
       const len = readIntLine(arr, pos, total - pos);
@@ -127,10 +130,11 @@ module Batch {
    *     truncation could sever a PEM block mid-body and leak the tail.
    *   - `budgetMs` > 0: a wall-clock backstop. Chapel `coforall` tasks cannot
    *     be preempted mid-run, but redaction is linear-time and input-capped so
-   *     a single document is bounded; the budget guards AGGREGATE wall-clock. A
-   *     document that COMPLETES past the deadline is withheld (reason "budget"),
-   *     its redacted text discarded. This is completion-time withhold, not a
-   *     mid-task abort — stated plainly rather than overclaimed.
+   *     a single document is bounded; the dispatcher rejects budgetMs unless
+   *     maxInputBytes is also positive. The budget guards AGGREGATE wall-clock.
+   *     A document that COMPLETES past the deadline is withheld (reason
+   *     "budget"), its redacted text discarded. This is completion-time
+   *     withhold, not a mid-task abort — stated plainly rather than overclaimed.
    *   - a redaction exception withholds (reason "redaction-error").
    * Both limits default to 0 (unlimited); with both 0 this is byte-identical to
    * the C2b entrypoint, so the batch-parity gate is unaffected.
@@ -154,7 +158,8 @@ module Batch {
       } else {
         try {
           const (red, finds) = redactText(docs[i]);
-          if budgetMs > 0 && sw.elapsed() * 1000.0 > budgetMs: real {
+          const elapsedMs = sw.elapsed() * 1000.0;
+          if budgetMs > 0 && elapsedMs > (budgetMs: real) {
             // Fail-closed budget: discard the redacted text, withhold the doc.
             results[i] = new BatchResult(true, "budget", new list(string), "");
           } else {
