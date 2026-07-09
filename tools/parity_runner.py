@@ -14,18 +14,19 @@ parity (`docs/mythos-delivery-design.md` Sec7, C1):
   `fixtures/golden/<case>/`. Prints a markdown table and exits nonzero
   on any DIFF/ERROR/MISSING_GOLDEN. The `python` column is expected to
   always PASS trivially (it's the oracle that wrote the goldens); the
-  `chapel` column reports SKIP whenever `libptoon` hasn't been built on
-  this host (`--engine=chapel` fails closed in `prompt_toon.cli`, with
-  "libptoon is not available" in stderr -- that specific, well-defined
-  failure is what this runner treats as SKIP, not a parity failure).
+  `chapel` column reports SKIP whenever the `ptoon` binary hasn't been
+  built on this host (`--engine=chapel` fails closed in `prompt_toon.cli`,
+  with "ptoon binary is not available" in stderr -- that specific,
+  well-defined failure is what this runner treats as SKIP, not a parity
+  failure).
 
 - **`--functions` mode.** Diffs the three per-function outputs
   (`redact_text`, `normalize_text`, `defang_text`) between the Python
   oracle (direct call, same as `gen_golden.py`'s text-fixture path) and
   `prompt_toon.engine.ChapelEngine`'s equivalent methods, across every
   `TextFixture`. Skips cleanly (exit 0) if `prompt_toon.engine` can't be
-  imported or `ChapelEngine().available()` is False -- i.e. libptoon
-  hasn't been built yet. This is a lower-level check than condense
+  imported or `ChapelEngine().available()` is False -- i.e. the ptoon
+  binary hasn't been built yet. This is a lower-level check than condense
   parity: it isolates the three text-transform primitives from
   card/manifest assembly.
 
@@ -33,10 +34,11 @@ Usage:
     python3 tools/parity_runner.py                    # condense parity, python vs chapel
     python3 tools/parity_runner.py --case 01-homoglyph-secret
     python3 tools/parity_runner.py --functions         # per-function parity via prompt_toon.engine
+    python3 tools/parity_runner.py --require-chapel    # fail if chapel would otherwise SKIP
 
 Exit code is non-zero on any DIFF/ERROR/MISSING_GOLDEN (condense mode)
 or any function-level mismatch (--functions mode). SKIP never fails the
-run.
+run unless --require-chapel is passed.
 """
 from __future__ import annotations
 
@@ -81,8 +83,12 @@ def diff_preview(expected: bytes, actual: bytes, limit: int = 40) -> str:
     return f"golden={expected[:120]!r}\nactual={actual[:120]!r}"
 
 
-def is_libptoon_unavailable(stderr: bytes) -> bool:
-    return b"libptoon is not available" in stderr
+def is_engine_unavailable(stderr: bytes) -> bool:
+    # Matches the ChapelEngine degraded-mode message in prompt_toon/engine.py
+    # ("ptoon binary is not available: ...") and cli.py's --engine=chapel
+    # fail-closed SystemExit ("the ptoon binary is not available: ..."). The
+    # substring "ptoon binary is not available" is common to both.
+    return b"ptoon binary is not available" in stderr
 
 
 # --------------------------------------------------------------------------
@@ -102,8 +108,8 @@ def check_condense_case(case: CondenseCase, engine: str) -> tuple[str, str]:
         return "ERROR", f"{type(exc).__name__}: {exc}"
 
     if rc != 0:
-        if engine == "chapel" and is_libptoon_unavailable(err):
-            return "SKIP", "libptoon not available (build via the remote-only nix lane, see src/ptoon/README.md)"
+        if engine == "chapel" and is_engine_unavailable(err):
+            return "SKIP", "ptoon binary not available (build via the remote-only nix lane, see src/ptoon/README.md)"
         return "ERROR", f"condense failed rc={rc}: {err.decode('utf-8', 'replace')[:300]}"
 
     diffs = []
@@ -120,7 +126,7 @@ def check_condense_case(case: CondenseCase, engine: str) -> tuple[str, str]:
     return "PASS", ""
 
 
-def run_condense_mode(cases: list[CondenseCase]) -> int:
+def run_condense_mode(cases: list[CondenseCase], *, require_chapel: bool = False) -> int:
     rows: list[tuple[str, dict[str, tuple[str, str]]]] = []
     for case in cases:
         per_engine = {}
@@ -150,6 +156,8 @@ def run_condense_mode(cases: list[CondenseCase]) -> int:
     print(f"\n{total} case/engine combination(s) — {summary}")
 
     failing = counts.get("DIFF", 0) + counts.get("ERROR", 0) + counts.get("MISSING_GOLDEN", 0)
+    if require_chapel:
+        failing += counts.get("SKIP", 0)
     if failing:
         print(f"PARITY: FAIL ({failing} combination(s) diverged)")
         return 1
@@ -162,22 +170,22 @@ def run_condense_mode(cases: list[CondenseCase]) -> int:
 # --------------------------------------------------------------------------
 
 
-def run_functions_mode(fixtures: list[TextFixture]) -> int:
+def run_functions_mode(fixtures: list[TextFixture], *, require_chapel: bool = False) -> int:
     try:
         from prompt_toon import engine as engine_module
     except ImportError as exc:
         print(f"SKIP: prompt_toon.engine not importable ({exc}); nothing to diff.")
-        return 0
+        return 1 if require_chapel else 0
 
     chapel_engine = engine_module.ChapelEngine()
     if not chapel_engine.available():
-        print("SKIP: libptoon not available (ChapelEngine().available() is False); nothing to diff.")
-        return 0
+        print("SKIP: ptoon binary not available (ChapelEngine().available() is False); nothing to diff.")
+        return 1 if require_chapel else 0
 
     functions = [
         ("redact_text", redact_text, chapel_engine.redact_text),
-        ("normalize_text", normalize_text, lambda t: (chapel_engine.normalize_text(t), None)),
-        ("defang_text", defang_text, lambda t: (chapel_engine.defang_text(t), None)),
+        ("normalize_text", lambda t: (normalize_text(t), None), lambda t: (chapel_engine.normalize_text(t), None)),
+        ("defang_text", lambda t: (defang_text(t), None), lambda t: (chapel_engine.defang_text(t), None)),
     ]
 
     print("| fixture | redact_text | normalize_text | defang_text |")
@@ -195,15 +203,13 @@ def run_functions_mode(fixtures: list[TextFixture]) -> int:
                 status = "ERROR"
                 details.append(f"### {fixture.name} ({fn_name}): ERROR\n```\n{type(exc).__name__}: {exc}\n```")
             else:
-                py_text = python_result[0] if isinstance(python_result, tuple) else python_result
-                ch_text = chapel_result[0] if isinstance(chapel_result, tuple) else chapel_result
-                if py_text == ch_text:
+                if python_result == chapel_result:
                     status = "PASS"
                 else:
                     status = "DIFF"
                     details.append(
                         f"### {fixture.name} ({fn_name}): DIFF\n```\n"
-                        f"{diff_preview(py_text.encode('utf-8'), ch_text.encode('utf-8'))}\n```"
+                        f"{diff_preview(repr(python_result).encode('utf-8'), repr(chapel_result).encode('utf-8'))}\n```"
                     )
             counts[status] = counts.get(status, 0) + 1
             cells.append(status)
@@ -237,6 +243,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="diff redact_text/normalize_text/defang_text via prompt_toon.engine instead of condense parity",
     )
+    parser.add_argument(
+        "--require-chapel",
+        action="store_true",
+        help="treat a missing/unavailable ptoon binary as a failure instead of SKIP",
+    )
     args = parser.parse_args(argv)
 
     if args.functions:
@@ -244,13 +255,13 @@ def main(argv: list[str] | None = None) -> int:
         if not fixtures:
             print("no matching fixtures", file=sys.stderr)
             return 1
-        return run_functions_mode(fixtures)
+        return run_functions_mode(fixtures, require_chapel=args.require_chapel)
 
     cases = [c for c in CONDENSE_CASES if args.case is None or c.name in args.case]
     if not cases:
         print("no matching cases", file=sys.stderr)
         return 1
-    return run_condense_mode(cases)
+    return run_condense_mode(cases, require_chapel=args.require_chapel)
 
 
 if __name__ == "__main__":

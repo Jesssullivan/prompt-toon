@@ -1,0 +1,4 @@
+# Walking-skeleton Chapel build rule (see defs.bzl). Load via
+# `//tools/bazel/chapel:defs.bzl`. No targets here yet; the rule is consumed by
+# //src/ptoon:ptoon. rules_chapel extraction to the tinyland bazel-registry is C3.
+exports_files(["defs.bzl"])

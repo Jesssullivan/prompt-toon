@@ -1,0 +1,58 @@
+[brick]
+name = "ptoon"
+version = "0.1.0"
+type = "application"
+chplVersion = "2.6.0..2.8.0"
+license = "MIT"
+authors = ["Jess Sullivan <jess@sulliwood.org>"]
+repository = "https://github.com/Jesssullivan/prompt-toon"
+source = "https://github.com/Jesssullivan/prompt-toon"
+description = "Chapel-native ptoon binary core for prompt-toon (TIN-2708 C1)"
+keywords = ["chapel", "toon", "redaction", "normalization", "subprocess"]
+
+# Compile options -- Mason reads this as a single string from the [brick]
+# section (same convention as remote-juggler/Mason.toml).
+#
+# -M src/ptoon puts the module search path on Normalize.chpl / Redact.chpl /
+# Toon.chpl / Defang.chpl / Main.chpl so `use Normalize`, `use Redact`,
+# and `use Toon` resolve from this brick's own test sources.
+#
+# C linking for the vendored NFKC/word-class shim under repo-root c_src/
+# (normalize_ffi.c, utf8proc.c) goes through `require` statements INSIDE
+# the Chapel source files that need them (see
+# src/ptoon/Normalize.chpl: `require "../../c_src/normalize_ffi.h", ...`,
+# file-relative per the Keychain.chpl exemplar) -- NEVER through Mason
+# [brick] ldflags/compopts passthrough.
+#
+# KNOWN ISSUE: Mason 0.2.0 (bundled with Chapel 2.7) has a documented bug
+# where ldflags/compopts containing quoted or multi-token arguments (e.g.
+# `-framework Security`) get split on whitespace before reaching chpl,
+# corrupting the flag into something like `-f` (see remote-juggler/Mason.toml
+# for the same bug filed against `-framework Security`/CoreFoundation on
+# Darwin). `require` statements are resolved per-source-file by the Chapel
+# compiler itself and are not subject to this passthrough path, so they are
+# the only sanctioned place for C source linkage in this brick --
+# do not attempt to route C linking through this [brick] table's compopts
+# or through a Mason ldflags field.
+compopts = "-M src/ptoon"
+
+[dependencies]
+# No external Chapel (Mason) dependencies for the core normalize/redact/toon
+# modules. C sources are vendored under repo-root c_src/ (utf8proc + the
+# pt_* shim) and linked via `require` as described above, not via a Mason
+# dependency entry.
+
+[dev-dependencies]
+quickchpl = "1.0.2"
+
+# quickchpl is not on the public Mason registry and is not a C1 required gate.
+# Keep these property tests advisory until quickchpl is repo-pinned and wired
+# into a remote-only derivation. To run them manually, either add the tinyland
+# registry:
+#   [[registry]]
+#   name = "tinyland"
+#   source = "https://github.com/Jesssullivan/mason-registry"
+#   branch = "sid"
+#
+# or point Mason at a local checkout:
+#   mason external --path /Users/jess/git/quickchpl

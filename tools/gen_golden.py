@@ -126,6 +126,7 @@ TEXT_FIXTURES: list[TextFixture] = [
     TextFixture("11-nul-and-crlf", "11-nul-and-crlf.txt"),
     TextFixture("12-confusable-full", "12-confusable-full.txt"),
     TextFixture("13-research-note", "13-research-note.md"),
+    TextFixture("18-injected-literal-rescan", "18-injected-literal-rescan.txt"),
     TextFixture("16-trust-tier-pair-spec", "16-trust-tier-pair-spec.md"),
     TextFixture("17-trust-tier-pair-scrape", "17-trust-tier-pair-scrape.md"),
 ]

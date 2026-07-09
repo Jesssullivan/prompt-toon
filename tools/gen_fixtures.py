@@ -156,7 +156,7 @@ TOON_UNIFORM_ROWS = [
     {"id": 3, "name": "ptoon-spike", "version": "0.0.1", "license": "MIT", "language": "chapel"},
     {"id": 4, "name": "gstack-cli", "version": "1.2.0", "license": "Apache-2.0", "language": "python"},
     {"id": 5, "name": "toon-of-mythos", "version": "0.3.0", "license": "MIT", "language": "dhall"},
-    {"id": 6, "name": "libptoon", "version": "0.0.1", "license": "MIT", "language": "chapel"},
+    {"id": 6, "name": "ptoon", "version": "0.1.0", "license": "MIT", "language": "chapel"},
 ]
 
 # Ragged rows -- key sets differ row to row, so find_uniform_rows must
@@ -186,8 +186,18 @@ TRUST_TIER_PAIR_SCRAPE = "\n".join(
     ]
 )
 
+# Sequential-redaction regression (TIN-2709 purple-team F1): pattern-7
+# (email) redacts `a@b.co` -> `token=[REDACTED]`; pattern-8 then matches the
+# INJECTED `[REDACTED]` literal (>=8 non-quote/space chars) preceded by the
+# `token=` keyword+delimiter, redacting again to `[REDACTED]`. Proves the
+# engine applies patterns sequentially over prior output (never a parallel
+# pass over the original), which is exactly why parallel pattern-sweep is
+# declined for C2. Findings must be pattern-7,pattern-8.
+INJECTED_LITERAL_RESCAN = "token=a@b.co"
+
 ADDITIONS = {
     "13-research-note.md": RESEARCH_NOTE,
+    "18-injected-literal-rescan.txt": INJECTED_LITERAL_RESCAN,
     "14-toon-uniform-rows.jsonl": "\n".join(
         json.dumps(row, sort_keys=True) for row in TOON_UNIFORM_ROWS
     )

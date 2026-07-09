@@ -29,8 +29,8 @@ Issues:
 - `TIN-2705` mythos-policy-parity check: declared delegation lanes vs actual OMO routes.
 - `TIN-2706` Packaging-SSOT manifest (TIN-2046 pattern, Chapel-phased derived lanes).
 - `TIN-2707` C0 Chapel spike: normalize+redact parity (GO, 2026-07-09).
-- `TIN-2708` C1 libptoon behind `--engine=chapel` + parity runner + quickchpl properties.
-- `TIN-2709` C2 standalone ptoon: full parity, streaming, cache parity, Bazel walking skeleton.
+- `TIN-2708` C1 `ptoon` binary behind `--engine=chapel` (subprocess pivot from the original shared-library plan) + parity runner + Bazel-drives-chpl skeleton on GF REAPI; quickchpl property source is advisory until pinned/wired.
+- `TIN-2709` C2 ptoon streaming: `coforall` batch entrypoint, cache parity, full Bazel executor lane.
 - `TIN-2710` C3 flip to ptoon + rules_chapel extraction/registry publication + brew/rpm lanes.
 
 Related prior work:
