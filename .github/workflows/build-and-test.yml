@@ -24,8 +24,6 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      BAZEL_OUTPUT_USER_ROOT: ${{ runner.temp }}/bazel-user-root
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,4 +33,6 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - name: Check (compile + secrets + tests + bazel graph/test)
-        run: nix develop --command just check
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command just check

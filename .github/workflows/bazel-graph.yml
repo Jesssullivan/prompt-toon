@@ -23,8 +23,6 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      BAZEL_OUTPUT_USER_ROOT: ${{ runner.temp }}/bazel-user-root
     steps:
       - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
@@ -32,6 +30,10 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - name: bazelisk mod graph
-        run: nix develop --command just bazel-graph
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command just bazel-graph
       - name: MODULE.bazel.lock has not drifted
-        run: nix develop --command bazelisk --output_user_root="$BAZEL_OUTPUT_USER_ROOT" mod graph --lockfile_mode=error
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command bazelisk --output_user_root="$BAZEL_OUTPUT_USER_ROOT" mod graph --lockfile_mode=error
