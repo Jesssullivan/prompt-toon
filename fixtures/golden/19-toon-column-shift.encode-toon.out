@@ -1,0 +1,3 @@
+cards[2]{id,claim,tier} delimiter="\t":
+  src-001	"evil\tvalue\rwith\tcontrols"	untrusted
+  src-002	plain	untrusted
