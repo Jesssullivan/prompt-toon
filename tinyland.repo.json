@@ -1,0 +1,54 @@
+{
+  "$schema": "./docs/schemas/tinyland-repo-manifest.schema.json",
+  "schema_version": 1,
+  "repo": {
+    "name": "prompt-toon",
+    "github": "Jesssullivan/prompt-toon",
+    "description": "Local agent research condenser with provenance-preserving prompt minimization and measured TOON support.",
+    "linear": {
+      "initiative": "Prompt TOON Agent Spool",
+      "initiativeId": "47641b08-44bc-4bac-956d-0dd8f8f88dad",
+      "project": "prompt-toon local research condenser",
+      "projectId": "6c824bb3-4e8f-4a7b-9092-2638ed945c54",
+      "bootstrapIssue": "TIN-2691"
+    }
+  },
+  "taxonomy": {
+    "primary_role": "local-agent-tool",
+    "layers": ["org-wide-repo-contract", "bazel-package-cache-rbe", "agent-skill"]
+  },
+  "enrollment": {
+    "forgeScope": "Jesssullivan",
+    "operatorOverlay": "jesssullivan-infra",
+    "executionPool": "tinyland-nix",
+    "substrateMode": "shared-cache-backed"
+  },
+  "contracts": {
+    "agent_contract": "AGENTS.md",
+    "just": "Justfile",
+    "nix": "flake.nix",
+    "bazel": "MODULE.bazel",
+    "flywheel": "justfile.flywheel",
+    "skills": ".agents/skills/prompt-toon/SKILL.md"
+  },
+  "related_linear": {
+    "token_io_adr": "TIN-2494",
+    "progressive_tool_disclosure": "TIN-2524",
+    "toon_uniform_rows_experiment": "TIN-2554",
+    "repo_bootstrap": "TIN-2691",
+    "cli": "TIN-2692",
+    "toon_encoder": "TIN-2693",
+    "codex_skill": "TIN-2694",
+    "safety_tests": "TIN-2695",
+    "lab_hm_install": "TIN-2696",
+    "keyword_tuner": "TIN-2697"
+  },
+  "boundaries": {
+    "calls_llm_by_default": false,
+    "owns_runtime_backend": false,
+    "owns_auth": false,
+    "owns_bazel_module_authority": false,
+    "stores_raw_inputs_by_default": false,
+    "toon_default_interchange": false
+  }
+}

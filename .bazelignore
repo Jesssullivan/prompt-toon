@@ -1,0 +1,7 @@
+.direnv
+.venv
+bazel-bin
+bazel-out
+bazel-prompt-toon
+bazel-testlogs
+result

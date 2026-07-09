@@ -1,0 +1,5 @@
+common --enable_bzlmod
+common --color=yes
+common --curses=yes
+
+try-import %workspace%/.bazelrc.flywheel

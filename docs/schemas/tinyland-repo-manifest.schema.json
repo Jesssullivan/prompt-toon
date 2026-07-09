@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "prompt-toon repo manifest",
+  "type": "object",
+  "required": ["schema_version", "repo", "taxonomy", "contracts"],
+  "properties": {
+    "schema_version": {"type": "integer"},
+    "repo": {"type": "object"},
+    "taxonomy": {"type": "object"},
+    "enrollment": {"type": "object"},
+    "contracts": {"type": "object"},
+    "related_linear": {"type": "object"},
+    "boundaries": {"type": "object"}
+  },
+  "additionalProperties": true
+}

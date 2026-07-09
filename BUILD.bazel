@@ -1,0 +1,30 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "prompt_toon/**/*.py",
+        "tests/**/*.py",
+        "docs/**/*.md",
+    ]),
+)
+
+sh_binary(
+    name = "prompt-toon",
+    srcs = ["scripts/prompt-toon"],
+    data = glob(["prompt_toon/**/*.py"]),
+)
+
+sh_test(
+    name = "unit_tests",
+    srcs = ["tests/run_tests.sh"],
+    data = glob([
+        "prompt_toon/**/*.py",
+        "tests/**/*.py",
+    ]),
+)
+
+test_suite(
+    name = "ci_validation_suite",
+    tests = [":unit_tests"],
+)

@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prompt-toon"
+version = "0.1.0"
+description = "Local agent research condenser with provenance-preserving prompt minimization and measured TOON support"
+requires-python = ">=3.11"
+
+[project.scripts]
+prompt-toon = "prompt_toon.cli:main"

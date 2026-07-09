@@ -1,0 +1,27 @@
+# Linear Map
+
+Initiative: Prompt TOON Agent Spool
+
+- ID: `47641b08-44bc-4bac-956d-0dd8f8f88dad`
+- URL: https://linear.app/tinyland/initiative/prompt-toon-agent-spool-8b0b1b850a52
+
+Project: prompt-toon local research condenser
+
+- ID: `6c824bb3-4e8f-4a7b-9092-2638ed945c54`
+- URL: https://linear.app/tinyland/project/prompt-toon-local-research-condenser-6ca57e460046
+
+Issues:
+
+- `TIN-2691` Bootstrap private prompt-toon repo with founding prompt and remote-first scaffolding.
+- `TIN-2692` Implement deterministic prompt-toon CLI for staging, condensation, and source cards.
+- `TIN-2693` Add measured TOON row encoder as an opt-in leaf format.
+- `TIN-2694` Publish Codex skill wrapper for research condensation workflows.
+- `TIN-2695` Add safety, redaction, and provenance invariant tests.
+- `TIN-2696` Wire global install path through lab Home Manager.
+- `TIN-2697` Design future confusing-keyword and model-brittleness tuner.
+
+Related prior work:
+
+- `TIN-2494` Skill/harness pare-down and token-IO ADR.
+- `TIN-2524` Gateway progressive tool disclosure for MCP token reduction.
+- `TIN-2554` TOON-on-uniform-rows experiment, flag-gated and not default.

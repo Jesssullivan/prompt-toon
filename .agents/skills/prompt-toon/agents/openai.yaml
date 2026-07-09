@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prompt TOON"
+  short_description: "Condense agent research into safe source cards and minimized handoffs."
+  default_prompt: "Use prompt-toon to condense these research outputs into a provenance-preserving handoff."
