@@ -24,6 +24,14 @@ Issues:
 - `TIN-2700` IO layer Phase 0: policy/io.json SSOT + integrity-verified sha256-keyed condensation cache.
 - `TIN-2701` Decision: queue→execute runner crosses the deterministic/no-network boundary (INV-9).
 - `TIN-2702` MCP condenser stage on the TIN-2524 disclosure gateway (blocked by TIN-2524).
+- `TIN-2703` M0 CI scaffold: secrets-scan / build-and-test / bazel-graph.
+- `TIN-2704` GloriousFlywheel enrollment + two-tier CI lanes (dormant until overlay/allowlist arm).
+- `TIN-2705` mythos-policy-parity check: declared delegation lanes vs actual OMO routes.
+- `TIN-2706` Packaging-SSOT manifest (TIN-2046 pattern, Chapel-phased derived lanes).
+- `TIN-2707` C0 Chapel spike: normalize+redact parity (GO, 2026-07-09).
+- `TIN-2708` C1 libptoon behind `--engine=chapel` + parity runner + quickchpl properties.
+- `TIN-2709` C2 standalone ptoon: full parity, streaming, cache parity, Bazel walking skeleton.
+- `TIN-2710` C3 flip to ptoon + rules_chapel extraction/registry publication + brew/rpm lanes.
 
 Related prior work:
 
