@@ -19,6 +19,11 @@ Issues:
 - `TIN-2695` Add safety, redaction, and provenance invariant tests.
 - `TIN-2696` Wire global install path through lab Home Manager.
 - `TIN-2697` Design future confusing-keyword and model-brittleness tuner.
+- `TIN-2698` Adopt Toon of Mythos delegation-policy SSOT: Dhall-shaped policy, publishable skill, Bazel/Nix packaging.
+- `TIN-2699` Spike: prove Claude PostToolUse Task-return rewrite (updatedToolOutput) through the condense path.
+- `TIN-2700` IO layer Phase 0: policy/io.json SSOT + integrity-verified sha256-keyed condensation cache.
+- `TIN-2701` Decision: queue→execute runner crosses the deterministic/no-network boundary (INV-9).
+- `TIN-2702` MCP condenser stage on the TIN-2524 disclosure gateway (blocked by TIN-2524).
 
 Related prior work:
 
