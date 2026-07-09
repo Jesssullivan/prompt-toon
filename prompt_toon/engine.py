@@ -85,11 +85,11 @@ class ChapelEngine:
             )
         return self._path
 
-    def _run_bytes(self, subcommand: str, data: bytes) -> bytes:
+    def _run_bytes(self, subcommand: str, data: bytes, extra_args: tuple[str, ...] = ()) -> bytes:
         binary = self._require_binary()
         try:
             proc = subprocess.run(
-                [str(binary), subcommand],
+                [str(binary), subcommand, *extra_args],
                 input=data,
                 capture_output=True,
             )
@@ -127,8 +127,13 @@ class ChapelEngine:
         redacted = raw[newline_index + 1 :].decode("utf-8", errors="replace")
         return redacted, findings
 
-    def redact_batch(self, docs: list[str]) -> list[dict[str, Any]]:
-        """Fan-in redaction (TIN-2709 C2b): frame N documents, run one
+    def redact_batch(
+        self,
+        docs: list[str],
+        max_input_bytes: int = 0,
+        budget_ms: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Fan-in redaction (TIN-2709 C2b/C2c): frame N documents, run one
         `ptoon redact-batch` process (coforall one task per doc inside the
         Chapel runtime), and return per-document results IN INPUT ORDER.
 
@@ -139,17 +144,44 @@ class ChapelEngine:
         ``redacted`` (str); a withheld one carries ``reason`` and NO redacted
         text -- fail-closed (INV-5), the raw document is never returned.
 
+        ``max_input_bytes`` (C2c): a document whose UTF-8 length exceeds this
+        cap is withheld (reason ``input-cap``) rather than truncated -- a
+        truncated PEM could leak its tail. ``budget_ms`` (C2c): a wall-clock
+        backstop; a document COMPLETING past the batch deadline is withheld
+        (reason ``budget``). Both default 0 (unlimited); a positive budget
+        requires a positive input cap because Chapel tasks cannot be preempted
+        mid-run and the cap bounds per-document work. With both 0 the call is
+        byte-identical to the C2b entrypoint. Both are passed as the two
+        positional policy args the binary reads (argv[2], argv[3]).
+
         Wire format mirrors src/ptoon/Batch.chpl: length-prefixed framing,
         which carries embedded newlines (a redacted PEM spans lines) with no
         escaping.
         """
+        if (
+            not isinstance(max_input_bytes, int)
+            or isinstance(max_input_bytes, bool)
+            or not isinstance(budget_ms, int)
+            or isinstance(budget_ms, bool)
+        ):
+            raise ValueError("redact_batch policy args must be integers")
+        if max_input_bytes < 0 or budget_ms < 0:
+            raise ValueError("redact_batch policy args must be nonnegative")
+        if budget_ms > 0 and max_input_bytes == 0:
+            raise ValueError("redact_batch budget_ms requires positive max_input_bytes")
+
         framed = bytearray()
         framed += f"{len(docs)}\n".encode("utf-8")
         for doc in docs:
             body = doc.encode("utf-8")
             framed += f"{len(body)}\n".encode("utf-8")
             framed += body
-        return self._parse_batch(self._run_bytes("redact-batch", bytes(framed)))
+        # Positional policy args are all-or-nothing: to set budget you must also
+        # pass maxInputBytes (argv[2]), so emit both whenever either is nonzero.
+        extra_args: tuple[str, ...] = ()
+        if max_input_bytes or budget_ms:
+            extra_args = (str(max_input_bytes), str(budget_ms))
+        return self._parse_batch(self._run_bytes("redact-batch", bytes(framed), extra_args))
 
     @staticmethod
     def _parse_batch(raw: bytes) -> list[dict[str, Any]]:
