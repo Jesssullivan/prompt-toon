@@ -103,12 +103,22 @@ module Main {
         // C2b fan-in: length-prefixed N-document batch on stdin, coforall
         // one task per doc, length-prefixed results in input order. All
         // concurrency stays inside this one Chapel runtime. See Batch.chpl.
+        //
+        // C2c optional positional policy args (0 or absent = unlimited):
+        //   argv[2] = maxInputBytes  — withhold docs over the cap (fail-closed)
+        //   argv[3] = budgetMs       — withhold docs past the wall-clock budget
+        // With both absent this is byte-identical to C2b (parity gate calls it
+        // with no extra args). A non-numeric arg makes the `:int` cast throw,
+        // so the process exits nonzero (fail-closed on malformed policy args).
+        const maxInputBytes = if args.size >= 3 then args[2]: int else 0;
+        const budgetMs = if args.size >= 4 then args[3]: int else 0;
         const raw = stdin.readAll(bytes);
         const docs = parseBatch(raw);
-        stdout.write(redactBatch(docs));
+        stdout.write(redactBatch(docs, maxInputBytes, budgetMs));
         return 0;
       }
-      // C2c: when "condense" { /* --stream: budget + straggler abort */ }
+      // C2c continues: `condense --stream` (cards/summary/manifest) on this
+      // same dispatch point, reusing the budget/cap policy above.
       otherwise {
         stderr.writeln("ptoon: unknown subcommand '", sub,
                        "' (want normalize|defang|redact|redact-batch|caps)");

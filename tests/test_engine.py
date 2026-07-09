@@ -247,6 +247,25 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
     def test_redact_batch_empty_input(self):
         self.assertEqual(self.engine.redact_batch([]), [])
 
+    def test_redact_batch_input_cap_withholds_oversized_doc(self):
+        # A doc over max_input_bytes is withheld fail-closed (reason input-cap),
+        # with NO redacted text; a doc under the cap still passes normally.
+        small = "token=ghp_abcdefghijklmnopqrstuvwxyz"
+        big = "x" * 5000
+        results = self.engine.redact_batch([small, big], max_input_bytes=1000)
+        self.assertFalse(results[0].get("withheld", False))
+        self.assertIn("redacted", results[0])
+        self.assertTrue(results[1]["withheld"])
+        self.assertEqual(results[1]["reason"], "input-cap")
+        self.assertNotIn("redacted", results[1])
+
+    def test_redact_batch_generous_budget_withholds_nothing(self):
+        # A generous budget must not perturb results: identical to no budget.
+        docs = ["token=ghp_abcdefghijklmnopqrstuvwxyz", "plain text"]
+        baseline = self.engine.redact_batch(docs)
+        budgeted = self.engine.redact_batch(docs, budget_ms=60000)
+        self.assertEqual(budgeted, baseline)
+
 
 if __name__ == "__main__":
     unittest.main()
