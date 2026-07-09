@@ -85,8 +85,24 @@ def parse_batch(data: bytes) -> list[tuple[dict, bytes]]:
     return results
 
 
+def assert_malformed_rejected(binary: str) -> None:
+    cases = {
+        "huge-count-before-allocation": b"999999999999999999999\n",
+        "overrun-body": b"1\n10\nabc",
+        "trailing-bytes": b"0\ntrailing",
+        "non-digit-length": b"1\nx\n",
+    }
+    for name, payload in cases.items():
+        proc = subprocess.run([binary, "redact-batch"], input=payload, capture_output=True)
+        if proc.returncode == 0:
+            raise AssertionError(f"{name}: malformed frame unexpectedly succeeded")
+        if proc.stdout:
+            raise AssertionError(f"{name}: malformed frame wrote stdout")
+
+
 def main() -> None:
     binary = _binary()
+    assert_malformed_rejected(binary)
     files = sorted(p for p in INPUTS.iterdir() if p.is_file())
     if not files:
         print("SKIP: no fixtures under fixtures/inputs/; run tools/gen_fixtures.py first.")

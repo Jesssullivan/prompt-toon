@@ -53,20 +53,27 @@ module Batch {
   /* Read an ASCII decimal integer starting at arr[pos], consuming through the
    * terminating '\n'. Advances pos past the newline. Fail-closed: a malformed
    * length header throws rather than guessing. */
-  private proc readIntLine(const ref arr: [] uint(8), ref pos: int): int throws {
+  private proc readIntLine(const ref arr: [] uint(8), ref pos: int, maxValue: int): int throws {
     const n = arr.size;
+    const maxDigits = (maxValue: string).size;
     var value = 0;
+    var digits = 0;
     var sawDigit = false;
     while pos < n && arr[pos] != 0x0A {
       const c = arr[pos];
       if c < 0x30 || c > 0x39 then
         throw new Error("redact-batch: non-digit in length header at byte " + pos: string);
+      digits += 1;
+      if digits > maxDigits then
+        throw new Error("redact-batch: length header exceeds input size at byte " + pos: string);
       value = value * 10 + (c - 0x30): int;
       sawDigit = true;
       pos += 1;
     }
     if !sawDigit then throw new Error("redact-batch: empty length header at byte " + pos: string);
     if pos >= n then throw new Error("redact-batch: length header missing newline");
+    if value > maxValue then
+      throw new Error("redact-batch: length header exceeds remaining input at byte " + pos: string);
     pos += 1;  // consume '\n'
     return value;
   }
@@ -76,11 +83,13 @@ module Batch {
     var arr = toArr(raw);   // var, not const: c_ptrTo below needs a ref actual
     const total = arr.size;
     var pos = 0;
-    const n = readIntLine(arr, pos);
+    const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("redact-batch: negative document count");
+    if n > total - pos then
+      throw new Error("redact-batch: document count overruns input before allocation");
     var docs: [0..<n] string;
     for i in 0..<n {
-      const len = readIntLine(arr, pos);
+      const len = readIntLine(arr, pos, total - pos);
       if pos + len > total then
         throw new Error("redact-batch: document " + i: string + " length " +
                         len: string + " overruns input");
