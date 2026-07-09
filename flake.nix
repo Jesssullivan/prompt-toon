@@ -49,7 +49,17 @@
             --set-default CHPL_COMM none \
             --set-default CHPL_TASKS qthreads \
             --set-default CHPL_TARGET_MEM jemalloc \
-            --set-default CHPL_HWLOC bundled
+            --set-default CHPL_HWLOC bundled \
+            --prefix PATH : '${lib.makeBinPath [
+              pkgs.coreutils pkgs.gnumake pkgs.pkg-config pkgs.python3 pkgs.which
+              pkgs.llvmPackages_19.clang pkgs.llvmPackages_19.llvm
+            ]}' \
+            ${lib.optionalString pkgs.stdenv.isLinux
+              "--add-flags '-I ${pkgs.llvmPackages_19.clang}/resource-root/include' --add-flags '-I ${pkgs.llvmPackages_19.bintools.libc.dev}/include'"
+            } \
+            ${lib.optionalString pkgs.stdenv.isDarwin
+              "--add-flags '-I ${pkgs.llvmPackages_19.clang}/resource-root/include'"
+            }
         '';
 
         # C0 spike (TIN-2707): compile the Chapel normalize+redact port and

@@ -42,7 +42,27 @@ fixes the CHPL_HOME lib layout and bakes the compiler env.
 - utf8proc integration slipping the afternoon → pivot the spike to the
   pure-Chapel TOON encoder.
 
-## Verdict
+## Verdict — GO (2026-07-09, first remote run)
 
-See `parity-report.md` in the build output (report pending first full
-remote run; recorded on TIN-2707 when in).
+`parity-report-2026-07-09.md` (from
+`/nix/store/f2dcmy89jwjc89nskmfv708pjkxxw423-ptoon-spike-parity-0.1.0`):
+
+- **11/12 cases byte-identical**, including homoglyph/zero-width/BIDI/tag
+  redaction, all 9 secret classes, PEM-split, defang inputs, and the
+  full confusable table.
+- **The single divergence is the predicted one** (07-boundary-unicode):
+  RE2's ASCII `\b` treats CJK/accented neighbors as boundaries → Chapel
+  redacts MORE than Python (safe direction; nothing leaks). Emoji
+  neighbors match identically (not word chars in either engine).
+  C1 closes it with captured `[^\p{L}\p{N}_]` anchors + splice-based
+  substitution (a consuming anchor cannot be used with plain
+  replaceAndCount — it would eat the neighbor char).
+- **Benchmark**: Chapel 2.5x (1 MiB: 0.243s vs 0.612s) and 2.4x (5 MiB:
+  1.801s vs 4.330s) faster than the Python oracle on hostile digit-heavy
+  input, including process startup and full normalize.
+- Compile iterations needed after the toolchain landed: one (CHPL_HOME
+  wrapper needed the remote-juggler PATH/-I include flags on Linux).
+
+Neither kill criterion fired: utf8proc NFKC parity is exact (Unicode 15.1
+aligned), and the sole regex gap is anchor-closable. **C1 (TIN-2708)
+proceeds with redaction in Chapel.**
