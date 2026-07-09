@@ -31,7 +31,7 @@
  * per-document redaction-error withhold.
  */
 module Batch {
-  use IO, List, CTypes;
+  use IO, List, CTypes, Time;
   use Redact;
 
   record BatchResult {
@@ -85,8 +85,11 @@ module Batch {
     var pos = 0;
     const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("redact-batch: negative document count");
-    if n > total - pos then
-      throw new Error("redact-batch: document count overruns input before allocation");
+    // Each declared document needs at least a length line ("0\n"), even when
+    // its body is empty. Bound allocation by the maximum number of documents
+    // the remaining frame could possibly encode, not just by raw bytes.
+    if n > (total - pos) / 2 then
+      throw new Error("redact-batch: document count exceeds possible frame size before allocation");
     var docs: [0..<n] string;
     for i in 0..<n {
       const len = readIntLine(arr, pos, total - pos);
@@ -119,24 +122,53 @@ module Batch {
 
   /* Redact N documents concurrently and RETURN the framed result. One qthreads
    * task per document; each runs the full sequential redactText using the
-   * module-level shared const RE2 generators (Redact.gens). A task whose
-   * redaction throws sets withheld=true and emits no text (fail-closed).
+   * module-level shared const RE2 generators (Redact.gens).
+   *
+   * C2c fail-closed policy (all three paths withhold — never emit raw):
+   *   - `maxInputBytes` > 0: a document whose input exceeds the cap is WITHHELD
+   *     (reason "input-cap") before redaction. Never truncated-and-emitted —
+   *     truncation could sever a PEM block mid-body and leak the tail.
+   *   - `budgetMs` > 0: a wall-clock backstop. Chapel `coforall` tasks cannot
+   *     be preempted mid-run, but redaction is linear-time and input-capped so
+   *     a single document is bounded; the dispatcher rejects budgetMs unless
+   *     maxInputBytes is also positive. The budget guards AGGREGATE wall-clock.
+   *     A document that COMPLETES past the deadline is withheld (reason
+   *     "budget"), its redacted text discarded. This is completion-time
+   *     withhold, not a mid-task abort — stated plainly rather than overclaimed.
+   *   - a redaction exception withholds (reason "redaction-error").
+   * Both limits default to 0 (unlimited); with both 0 this is byte-identical to
+   * the C2b entrypoint, so the batch-parity gate is unaffected.
    *
    * Returns a `string`: the whole framed output is valid UTF-8 (ASCII meta +
    * length headers, plus each redacted document which is itself a valid UTF-8
    * string), so the caller writes it with one `stdout.write`. The byte-length
    * header uses `.encode().size` so it counts UTF-8 bytes, not codepoints. */
-  proc redactBatch(const ref docs: [] string): string throws {
+  proc redactBatch(const ref docs: [] string, maxInputBytes: int,
+                   budgetMs: int): string throws {
     const n = docs.size;
     var results: [0..<n] BatchResult;
 
+    var sw: stopwatch;
+    sw.start();
+
     coforall i in 0..<n {
-      try {
-        const (red, finds) = redactText(docs[i]);
-        results[i] = new BatchResult(false, "", finds, red);
-      } catch e {
-        // Fail-closed: never emit the raw document on a redaction error.
-        results[i] = new BatchResult(true, "redaction-error", new list(string), "");
+      if maxInputBytes > 0 && docs[i].numBytes > maxInputBytes {
+        // Fail-closed input cap: withhold oversized docs, never truncate+emit.
+        results[i] = new BatchResult(true, "input-cap", new list(string), "");
+      } else {
+        try {
+          const (red, finds) = redactText(docs[i]);
+          const elapsedMs = sw.elapsed() * 1000.0;
+          if budgetMs > 0 && elapsedMs > (budgetMs: real) {
+            // Fail-closed budget: discard the redacted text, withhold the doc.
+            results[i] = new BatchResult(true, "budget", new list(string), "");
+          } else {
+            results[i] = new BatchResult(false, "", finds, red);
+          }
+        } catch e {
+          // Fail-closed: never emit the raw document on a redaction error.
+          results[i] = new BatchResult(true, "redaction-error", new list(string), "");
+        }
       }
     }
 

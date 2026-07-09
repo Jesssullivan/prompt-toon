@@ -202,6 +202,37 @@ class ChapelEngineSubprocessErrorTests(_ForcedBinaryAbsentTestCase):
             with self.assertRaises(engine_module.EngineError):
                 engine.normalize_text("hello")
 
+    def test_redact_batch_rejects_negative_policy_args_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/does-not-exist"))
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], max_input_bytes=-1)
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], max_input_bytes=1, budget_ms=-1)
+
+    def test_redact_batch_budget_requires_input_cap_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/does-not-exist"))
+        with self.assertRaises(ValueError):
+            engine.redact_batch(["x"], budget_ms=1)
+
+    def test_redact_batch_forwards_policy_args_together(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = self._write_fake_binary(
+                tmp,
+                """#!/bin/sh
+cat >/dev/null
+if [ "$1" != "redact-batch" ] || [ "$2" != "1234" ] || [ "$3" != "60000" ]; then
+  echo "bad args: $*" 1>&2
+  exit 7
+fi
+printf '0\\n'
+""",
+            )
+            engine = engine_module.ChapelEngine(binary_path=binary)
+            self.assertEqual(
+                engine.redact_batch([], max_input_bytes=1234, budget_ms=60000),
+                [],
+            )
+
 
 class ChapelEngineBinaryDependentTests(unittest.TestCase):
     """Only runs meaningfully when a real ptoon binary build artifact is
@@ -246,6 +277,25 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
 
     def test_redact_batch_empty_input(self):
         self.assertEqual(self.engine.redact_batch([]), [])
+
+    def test_redact_batch_input_cap_withholds_oversized_doc(self):
+        # A doc over max_input_bytes is withheld fail-closed (reason input-cap),
+        # with NO redacted text; a doc under the cap still passes normally.
+        small = "token=ghp_abcdefghijklmnopqrstuvwxyz"
+        big = "x" * 5000
+        results = self.engine.redact_batch([small, big], max_input_bytes=1000)
+        self.assertFalse(results[0].get("withheld", False))
+        self.assertIn("redacted", results[0])
+        self.assertTrue(results[1]["withheld"])
+        self.assertEqual(results[1]["reason"], "input-cap")
+        self.assertNotIn("redacted", results[1])
+
+    def test_redact_batch_generous_budget_withholds_nothing(self):
+        # A generous budget must not perturb results: identical to no budget.
+        docs = ["token=ghp_abcdefghijklmnopqrstuvwxyz", "plain text"]
+        baseline = self.engine.redact_batch(docs)
+        budgeted = self.engine.redact_batch(docs, max_input_bytes=10000, budget_ms=60000)
+        self.assertEqual(budgeted, baseline)
 
 
 if __name__ == "__main__":
