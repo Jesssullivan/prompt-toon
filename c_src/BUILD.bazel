@@ -15,3 +15,16 @@ filegroup(
         "utf8proc_data.c",
     ],
 )
+
+# Vendored public-domain sha256 (B-Con/crypto-algorithms) + the pt_sha256_hex
+# FFI shim, pulled in by src/ptoon/Sha256.chpl via file-relative `require`
+# (TIN-2709 C2d). Same shape as normalize_ffi_srcs above.
+filegroup(
+    name = "sha256_srcs",
+    srcs = [
+        "sha256.c",
+        "sha256.h",
+        "sha256_ffi.c",
+        "sha256_ffi.h",
+    ],
+)

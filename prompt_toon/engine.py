@@ -232,6 +232,150 @@ class ChapelEngine:
             )
         return results
 
+    def condense_batch(
+        self,
+        docs: list[dict[str, str]],
+        max_input_bytes: int = 0,
+        budget_ms: int = 0,
+        max_cards: int = 24,
+    ) -> list[dict[str, Any]]:
+        """Streaming condensation (TIN-2709 C2d): frame N documents as
+        source/trust_tier/body triplets, run one `ptoon condense-batch`
+        process, and return per-document results IN INPUT ORDER.
+
+        Each input doc is a dict with ``source``, ``trust_tier``, and
+        ``body`` (str). Each result carries ``i``, ``source``,
+        ``trust_tier``, ``bytes``, ``sha256`` (of the RAW body bytes),
+        ``withheld``, and ``findings``. A non-withheld result carries
+        ``cards`` -- a list of card dicts identical to the objects Python's
+        condense writes to source-cards.jsonl. A withheld one carries
+        ``reason`` and NO cards -- fail-closed (INV-5): nothing derived from
+        the document body is returned.
+
+        Policy args mirror redact_batch (argv[2] cap, argv[3] budget) plus
+        argv[4] ``max_cards`` (binary default 24). All-or-nothing positional:
+        emitting any means emitting the earlier ones too.
+        """
+        for name, value in (
+            ("max_input_bytes", max_input_bytes),
+            ("budget_ms", budget_ms),
+            ("max_cards", max_cards),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"condense_batch {name} must be an int")
+        if max_input_bytes < 0 or budget_ms < 0:
+            raise ValueError("condense_batch policy args must be nonnegative")
+        if budget_ms > 0 and max_input_bytes == 0:
+            raise ValueError("condense_batch budget_ms requires positive max_input_bytes")
+        if max_cards <= 0:
+            raise ValueError("condense_batch max_cards must be positive")
+
+        framed = bytearray()
+        framed += f"{len(docs)}\n".encode("utf-8")
+        for doc in docs:
+            for field in (doc["source"], doc["trust_tier"], doc["body"]):
+                encoded = field.encode("utf-8")
+                framed += f"{len(encoded)}\n".encode("utf-8")
+                framed += encoded
+        extra_args: tuple[str, ...] = ()
+        if max_input_bytes or budget_ms or max_cards != 24:
+            extra_args = (str(max_input_bytes), str(budget_ms), str(max_cards))
+        raw = self._run_bytes("condense-batch", bytes(framed), extra_args)
+        return self._parse_stream(raw, len(docs))
+
+    @staticmethod
+    def _parse_stream(raw: bytes, expected_docs: int) -> list[dict[str, Any]]:
+        """Parse the condense-batch JSONL event stream, enforcing the event
+        grammar: for each doc IN ORDER, one `doc` event, then `card` events
+        (non-withheld docs only), then one `end` event whose count must
+        match; exactly one trailing `batch` event whose tallies must match.
+        Any grammar violation raises EngineError -- a malformed stream is
+        never partially trusted."""
+        lines = raw.split(b"\n")
+        if lines and lines[-1] == b"":
+            lines.pop()
+        else:
+            raise EngineError("ptoon condense-batch output is not newline-terminated")
+
+        events: list[dict[str, Any]] = []
+        for index, line in enumerate(lines):
+            try:
+                event = json.loads(line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise EngineError(
+                    f"ptoon condense-batch line {index} is not valid JSON"
+                ) from exc
+            if not isinstance(event, dict):
+                raise EngineError(
+                    f"ptoon condense-batch line {index} is not a JSON object"
+                )
+            events.append(event)
+
+        results: list[dict[str, Any]] = []
+        pos = 0
+        total_cards = 0
+        total_withheld = 0
+        for expected_i in range(expected_docs):
+            if pos >= len(events) or events[pos].get("event") != "doc":
+                raise EngineError(
+                    f"ptoon condense-batch: expected doc event for document {expected_i}"
+                )
+            doc = events[pos]
+            pos += 1
+            if doc.get("i") != expected_i:
+                raise EngineError(
+                    f"ptoon condense-batch: doc index {doc.get('i')!r} does not "
+                    f"match position {expected_i}"
+                )
+            withheld = bool(doc.get("withheld", False))
+            cards: list[dict[str, Any]] = []
+            while pos < len(events) and events[pos].get("event") == "card":
+                card_event = events[pos]
+                pos += 1
+                if card_event.get("i") != expected_i:
+                    raise EngineError(
+                        f"ptoon condense-batch: card event for doc {card_event.get('i')!r} "
+                        f"inside document {expected_i}"
+                    )
+                if withheld:
+                    raise EngineError(
+                        f"ptoon condense-batch: withheld document {expected_i} emitted a card"
+                    )
+                cards.append(card_event["card"])
+            if pos >= len(events) or events[pos].get("event") != "end":
+                raise EngineError(
+                    f"ptoon condense-batch: expected end event for document {expected_i}"
+                )
+            end = events[pos]
+            pos += 1
+            if end.get("i") != expected_i or end.get("cards") != len(cards):
+                raise EngineError(
+                    f"ptoon condense-batch: end event mismatch for document {expected_i}"
+                )
+            del doc["event"]
+            if withheld:
+                total_withheld += 1
+            else:
+                doc["cards"] = cards
+                total_cards += len(cards)
+            results.append(doc)
+
+        if pos >= len(events) or events[pos].get("event") != "batch":
+            raise EngineError("ptoon condense-batch: missing trailing batch event")
+        batch = events[pos]
+        pos += 1
+        if pos != len(events):
+            raise EngineError("ptoon condense-batch: trailing events after batch summary")
+        if (
+            batch.get("docs") != expected_docs
+            or batch.get("cards") != total_cards
+            or batch.get("withheld") != total_withheld
+        ):
+            raise EngineError(
+                "ptoon condense-batch: batch summary tallies do not match events"
+            )
+        return results
+
     def engine_caps(self) -> dict[str, Any]:
         raw = self._run("caps", "")
         if not raw:

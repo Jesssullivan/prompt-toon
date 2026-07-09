@@ -323,13 +323,48 @@ never emit raw:
   Rejected the alternative (process-level subprocess kill in engine.py) as worse
   fail-closed granularity — one straggler would lose every document's result.
 
-### `--stream` honesty (C2c, next)
+### `--stream` surface — LANDED as `ptoon condense-batch` (TIN-2709 C2d)
 
 Given the whole-buffer redaction constraint (a PEM block spans lines;
-`[\s\S]+?` needs the full input), `ptoon --stream` will be **bounded-buffering
-(≤ `max_input_bytes`) + incremental raw-sha256 + the budget backstop above**,
-with true streaming only on the *output* side (JSONL card emission after
-redaction completes). It is not a pipeline through redaction. Say so plainly.
+`[\s\S]+?` needs the full input), the stream surface is **bounded-buffering
+(≤ `maxInputBytes`) + raw-bytes sha256 + the budget backstop above**, with
+true streaming only on the *output* side. It is not a pipeline through
+redaction. Say so plainly. As landed:
+
+- **Input** (`Stream.chpl:parseStreamBatch`): length-prefixed
+  source/trust_tier/body TRIPLETS — `<n>\n` then per doc three
+  `<len>\n<bytes>` fields. Same framing philosophy as `redact-batch` (length
+  prefixes carry anything with zero escaping); no JSON parsing exists in the
+  binary. Labels decode strictly (malformed frame ⇒ process abort); the body
+  decodes inside the per-doc task (bad UTF-8 withholds that doc only).
+- **Output**: JSONL events in input order — per doc
+  `{"event":"doc",i,source,trust_tier,bytes,sha256,withheld,findings[,reason]}`,
+  then (non-withheld only) `{"event":"card",i,card:{…}}` per card, then
+  `{"event":"end",i,cards}`; one trailing `{"event":"batch",docs,cards,withheld}`.
+  The `card` object is **byte-identical** to Python's source-cards.jsonl line
+  (json.dumps sort_keys, ensure_ascii=False, default separators) — Cards.chpl
+  reproduces Python splitlines (NEL/LS/PS survive normalize!), Unicode-\b via
+  Redact.pySearchBounded, codepoint-counted claim truncation, and Python JSON
+  string escaping. Stream records carry **no timestamps and no run ids**:
+  output is a pure function of (input, policy args).
+- **Output-side streaming, honestly scoped**: doc i's events are written as
+  soon as doc i completes and docs 0..i-1 have been written (sync-slot array +
+  a concurrent writer task draining in input order while later docs compute).
+- **sha256** (Sha256.chpl): vendored public-domain B-Con implementation
+  (c_src/sha256*.c, utf8proc vendoring pattern), digesting the RAW body bytes
+  before any policy decision — a withheld doc is still identifiable by digest
+  (INV-1: the digest is the re-derivability key).
+- **Policy**: argv[2] `maxInputBytes` / argv[3] `budgetMs` exactly as
+  `redact-batch` above, plus argv[4] `maxCards` (absent = 24, must be
+  positive). Same fail-closed rejection matrix; a per-doc failure of any kind
+  withholds with `reason:"condense-error"` — cards, claims, and raw text are
+  never emitted for a withheld doc (INV-5).
+- **Gate**: `tools/stream_parity.py` (in the ptoon-parity derivation, remote
+  builder): per fixture, chapel cards ≡ python-oracle `cards_from_text`
+  (sha256 + findings + every card object) AND solo-batch ≡ 18-doc-batch
+  results (fan-in isolation); plus malformed-frame and policy-arg preflights.
+  Verdict line `STREAM PARITY: PASS`. Summary/manifest rendering and iocache
+  HMAC parity remain (next slice) — condense-batch emits cards only.
 
 ### Decline (do not re-propose without new facts)
 

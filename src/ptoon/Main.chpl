@@ -53,7 +53,7 @@
  */
 module Main {
   use IO, List;
-  use Normalize, Redact, Defang, Batch;
+  use Normalize, Redact, Defang, Batch, Stream;
 
   /* Chapel passes the command line via the optional `[] string` formal:
    * args[0] is the executable name and args[1..] are the arguments (0-indexed,
@@ -97,7 +97,7 @@ module Main {
         // Same JSON shape Abi.ptoon_engine_caps emitted, same version source.
         const caps = '{"engine":"chapel","utf8proc":true,"unicode_version":"' +
                      unicodeVersion() +
-                     '","patterns":9,"features":["normalize","redact","defang","redact-batch"]}';
+                     '","patterns":9,"features":["normalize","redact","defang","redact-batch","condense-batch"]}';
         stdout.write(caps);
         return 0;
       }
@@ -138,11 +138,53 @@ module Main {
         stdout.write(redactBatch(docs, maxInputBytes, budgetMs));
         return 0;
       }
-      // C2c continues: `condense --stream` (cards/summary/manifest) on this
-      // same dispatch point, reusing the budget/cap policy above.
+      when "condense-batch" {
+        // C2d --stream surface: length-prefixed source/tier/body triplets on
+        // stdin, coforall condensation (sha256 + redact + source cards),
+        // JSONL events on stdout in input order. See Stream.chpl.
+        //
+        // Positional policy args mirror redact-batch (all fail-closed, exit
+        // nonzero before any output on malformed values):
+        //   argv[2] = maxInputBytes  (0/absent = unlimited)
+        //   argv[3] = budgetMs       (0/absent = unlimited; requires cap)
+        //   argv[4] = maxCards       (absent = 24; must be positive)
+        if args.size > 5 {
+          stderr.writeln("ptoon condense-batch: too many policy args (want maxInputBytes budgetMs maxCards)");
+          return 2;
+        }
+        var maxInputBytes = 0;
+        var budgetMs = 0;
+        var maxCards = 24;
+        try {
+          if args.size >= 3 then maxInputBytes = args[2]: int;
+          if args.size >= 4 then budgetMs = args[3]: int;
+          if args.size >= 5 then maxCards = args[4]: int;
+        } catch e {
+          stderr.writeln("ptoon condense-batch: policy args must be decimal integers");
+          return 2;
+        }
+        if maxInputBytes < 0 || budgetMs < 0 {
+          stderr.writeln("ptoon condense-batch: policy args must be nonnegative");
+          return 2;
+        }
+        if budgetMs > 0 && maxInputBytes == 0 {
+          stderr.writeln("ptoon condense-batch: budgetMs requires positive maxInputBytes");
+          return 2;
+        }
+        if maxCards <= 0 {
+          stderr.writeln("ptoon condense-batch: maxCards must be positive");
+          return 2;
+        }
+        const raw = stdin.readAll(bytes);
+        const docs = parseStreamBatch(raw);
+        condenseStream(docs, maxInputBytes, budgetMs, maxCards);
+        return 0;
+      }
+      // C2 remainder: summary/manifest rendering + iocache HMAC parity ride
+      // on this same dispatch point in a later slice.
       otherwise {
         stderr.writeln("ptoon: unknown subcommand '", sub,
-                       "' (want normalize|defang|redact|redact-batch|caps)");
+                       "' (want normalize|defang|redact|redact-batch|condense-batch|caps)");
         return 2;
       }
     }

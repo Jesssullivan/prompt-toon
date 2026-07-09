@@ -42,8 +42,9 @@ module Batch {
   }
 
   /* Byte view of a bytes value (Redact.toArr idiom): default iteration over a
-   * `bytes` yields its uint(8) values in order. */
-  private proc toArr(const ref b: bytes): [0..<b.size] uint(8) {
+   * `bytes` yields its uint(8) values in order. Public (not private): the
+   * C2d Stream module reuses this and readIntLine for its triplet framing. */
+  proc toArr(const ref b: bytes): [0..<b.size] uint(8) {
     var arr: [0..<b.size] uint(8);
     var idx = 0;
     for v in b { arr[idx] = v; idx += 1; }
@@ -53,7 +54,7 @@ module Batch {
   /* Read an ASCII decimal integer starting at arr[pos], consuming through the
    * terminating '\n'. Advances pos past the newline. Fail-closed: a malformed
    * length header throws rather than guessing. */
-  private proc readIntLine(const ref arr: [] uint(8), ref pos: int, maxValue: int): int throws {
+  proc readIntLine(const ref arr: [] uint(8), ref pos: int, maxValue: int): int throws {
     const n = arr.size;
     const maxDigits = (maxValue: string).size;
     var value = 0;
