@@ -1,0 +1,26 @@
+# TIN-2707: Chapel spike compilation, encoded for the GloriousFlywheel
+# remote-execution lane. `manual`-tagged: chpl comes from the executor
+# environment (nix-provided), not the local darwin host — this target is
+# exercised via `just flywheel-bazel build //spikes/tin-2707:ptoon_spike
+# --config=executor-backed` once the TIN-2704 enrollment arms, and stays
+# out of `//...` until then. The nix derivation
+# `.#packages.x86_64-linux.ptoon-spike-parity` is the equivalent (and
+# currently primary) remote path.
+
+genrule(
+    name = "ptoon_spike",
+    srcs = [
+        "ptoon_spike.chpl",
+        "c_src/normalize_ffi.h",
+        "c_src/normalize_ffi.c",
+        "c_src/utf8proc.c",
+        "c_src/utf8proc_data.c",
+        "c_src/utf8proc.h",
+    ],
+    outs = ["ptoon-spike"],
+    cmd = "chpl --fast $(location ptoon_spike.chpl) -o $@",
+    tags = [
+        "manual",
+        "no-sandbox",
+    ],
+)

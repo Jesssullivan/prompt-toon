@@ -41,6 +41,11 @@ Structure the repo as many clean, deliverable packages as possible:
 - **Core delivery**: Home Manager (`~/git/lab`) and Bazel package.
 - **Derivable from the same formal patterns**: rpm, Python package, Chapel +
   Bazel binary, brew tap, and further harness/IO targets.
+- **Chapel-first (operator decision 2026-07-09)**: the "Chapel + Bazel
+  binary" derivable is now the endgame — a `ptoon` binary becomes
+  prompt-toon itself, Python retires to the parity oracle, and the other
+  derivable channels key off that single artifact
+  (`docs/mythos-delivery-design.md` §7).
 
 The delegation doctrine itself ships as publishable skills, Bazel-visible
 artifacts, and Dhall-shapeable SSOT structured text — not prose scattered

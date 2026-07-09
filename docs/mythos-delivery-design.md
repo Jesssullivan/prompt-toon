@@ -42,11 +42,13 @@ shape architecture and perf decisions.
 5. **Channel triage:** fund **nix/Home-Manager** (real fleet channel, ~90%
    built) and **defer-but-keep pipx** (pyproject already has
    `[project.scripts]`; gated on repo-visibility + policy templating for the
-   external-researcher persona). **Declined: rpm, brew, bazel-registry** —
-   the fleet's only RHEL-family host (mbp-13, Rocky Linux 10) is served by
-   Home Manager user-space; RPM/dnf stays the system layer per lab's
-   ansible-to-nix migration doctrine. Recorded here so they are not
-   re-proposed without a new persona.
+   external-researcher persona). **Amended 2026-07-09 (Chapel-first
+   decision): rpm, brew, and bazel-registry are phase-gated, not declined** —
+   they open when the single `ptoon` binary exists (bazel-registry + static
+   GH release at C2; brew/rpm nfpm at C3, derived from the TIN-2706
+   packaging manifest). The original rationale — the fleet's only
+   RHEL-family host is served by Home Manager user-space — is why they stay
+   closed *until the binary ships*, not a refusal.
 6. **Perf correction (supersedes the TIN-2695 matrix item #3):** the numeric
    secret pattern is linear, not catastrophic — measured ~25ms/MB, 127ms on
    5MB of all-digit hostile input. The hot-loop mitigation is
@@ -160,9 +162,12 @@ an orchestrator-side wrapper, not in this CLI).
   routing surface to diff yet. Long-term: regenerate OMO's
   `oh-my-openagent.jsonc` personas FROM delegation.json to kill the
   two-schema drift.
-- **Versioning**: root flake inputs are manual + Renovate-excluded; add a
-  scoped `just`-recipe bump (`nix flake update prompt-toon` + parity re-run)
-  as the policy propagation command, rev-pinned per INV-7.
+- **Versioning**: root flake inputs are manual + Renovate-excluded; the
+  scoped bump landed as lab's `just bump-prompt-toon <rev>` (sed pin →
+  `nix flake update prompt-toon` → `ai-skills-module-test`), rev-pinned per
+  INV-7 with canary-before-fleet guidance inline. Post-C2, fleet
+  propagation shifts from flake-input rev-pin to a bazel-registry version
+  bump (registry-first per TIN-1306).
 
 ## 6. What was declined, and why (do not re-propose without new facts)
 
@@ -170,10 +175,50 @@ an orchestrator-side wrapper, not in this CLI).
   one policy file; executor-backed RBE (`--remote_local_fallback=false`)
   makes a niche Haskell binary in the action graph strictly riskier than
   the existing python3 dependency.
-- **rpm / brew / bazel-registry channels**: no concrete persona (single
-  Rocky host served by HM user-space).
+- **rpm / brew / bazel-registry channels**: ~~no concrete persona (single
+  Rocky host served by HM user-space)~~ **SUPERSEDED 2026-07-09** — now
+  phase gates keyed to the single-binary artifact (see §1.5 amendment and
+  §7); the old rationale is retained as the reason they stay closed until
+  the binary exists.
 - **A standalone Mythos MCP gateway**: forks TIN-2524's design and doubles
   the trust surface; condensation becomes a pluggable stage on TIN-2524.
-- **Chapel acceleration** (from the 2026-07-08 recon, restated for
-  completeness): refuted at current scale; revisit only on demonstrated
-  bulk fan-in volume, via nix+chpl (never Bazel), behind `--engine=chapel`.
+- **Chapel acceleration**: ~~refuted at current scale; revisit only on
+  demonstrated bulk fan-in volume, via nix+chpl (never Bazel), behind
+  `--engine=chapel`~~ **SUPERSEDED 2026-07-09 by the Chapel-first operator
+  decision** (see §7). `--engine=chapel` survives as the C1 opt-in stepping
+  stone, not the endgame. The "never Bazel" rider is replaced by phased
+  Bazel adoption: Makefile/Mason dev loop through C1, `chapel_binary`
+  genrule walking skeleton over nix-provided `chpl` at C2 (lab doctrine:
+  nix owns versions, Bazel validates/bundles), house `rules_chapel`
+  extraction + tinyland bazel-registry publication post-C2. Compilation
+  iteration is **remote-only** (GloriousFlywheel REAPI where armed, nix
+  x86_64-linux remote builders otherwise) — no local darwin chpl loop.
+- **Dhall-in-Bazel remains declined** — the §6 first bullet is NOT touched
+  by the Chapel-first amendment. The policy/ SSOTs (delegation, io) and
+  their Dhall→JSON generation path are likewise unaffected.
+
+## 7. Chapel-first endgame (operator decision, 2026-07-09)
+
+A `ptoon` Chapel binary becomes prompt-toon; the Python implementation
+retires into the golden-file parity oracle. Rationale: the single
+static-ish binary supplies the missing delivery persona (rpm / brew /
+bazel-registry become trivially derivable) and makes Chapel the core
+streaming/transformation language. Phases, each shipping independently
+with the enforced TIN-2699 hook path Python-backed and byte-identical
+until C3:
+
+- **C0 (TIN-2707)**: normalize+redact spike, utf8proc NFKC (vendored
+  v2.9.0, Unicode 15.1 = CPython 3.13) + RE2 secret patterns; parity
+  corpus incl. the `\b` ASCII-vs-Unicode boundary cases and PEM-split;
+  benchmark vs the 25ms/MB Python baseline; kill criteria recorded in
+  `spikes/tin-2707/README.md`.
+- **C1 (TIN-2708)**: `libptoon` C ABI behind `--engine=chapel` (ctypes,
+  fail-open to Python per INV-5); shared `fixtures/` golden corpus;
+  quickchpl property tests.
+- **C2 (TIN-2709)**: standalone `ptoon` full parity + `--stream`
+  (bounded-memory, incremental sha256, budget stopwatch; redaction stays
+  buffered within `max_input_bytes` — PEM cannot be line-windowed);
+  iocache HMAC parity; hook canary; Bazel walking skeleton + TIN-2706
+  packaging manifest.
+- **C3 (TIN-2710)**: flip defaults, demote Python to oracle, extract and
+  publish `rules_chapel` (first-of-kind), open brew/rpm lanes.
