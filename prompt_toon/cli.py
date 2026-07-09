@@ -14,6 +14,7 @@ import tempfile
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Iterable
 
 from . import __version__
@@ -145,6 +146,53 @@ def redact_text(text: str) -> tuple[str, list[str]]:
     return redacted, findings
 
 
+def resolve_engine(name: str) -> SimpleNamespace:
+    """Resolve --engine {python,chapel,auto} to a namespace exposing
+    normalize_text/redact_text/defang_text callables with the same
+    signatures as the module-level functions above.
+
+    - "python": always the module-level functions (default; unconditional).
+    - "chapel": an explicit request. Fails closed -- raises SystemExit
+      with a clear message if the ptoon binary is unavailable, rather
+      than silently substituting python (an explicit ask for the Chapel
+      engine that silently degrades would hide a build/packaging
+      problem from the operator).
+    - "auto": fails open (INV-5) -- chapel when available(), else python,
+      so condensation never hard-fails merely because the ptoon binary
+      hasn't been built on this host.
+    """
+    if name == "python":
+        return SimpleNamespace(normalize_text=normalize_text, redact_text=redact_text, defang_text=defang_text)
+
+    from . import engine as engine_module
+
+    if name == "chapel":
+        chapel_engine = engine_module.ChapelEngine()
+        if not chapel_engine.available():
+            raise SystemExit(
+                "--engine=chapel requested but the ptoon binary is not "
+                "available: set PROMPT_TOON_PTOON or build build/ptoon "
+                "relative to the repo root"
+            )
+        return SimpleNamespace(
+            normalize_text=chapel_engine.normalize_text,
+            redact_text=chapel_engine.redact_text,
+            defang_text=chapel_engine.defang_text,
+        )
+
+    if name == "auto":
+        chapel_engine = engine_module.ChapelEngine()
+        if chapel_engine.available():
+            return SimpleNamespace(
+                normalize_text=chapel_engine.normalize_text,
+                redact_text=chapel_engine.redact_text,
+                defang_text=chapel_engine.defang_text,
+            )
+        return SimpleNamespace(normalize_text=normalize_text, redact_text=redact_text, defang_text=defang_text)
+
+    raise SystemExit(f"unknown --engine value: {name}")
+
+
 def read_text_input(paths: list[str]) -> list[dict[str, Any]]:
     if not paths:
         data = sys.stdin.buffer.read()
@@ -183,8 +231,10 @@ def flags_for(text: str, redactions: list[str]) -> list[str]:
     return flags
 
 
-def cards_from_text(source: str, text: str, digest: str, trust_tier: str, max_cards: int) -> list[SourceCard]:
-    redacted, redactions = redact_text(text)
+def cards_from_text(
+    source: str, text: str, digest: str, trust_tier: str, max_cards: int, engine: SimpleNamespace
+) -> list[SourceCard]:
+    redacted, redactions = engine.redact_text(text)
     lines = redacted.splitlines()
     cards: list[SourceCard] = []
 
@@ -235,12 +285,12 @@ def extract_open_questions(cards: list[SourceCard]) -> list[SourceCard]:
     return [card for card in cards if OPEN_QUESTION_RE.search(f"{card.claim}\n{card.evidence}")]
 
 
-def card_line(card: SourceCard) -> str:
+def card_line(card: SourceCard, engine: SimpleNamespace) -> str:
     """Model-facing card line: tier + flags always travel with the claim (INV-3),
     and the claim is defanged and code-fenced so it renders as data, not
     instructions, links, or images (INV-4)."""
     flag_text = f" [{' '.join(card.flags)}]" if card.flags else ""
-    return f"- {card.id} [{card.trust_tier}]{flag_text}: `{defang_text(card.claim)}`"
+    return f"- {card.id} [{card.trust_tier}]{flag_text}: `{engine.defang_text(card.claim)}`"
 
 
 def rough_token_count(text: str) -> int:
@@ -344,7 +394,9 @@ def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def render_summary(run_id: str, cards: list[SourceCard], manifest: dict[str, Any]) -> str:
+def render_summary(
+    run_id: str, cards: list[SourceCard], manifest: dict[str, Any], engine: SimpleNamespace
+) -> str:
     constraints = extract_constraints(cards)
     questions = extract_open_questions(cards)
     lines = [
@@ -367,16 +419,16 @@ def render_summary(run_id: str, cards: list[SourceCard], manifest: dict[str, Any
         ]
     )
     if constraints:
-        lines.extend(card_line(card) for card in constraints[:24])
+        lines.extend(card_line(card, engine) for card in constraints[:24])
     else:
         lines.append("- None detected.")
 
     lines.extend(["", "## Findings"])
-    lines.extend(card_line(card) for card in cards[:32])
+    lines.extend(card_line(card, engine) for card in cards[:32])
 
     lines.extend(["", "## Open Questions"])
     if questions:
-        lines.extend(card_line(card) for card in questions[:16])
+        lines.extend(card_line(card, engine) for card in questions[:16])
     else:
         lines.append("- None detected.")
 
@@ -396,6 +448,37 @@ def render_summary(run_id: str, cards: list[SourceCard], manifest: dict[str, Any
     return "\n".join(lines) + "\n"
 
 
+def engine_status() -> dict[str, Any]:
+    """doctor's view of the --engine text-transform backends (TIN-2708).
+
+    Python is always present. Chapel reports its resolved ptoon binary path
+    and engine-caps JSON when available(), or {"available": false}
+    otherwise. Never raises -- doctor stays informational even when the
+    binary is missing or broken, so an operator can see *why* --engine=chapel
+    would fail closed without the command itself erroring out.
+    """
+    status: dict[str, Any] = {"python": {"available": True}}
+    try:
+        from . import engine as engine_module
+
+        chapel = engine_module.ChapelEngine()
+        if not chapel.available():
+            status["chapel"] = {"available": False}
+        else:
+            entry: dict[str, Any] = {
+                "available": True,
+                "binary": str(engine_module.resolve_binary_path()),
+            }
+            try:
+                entry["caps"] = chapel.engine_caps()
+            except Exception as exc:  # noqa: BLE001 - report, never fail doctor
+                entry["caps_error"] = f"{type(exc).__name__}: {exc}"
+            status["chapel"] = entry
+    except Exception as exc:  # noqa: BLE001 - report, never fail doctor
+        status["chapel"] = {"available": False, "error": f"{type(exc).__name__}: {exc}"}
+    return status
+
+
 def command_doctor(_: argparse.Namespace) -> int:
     info = {
         "prompt_toon_version": __version__,
@@ -404,6 +487,7 @@ def command_doctor(_: argparse.Namespace) -> int:
         "git": shutil.which("git"),
         "codex": shutil.which("codex"),
         "claude": shutil.which("claude"),
+        "engines": engine_status(),
     }
     write_json_to_stdout(info)
     return 0
@@ -518,6 +602,7 @@ def parse_tier_overrides(pairs: list[str]) -> dict[str, str]:
 
 
 def command_condense(args: argparse.Namespace) -> int:
+    engine = resolve_engine(args.engine)
     tier_overrides = parse_tier_overrides(args.input_tier)
     run_id = args.id or short_id("run")
     out_dir = Path(args.output_dir).expanduser() if args.output_dir else state_root() / "runs" / run_id
@@ -539,7 +624,9 @@ def command_condense(args: argparse.Namespace) -> int:
                 "trust_tier": item_tier,
             }
         )
-        cards.extend(cards_from_text(item["source"], item["text"], digest, item_tier, max_cards_per_input))
+        cards.extend(
+            cards_from_text(item["source"], item["text"], digest, item_tier, max_cards_per_input, engine)
+        )
 
     primary_cards, toon_text, format_analysis = choose_card_format(cards, args.format, args.min_toon_savings)
 
@@ -573,13 +660,18 @@ def command_condense(args: argparse.Namespace) -> int:
         manifest["outputs"]["toon_note"] = (
             "TOON view omits sha256 and evidence; JSONL is the provenance-bearing artifact."
         )
-    (out_dir / "summary.md").write_text(render_summary(run_id, cards, manifest), encoding="utf-8")
+    (out_dir / "summary.md").write_text(render_summary(run_id, cards, manifest, engine), encoding="utf-8")
     write_json(out_dir / "manifest.json", manifest)
     write_json_to_stdout({"run_id": run_id, "out_dir": str(out_dir), "primary_source_cards": primary_cards})
     return 0
 
 
 def command_analyze(args: argparse.Namespace) -> int:
+    # analyze has no normalize/redact/defang call sites today, but --engine
+    # is still resolved here so an explicit --engine=chapel request fails
+    # closed (per resolve_engine's contract) instead of being silently
+    # accepted and ignored.
+    resolve_engine(args.engine)
     path = Path(args.input).expanduser() if args.input else None
     data = load_jsonish(path)
     compact = compact_json(data)
@@ -615,6 +707,9 @@ def command_analyze(args: argparse.Namespace) -> int:
 
 
 def command_encode_toon(args: argparse.Namespace) -> int:
+    # See command_analyze: no normalize/redact/defang call sites here
+    # either, but --engine must still fail closed on an explicit request.
+    resolve_engine(args.engine)
     path = Path(args.input).expanduser() if args.input else None
     data = load_jsonish(path)
     rows = data
@@ -662,12 +757,25 @@ def build_parser() -> argparse.ArgumentParser:
     condense.add_argument("--max-cards", type=int, default=24)
     condense.add_argument("--format", choices=["jsonl", "toon", "auto"], default="jsonl")
     condense.add_argument("--min-toon-savings", type=float, default=0.20)
+    condense.add_argument(
+        "--engine",
+        choices=["python", "chapel", "auto"],
+        default="python",
+        help="Text-transform engine for normalize/redact/defang (TIN-2708). "
+        "'chapel' fails closed if the ptoon binary is unavailable; 'auto' fails open to python.",
+    )
     condense.set_defaults(func=command_condense)
 
     analyze = sub.add_parser("analyze", help="Analyze JSON/JSONL for compact JSON vs TOON row encoding.")
     analyze.add_argument("input", nargs="?")
     analyze.add_argument("--delimiter", default="\t")
     analyze.add_argument("--min-savings", type=float, default=0.20)
+    analyze.add_argument(
+        "--engine",
+        choices=["python", "chapel", "auto"],
+        default="python",
+        help="Text-transform engine (TIN-2708); no normalize/redact/defang call sites in analyze today.",
+    )
     analyze.set_defaults(func=command_analyze)
 
     encode = sub.add_parser("encode-toon", help="Encode a flat uniform JSON row array as TOON.")
@@ -675,6 +783,12 @@ def build_parser() -> argparse.ArgumentParser:
     encode.add_argument("--key")
     encode.add_argument("--name", default="rows")
     encode.add_argument("--delimiter", default="\t")
+    encode.add_argument(
+        "--engine",
+        choices=["python", "chapel", "auto"],
+        default="python",
+        help="Text-transform engine (TIN-2708); no normalize/redact/defang call sites in encode-toon today.",
+    )
     encode.set_defaults(func=command_encode_toon)
 
     return parser
