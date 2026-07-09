@@ -54,6 +54,21 @@ module Redact {
       "\\b(?:\\d[ -]?){13,19}\\b", true, true),
   ];
 
+  /* C2: candidate generators compiled ONCE at module init. C1 called
+   * `new regex(...)` inside redactText's pattern loop — 9 RE2 compiles per
+   * document, i.e. 9*N for an N-document batch. RE2 objects are immutable
+   * after compile and `regex.search` takes `const ref this`, so every
+   * `coforall` batch task can share these read-only with no per-task compile
+   * and no data race. try!: the nine patterns are compile-time-known-good;
+   * an invalid pattern is a build-time bug that must halt at init
+   * (fail-closed), never be silently skipped at redaction time. */
+  private proc buildGens(): [0..<specs.size] regex(string) {
+    var gens: [0..<specs.size] regex(string);
+    for i in specs.domain do gens[i] = try! new regex(specs[i].genSrc);
+    return gens;
+  }
+  private const gens = buildGens();
+
   /* Decode the codepoint starting at byte i. */
   private proc cpAt(const ref arr: [] uint(8), i: int): int(32) {
     const b0 = arr[i]: int(32);
@@ -98,7 +113,7 @@ module Redact {
   }
 
   /* Accepted [off, off+len) ranges for one pattern, Python scan semantics. */
-  private proc acceptedRanges(const ref text: string, ref gen: regex(string),
+  private proc acceptedRanges(const ref text: string, const ref gen: regex(string),
                               const spec: PatternSpec): list((int, int)) throws {
     var ranges = new list((int, int));
     const b = text.encode();
@@ -153,8 +168,7 @@ module Redact {
     var redacted = normalizeText(text);
     var findings = new list(string);
     for i in specs.domain {
-      var gen = new regex(specs[i].genSrc);
-      const ranges = acceptedRanges(redacted, gen, specs[i]);
+      const ranges = acceptedRanges(redacted, gens[i], specs[i]);
       if ranges.size > 0 {
         findings.pushBack(specs[i].name);
         redacted = splice(redacted, ranges);

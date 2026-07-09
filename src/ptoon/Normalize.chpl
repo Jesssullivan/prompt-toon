@@ -99,7 +99,11 @@ module Normalize {
     for cp in s.codepoints() {
       var c = cp: int(32);
       if isStripped(c) then continue;
-      if confusables.contains(c) then c = confusables[c];
+      // C2 ASCII fast-path: every confusable key is Greek/Cyrillic (>= U+0391),
+      // so an ASCII codepoint can never be in the table — skip the map probe
+      // for the overwhelmingly common c < 0x80 case. Pure perf; the guarded
+      // branch is byte-identical to the unguarded lookup.
+      if c >= 0x80 && confusables.contains(c) then c = confusables[c];
       emitUtf8(c, buf, k);
     }
     return bytes.createCopyingBuffer(c_ptrTo(buf[0]): c_ptrConst(c_char), k).decode();
