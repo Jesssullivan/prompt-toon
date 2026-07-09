@@ -187,7 +187,7 @@ an orchestrator-side wrapper, not in this CLI).
   `--engine=chapel`~~ **SUPERSEDED 2026-07-09 by the Chapel-first operator
   decision** (see §7). `--engine=chapel` survives as the C1 opt-in stepping
   stone, not the endgame. The "never Bazel" rider is replaced by phased
-  Bazel adoption: Makefile/Mason dev loop through C1, `chapel_binary`
+  Bazel adoption: Makefile/nix remote-build loop through C1, `chapel_binary`
   genrule walking skeleton over nix-provided `chpl` at C2 (lab doctrine:
   nix owns versions, Bazel validates/bundles), house `rules_chapel`
   extraction + tinyland bazel-registry publication post-C2. Compilation
@@ -212,13 +212,169 @@ until C3:
   corpus incl. the `\b` ASCII-vs-Unicode boundary cases and PEM-split;
   benchmark vs the 25ms/MB Python baseline; kill criteria recorded in
   `spikes/tin-2707/README.md`.
-- **C1 (TIN-2708)**: `libptoon` C ABI behind `--engine=chapel` (ctypes,
-  fail-open to Python per INV-5); shared `fixtures/` golden corpus;
-  quickchpl property tests.
-- **C2 (TIN-2709)**: standalone `ptoon` full parity + `--stream`
+- **C1 (TIN-2708)**: standalone `ptoon` binary behind `--engine=chapel`
+  (subprocess, fail-open to Python per INV-5 — pivoted from the original
+  original shared-library/ctypes plan, see the "Engine boundary" finding in §8); shared
+  `fixtures/` golden corpus; Bazel-drives-chpl walking skeleton on GF REAPI
+  (`//src/ptoon:ptoon`, pulled forward from C2); quickchpl property source
+  remains advisory until quickchpl is repo-pinned and wired into a remote gate.
+- **C2 (TIN-2709)**: `ptoon` streaming/batch + `--stream`
   (bounded-memory, incremental sha256, budget stopwatch; redaction stays
   buffered within `max_input_bytes` — PEM cannot be line-windowed);
   iocache HMAC parity; hook canary; Bazel walking skeleton + TIN-2706
   packaging manifest.
 - **C3 (TIN-2710)**: flip defaults, demote Python to oracle, extract and
   publish `rules_chapel` (first-of-kind), open brew/rpm lanes.
+
+## 8. C2 streaming + fan-in architecture (Chapel feature mapping)
+
+Grounded in the 2026-07-09 research spool (Chapel 2.9 capability survey +
+opus parallel-IO design lane + opus purple-team critique). The user flow it
+serves: a wide research spool returns N subagent outputs near-simultaneously
+(typically 5–16); every one must flow through `ptoon` condensation —
+fail-closed redaction, provenance-bearing cards — before the expensive
+mythos/fable synthesis seat sees any of them.
+
+**Parallelism value is coupled to the deployment surface** (not intrinsic):
+
+- **Claude PostToolUse (surface B, the `Agent` tool, TIN-2699):** each
+  subagent return fires an *independent* hook process. The N-way concurrency
+  is N separate short-lived `ptoon` subprocess invocations, each
+  single-threaded. Chapel task-parallelism does nothing here; the metric is
+  per-process runtime init + RE2 compile + utf8proc-table amortization. Chapel
+  2.9's initial dynamically loaded parallel-library support
+  (`--library --dynamic --no-builtin-runtime`) is the future lever for this
+  init cost, but it remains an upstream "initial support" feature and stays
+  post-C2 research, not the C1 boundary.
+- **MCP gateway stage (surface C, TIN-2524) / `ptoon --stream`:** one
+  long-lived process reads a JSONL batch of N documents. Here `coforall`
+  batch-across-documents earns its full keep (init paid once) — this is the
+  fan-in shape Chapel is uniquely good at.
+- **Claude Code `PostToolBatch` (surface B-batch, harness delta July 2026):**
+  the current hooks reference documents `PostToolBatch` — fires once after a
+  batch of tool calls completes, before the next model turn, no matcher
+  (always fires). This collapses the per-return `PostToolUse:Task|Agent`
+  fan-out into a SINGLE hook invocation over the whole spool, i.e. it makes
+  the "one process, N documents" shape available on Claude Code directly
+  (not only via the MCP gateway). `PostToolBatch` → a `ptoon` batch/stream
+  invocation (coforall, one process, N docs) is the end-to-end fan-in path
+  and the strongest argument for building the batch entrypoint. Also confirmed:
+  `updatedToolOutput` generalized from MCP-only to ALL tools as of Claude
+  Code v2.1.121 (2026-04-28); the `Task` vs `Agent` subagent matcher name is
+  unresolved between sources — re-check empirically against the installed
+  version before the C2 hook adapter (TIN-2699-style probe).
+
+### Build for C2/C3 (earn their complexity)
+
+1. **`coforall` batch entrypoint (a `ptoon` batch/stream subcommand)** — one
+   qthreads task per document, full pipeline independent per doc, N docs read
+   from one JSONL batch. This is the literal fan-in case (no Amdahl ceiling)
+   and it **confines all concurrency inside the Chapel runtime** of a single
+   `proc main` process — strictly safer than N external host threads
+   re-entering a runtime that assumes it owns its workers. (The pivot to a
+   subprocess binary, below, is what makes this the natural shape rather than
+   a C-ABI batch export.)
+2. **Hoist the 9 redaction regexes to module-level `const`** (Redact.chpl
+   currently compiles per `redactText` call). Prerequisite for the batch:
+   9 patterns × 16 docs = 144 compiles otherwise; hoisted, tasks share 9
+   RE2 objects (RE2 `Match` is `const`/concurrent-safe — verify Chapel's
+   `regex.search` is a const method under `coforall` stress).
+3. **Runtime lifecycle is `proc main`, not manual `chpl_library_init`.** The
+   subprocess pivot (below) obviates the ctypes-era init/finalize handshake:
+   the binary's `proc main` brings the runtime up and tears it down per
+   invocation. Keep `CHPL_COMM=none` to preserve the single-static-ish-binary
+   packaging goal (§7). The remaining per-process init cost (RE2 + utf8proc
+   tables) is what the batch/stream entrypoint amortizes across N docs.
+4. **ASCII fast-path guard** on the confusable lookup (`if c >= 0x80` before
+   the map probe — all 45 keys are ≥ U+03B1). One-line hot-loop win.
+
+### `--stream` honesty
+
+Given the whole-buffer redaction constraint (a PEM block spans lines;
+`[\s\S]+?` needs the full input), `ptoon --stream` is **bounded-buffering
+(≤ `max_input_bytes`) + incremental raw-sha256 + budget-abort**, with true
+streaming only on the *output* side (JSONL card emission after redaction
+completes). It is not a pipeline through redaction. Say so plainly.
+
+### Decline (do not re-propose without new facts)
+
+- **Parallel pattern-sweep over the original text + disjointness guard.**
+  The purple team proved it **unsound** (finding F1): sequentially, pattern
+  8 matches the `[REDACTED]` literal that pattern 7 *injects* — e.g.
+  `token=a@b.co` → oracle `[REDACTED]` (`pattern-7,pattern-8`), but a
+  parallel-over-original pass sees no pattern-8 candidate and the
+  disjointness guard greenlights the wrong answer. C2 redaction stays
+  **sequential per document**; parallelism is only *across* documents.
+  (Regression fixture: `18-injected-literal-rescan.txt`.)
+- **Multilocale / GASNet.** Single-node, latency-bound (2 s budget), inputs
+  ≤ 2 MB, fan-in ≤ 16 — saturates one host. Multilocale also breaks the
+  single-binary distribution goal. Stay single-locale qthreads.
+- **Intra-document pipeline parallelism through redaction.** Blocked by the
+  whole-buffer PEM constraint; only raw-sha256 ∥ normalize and a `forall`
+  card-scan are legal, both marginal.
+- **`param`/compile-time RE2 or confusable codegen.** RE2 compiles at
+  runtime; `param` only unrolls the 9-iteration loop. The real win is the
+  one-line ASCII guard above.
+
+### Engine boundary: subprocess binary, not in-process ctypes (C1 finding)
+
+C1 attempted a ctypes-loaded shared library (`libptoon` + exported `ptoon_*`
+procs). It compiled and linked (utf8proc + RE2 statically), init and the
+first calls succeeded, but **repeated exported-proc calls segfault on buffer
+free** — the Chapel runtime's foreign-thread re-entry model (a host process
+calling exported procs that allocate + touch the runtime, then free) is
+fragile in exactly the way the purple team flagged (finding f2). Neither the
+`chpl_library_init` lifecycle (required, and it removed the first segfault)
+nor allocator-consistency (`allocate`/`deallocate` vs libc `malloc`/`free`)
+cleared it.
+
+**Resolution — pivot the engine boundary to a standalone `ptoon` binary
+invoked as a subprocess.** The C0 spike proved this model runs clean
+(`proc main`, stdin→stdout, byte-parity, no segfaults). It also *matches the
+deployment surface*: PostToolBatch / MCP gateway / `ptoon --stream` are all
+one-process, batch-or-stream shapes, never in-process FFI. And it lets the
+C2 `coforall` batch entrypoint own its concurrency **inside** the Chapel
+runtime (the purple-team's decisive move) instead of exposing N host-thread
+re-entries. The Chapel modules (Normalize/Redact/Defang) are unchanged; only
+the Abi/ctypes layer is dropped in favor of a `proc main` dispatcher.
+`prompt_toon/engine.py` shells out via `subprocess`; `--engine=chapel` runs
+the binary, `auto` falls open to Python when the binary is absent.
+
+### Hard corrections baked in (purple-team)
+
+- **Budget breach is fail-CLOSED, not fail-open.** `io.json` sets
+  `redaction: fail_closed`; on a redaction/pipeline budget breach the
+  breaching document is **withheld/suppressed**, never passed through raw.
+  (Only *condensation* — the savings step — is fail-open.) Passing raw on
+  timeout would ship unredacted secrets to the synthesis seat.
+- **The process-wide budget is process-wide.** Per-task deadlines under
+  `coforall` oversubscription do not bound the `wall_clock_budget_ms` for
+  the batch; enforce a single batch deadline with straggler abort.
+- **Gate: all TIN-2709 parallelism is gated behind demonstrated sequential
+  byte-parity** (all corpus cases IDENTICAL, chapel vs Python oracle). C1's
+  `ptoon-parity` derivation is that gate. Do not layer task-parallelism onto
+  an engine with any live divergence.
+
+### Chapel/Bazel source grounding (checked 2026-07-09)
+
+- Chapel 2.9 `proc main(args: [] string)` and integer exit status:
+  https://chapel-lang.org/docs/technotes/main.html.
+- Chapel 2.9 `stdin` / `fileReader.readAll(bytes|string)`:
+  https://chapel-lang.org/docs/modules/standard/IO.html.
+- Chapel 2.9 `chpl --fast`, `-M`, and `-o` compiler options:
+  https://chapel-lang.org/docs/usingchapel/man.html.
+- Chapel 2.9 `require` C-resource linkage, file-relative:
+  https://chapel-lang.org/docs/technotes/extern.html.
+- Chapel 2.9 library interop caveats and the 2.9 dynamic-library release
+  note: https://chapel-lang.org/docs/technotes/libraries.html and
+  https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
+- Bazel current platform/compatibility, `manual` tag, `run_shell`, and
+  remote-execution rule guidance:
+  https://bazel.build/extending/platforms,
+  https://bazel.build/reference/be/common-definitions,
+  https://bazel.build/rules/lib/builtins/actions, and
+  https://bazel.build/remote/rules.
+- Bazel current command-line platform flags, RBE overview, and
+  `--remote_download_minimal` performance guidance:
+  https://bazel.build/docs/user-manual, https://bazel.build/remote/rbe, and
+  https://bazel.build/advanced/performance/build-performance-breakdown.

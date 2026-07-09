@@ -90,6 +90,148 @@
             runHook postInstall
           '';
         };
+        # C1 (TIN-2708): ptoonBinary. ARCHITECTURE PIVOT — this used to be a
+        # ctypes-loaded shared library (libptoon), but repeated exported-proc
+        # calls through a `chpl --library --dynamic` .so hit a Chapel
+        # foreign-thread runtime-reentry wall (init/caps/normalize succeed,
+        # the free crashes) — exactly the fragility the C1 research warned
+        # about. The C0 spike (spikes/tin-2707/ptoon_spike.chpl) is a
+        # standalone `proc main` binary reading stdin / writing stdout and it
+        # ran clean with byte-parity, and the real user flow (PostToolBatch
+        # hook, MCP gateway, `ptoon --stream`) is subprocess-or-stream shaped
+        # over one process, never in-process FFI. So C1 now compiles
+        # src/ptoon/Main.chpl (the standalone binary entry point wired to the
+        # existing Normalize/Redact/Defang modules, unchanged from the
+        # library-era build) straight to an executable with plain `chpl
+        # --fast`, and the check phase runs the fixed binary protocol's
+        # smoke test directly rather than grepping a dynamic symbol table.
+        #
+        # Defined for every `eachDefaultSystem` system (linux + darwin) so
+        # a darwin variant exists structurally, but only x86_64-linux is
+        # the required/CI-verified target — the pzm darwin builder is
+        # still in burn-in.
+        ptoonBinary = pkgs.stdenv.mkDerivation {
+          pname = "ptoon";
+          version = "0.1.0";
+          src = self;
+          nativeBuildInputs = [ chapelWrapped pkgs.binutils ];
+          buildPhase = ''
+            runHook preBuild
+            # Compile from repo root so the modules' file-relative
+            # `require "../../c_src/..."` paths resolve. Main.chpl is the
+            # standalone binary entry; -M finds the sibling
+            # Normalize/Redact/Defang modules it uses. Toon.chpl is
+            # intentionally excluded in C1 (TOON is Chapel-property-tested,
+            # not called through the binary protocol until C2).
+            chpl --fast src/ptoon/Main.chpl -M src/ptoon -o ptoon
+            runHook postBuild
+          '';
+          doCheck = true;
+          # The nix build sandbox does not expose /sys, so the Chapel
+          # runtime's hwloc topology probe aborts and segfaults inside
+          # chpl_library_init/chpl_gen_init for a standalone binary too, not
+          # just under ctypes — hand hwloc a synthetic topology so it skips
+          # OS discovery, and pin the qthreads worker count so the runtime
+          # never reads /sys. Mirrors the env used by the ptoon-parity
+          # derivation below, which runs this same binary as a subprocess.
+          checkPhase = ''
+            runHook preCheck
+            echo "== src/ptoon build output =="
+            find . -maxdepth 2 -type f | sort
+            if [ ! -f ./ptoon ]; then
+              echo "ERROR: chpl --fast src/ptoon/Main.chpl produced no ./ptoon binary" >&2
+              exit 1
+            fi
+            if [ ! -x ./ptoon ]; then
+              echo "ERROR: ./ptoon was produced but is not executable" >&2
+              exit 1
+            fi
+            export HWLOC_SYNTHETIC="core:2 pu:1"
+            export CHPL_RT_NUM_THREADS_PER_LOCALE=2
+            export QT_NUM_SHEPHERDS=1
+            export QT_NUM_WORKERS_PER_SHEPHERD=2
+            echo "== smoke test: echo hi | ./ptoon normalize =="
+            # NB: not `out=...` -- that name is Nix's output store path;
+            # clobbering it makes installPhase/fixupPhase target the wrong dir.
+            smoke=$(echo hi | ./ptoon normalize)
+            echo "-> $smoke"
+            if [ -z "$smoke" ]; then
+              echo "ERROR: ./ptoon normalize produced no output for smoke input" >&2
+              exit 1
+            fi
+            echo "OK: ptoon binary built and passed the normalize smoke test"
+            runHook postCheck
+          '';
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out/bin
+            cp ptoon $out/bin/ptoon
+            runHook postInstall
+          '';
+        };
+        # C1 (TIN-2708): full parity of the ptoon binary vs the Python oracle.
+        # Regenerates the gitignored shared corpus (gen_fixtures.py inputs +
+        # gen_golden.py python-oracle goldens), then invokes the built ptoon
+        # binary as a subprocess (via PROMPT_TOON_PTOON, the fixed
+        # normalize/defang/redact/caps binary protocol) and diffs it against
+        # cli.py two ways: per-function (parity_runner.py --functions) and
+        # through the full condense pipeline (parity_runner.py:
+        # source-cards.jsonl/summary.md/manifest.json byte-identical to the
+        # goldens under --engine=chapel). Finally runs the engine unittest
+        # with the binary present (so the degraded-mode skips actually
+        # execute) and the full Python suite. Remote-only, x86_64-linux — the
+        # binary is an ELF the darwin host cannot execute. This is the C1
+        # correctness gate: it fails the build on ANY byte divergence, which
+        # is where the C0 Unicode-\b fix in Redact.chpl gets proven.
+        ptoonParity = pkgs.stdenv.mkDerivation {
+          pname = "ptoon-parity";
+          version = "0.1.0";
+          src = self;
+          nativeBuildInputs = [ pkgs.python3 ];
+          dontConfigure = true;
+          buildPhase = ''
+            runHook preBuild
+            # errexit + pipefail: every gate below is `cmd | tee`, and WITHOUT
+            # pipefail a pipeline's exit status is tee's (always 0), which
+            # would silently mask a parity DIFF or unittest failure and let a
+            # divergent build pass. This is the correctness gate — it must
+            # abort on the first nonzero.
+            set -eo pipefail
+            export PROMPT_TOON_PTOON="${ptoonBinary}/bin/ptoon"
+            export PYTHONPATH="$PWD"
+            export PROMPT_TOON_STATE_HOME="$TMPDIR/state"
+            # The nix build sandbox does not expose /sys, so the Chapel
+            # runtime's hwloc topology probe aborts and segfaults inside
+            # chpl_library_init. Hand hwloc a synthetic topology so it skips
+            # OS discovery, and pin the qthreads worker count so the runtime
+            # never reads /sys. (C1 exercises single-doc calls only; the
+            # batch/coforall path is C2 and runs on the flywheel executor,
+            # where /sys is present.)
+            export HWLOC_SYNTHETIC="core:2 pu:1"
+            export CHPL_RT_NUM_THREADS_PER_LOCALE=2
+            export QT_NUM_SHEPHERDS=1
+            export QT_NUM_WORKERS_PER_SHEPHERD=2
+            echo "== generating fixture corpus (inputs) =="
+            python3 tools/gen_fixtures.py
+            echo "== generating golden corpus (python oracle) =="
+            python3 tools/gen_golden.py
+            echo "== function-level parity (chapel vs python oracle) =="
+            python3 tools/parity_runner.py --functions --require-chapel | tee parity-functions.md
+            echo "== condense parity (chapel vs python goldens, byte-identical) =="
+            python3 tools/parity_runner.py --require-chapel | tee parity-condense.md
+            echo "== engine unittest with ptoon binary present =="
+            python3 -m unittest discover -s tests -p 'test_engine.py' -v 2>&1 | tee engine-tests.txt
+            echo "== full suite with ptoon binary present (chapel-dependent tests now run) =="
+            python3 -m unittest discover -s tests -p 'test_*.py' 2>&1 | tee full-suite.txt
+            runHook postBuild
+          '';
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out
+            cp parity-functions.md parity-condense.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            runHook postInstall
+          '';
+        };
         promptToon = pkgs.stdenvNoCC.mkDerivation {
           pname = "prompt-toon";
           version = "0.1.0";
@@ -116,8 +258,12 @@
         packages = {
           default = promptToon;
           prompt-toon = promptToon;
+          # C1 (TIN-2708): defined on every system (see ptoonBinary comment
+          # above); x86_64-linux is the required/CI-verified target.
+          ptoon = ptoonBinary;
         } // lib.optionalAttrs (system == "x86_64-linux") {
           ptoon-spike-parity = ptoonSpikeParity;
+          ptoon-parity = ptoonParity;
         };
 
         devShells.default = pkgs.mkShell {
@@ -135,6 +281,7 @@
           ];
           shellHook = ''
             echo "prompt-toon dev shell"
+            echo "ptoon binary (TIN-2708 C1): 'just build-ptoon' (nix remote) or 'just flywheel-chapel' (GF REAPI) — remote-only, never local chpl (see AGENTS.md)."
           '';
         };
 

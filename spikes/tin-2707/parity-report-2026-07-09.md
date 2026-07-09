@@ -1,6 +1,12 @@
-# TIN-2707 C0 parity report
+# TIN-2707 / TIN-2708 C1 parity report
 
 Chapel (RE2 + utf8proc NFKC) vs Python oracle (`redact_text`).
+
+Snapshot of the in-build `run_parity.py` report from
+`/nix/store/yyv5ilvfiwbkpihkbad5xmn4z80hznmy-ptoon-spike-parity-0.1.0`
+(x86_64-linux remote builder). The C0 run left one predicted divergence
+(07-boundary-unicode); TIN-2708 C1 closes it — all 12 cases are now
+byte-identical.
 
 ## Corpus parity
 
@@ -12,24 +18,31 @@ Chapel (RE2 + utf8proc NFKC) vs Python oracle (`redact_text`).
 | 04-secret-classes.txt | IDENTICAL | pattern-1,pattern-3,pattern-4,pattern-5,pattern-6,pattern-7,pattern-8,pattern-9 | pattern-1,pattern-3,pattern-4,pattern-5,pattern-6,pattern-7,pattern-8,pattern-9 |
 | 05-homoglyph-imperatives.txt | IDENTICAL | - | - |
 | 06-boundary-ascii.txt | IDENTICAL | pattern-3 | pattern-3 |
-| 07-boundary-unicode.txt | DIVERGENT | pattern-2,pattern-3 | pattern-3 |
+| 07-boundary-unicode.txt | IDENTICAL | pattern-3 | pattern-3 |
 | 08-pem-split.txt | IDENTICAL | pattern-6 | pattern-6 |
 | 09-mixed-doc.md | IDENTICAL | pattern-1,pattern-7 | pattern-1,pattern-7 |
 | 10-clean-doc.txt | IDENTICAL | - | - |
 | 11-nul-and-crlf.txt | IDENTICAL | - | - |
 | 12-confusable-full.txt | IDENTICAL | - | - |
 
+parity: 12/12 identical; divergent: none
+
 ## Divergence detail
 
-### 07-boundary-unicode.txt
+None — all cases byte-identical.
 
-- chapel: `b'\xe6\x97\xa5\xe6\x9c\xac[REDACTED]\n[REDACTED]\xe6\x97\xa5\xe6\x9c\xac\n\xc3\xa9[REDACTED]\n\xc3\xa9[REDACTED]\n\xf0\x9f\x9a\x80[REDACTED]\n\xe4\xb8\xad\xe6\x96\x87[REDACTED]\xe4\xb8\xad\xe6\x96\x87'`
-- python: `b'\xe6\x97\xa5\xe6\x9c\xacAKIAIOSFODNN7EXAMPLE\nAKIAIOSFODNN7EXAMPLE\xe6\x97\xa5\xe6\x9c\xac\n\xc3\xa9AKIAIOSFODNN7EXAMPLE\n\xc3\xa9AKIAIOSFODNN7EXAMPLE\n\xf0\x9f\x9a\x80[REDACTED]\n\xe4\xb8\xad\xe6\x96\x87ghp_ABCDEFGHIJKLMNOP123456\xe4\xb8\xad\xe6\x96\x87'`
-
+The C0 divergence was 07-boundary-unicode: RE2's ASCII `\b` treated CJK /
+accented neighbors as word boundaries, so Chapel over-redacted (reported
+`pattern-2,pattern-3` where Python reported only `pattern-3`). C1 closes it
+with a Unicode-boundary post-filter (see README "Verdict"): the 9
+SECRET_PATTERNS stay verbatim, and each RE2 match whose leading/trailing
+`\b` rests on a non-ASCII `\p{L}`/`\p{N}` neighbor — exactly the matches a
+Unicode-aware `\b` would reject — is dropped before the splice. Case 07 now
+reports `pattern-3` on both engines, byte-identical.
 
 ## Benchmark (hostile digit-heavy input, wall clock)
 
 | size | chapel | python | speedup |
 |---|---|---|---|
-| 1 MiB | 0.243s | 0.612s | 2.5x |
-| 5 MiB | 1.801s | 4.330s | 2.4x |
+| 1 MiB | 0.263s | 0.622s | 2.4x |
+| 5 MiB | 1.153s | 2.590s | 2.2x |

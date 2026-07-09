@@ -7,10 +7,19 @@
  *
  * NFKC comes from vendored utf8proc v2.9.0 (Unicode 15.1, matching the
  * devshell CPython 3.13) via the remote-juggler Keychain.chpl FFI pattern.
- * Chapel regex is RE2: linear-time, ASCII \b — the parity corpus measures
- * the \b divergence explicitly (see README).
+ * Chapel regex is RE2: linear-time. RE2 \b is ASCII-only while Python re \b
+ * is Unicode-aware. TIN-2708 C1 closes that divergence (see README):
+ * because RE2's word class ([A-Za-z0-9_]) is a strict subset of Python's
+ * (\p{L}\p{N}_), RE2 can only ever see *extra* boundaries that Python does
+ * not — never fewer. So the fix keeps the 9 SECRET_PATTERNS verbatim (they
+ * are Python's exact zero-width \b matcher, which also reproduces the
+ * trailing-separator consumption of pattern-9/1/2/4/5 that a consuming
+ * anchor could not) and post-filters each match: a match anchored on a
+ * secret-adjacent neighbor that is a non-ASCII Unicode letter/number
+ * ([\p{L}\p{N}]) is one Python would reject, so it is dropped. ASCII-only
+ * text takes the fast replaceAndCount path (RE2 \b == Python \b there).
  */
-use IO, Regex, Map, CTypes;
+use IO, Regex, Map, CTypes, List;
 
 require "c_src/normalize_ffi.h", "c_src/normalize_ffi.c", "c_src/utf8proc.c";
 
@@ -106,20 +115,119 @@ const secretPatterns = [
   "\\b(?:\\d[ -]?){13,19}\\b",
 ];
 
+/* Which patterns carry a leading / trailing \b (aligned to secretPatterns).
+   Pattern 6 (PEM) has neither; pattern 8 (api_key=...) has only a leading \b. */
+const leadAnchored  = [true, true, true, true, true, false, true, true,  true];
+const trailAnchored = [true, true, true, true, true, false, true, false, true];
+
+/* True if any byte of s is non-ASCII. RE2 \b and Python \b agree on ASCII-only
+   text, so pure-ASCII input skips the boundary filter entirely. Redaction only
+   removes bytes and inserts the ASCII marker, so this is stable across the
+   pattern loop — compute it once. */
+proc containsNonAscii(s: string): bool {
+  for i in 0..<s.numBytes do
+    if s.byte(i):int >= 0x80 then return true;
+  return false;
+}
+
+/* Is the single codepoint occupying inclusive byte range [a, b] a non-ASCII
+   Unicode word char (letter or number)? ASCII neighbors are never treated as a
+   Unicode-only boundary here: RE2's ASCII \b already accounted for them, so the
+   sole divergence from Python is a non-ASCII \p{L}/\p{N} neighbor. */
+proc neighborIsUnicodeWord(s: string, a: int, b: int,
+                           const ref wordRe: regex(string)): bool throws {
+  if s.byte(a):int < 0x80 then return false;      // ASCII lead byte
+  const ch = s[(a:byteIndex)..(b:byteIndex)];
+  return wordRe.search(ch).matched;
+}
+
+/* The codepoint immediately before byte offset `start`. */
+proc leadingNeighborWord(s: string, start: int,
+                         const ref wordRe: regex(string)): bool throws {
+  if start <= 0 then return false;
+  var j = start - 1;                                // walk back over UTF-8 tail bytes
+  while j > 0 && (s.byte(j):int & 0xC0) == 0x80 do j -= 1;
+  return neighborIsUnicodeWord(s, j, start - 1, wordRe);
+}
+
+/* The codepoint immediately after byte offset `stop`. */
+proc trailingNeighborWord(s: string, stop: int,
+                          const ref wordRe: regex(string)): bool throws {
+  if stop >= s.numBytes then return false;
+  const b0 = s.byte(stop):int;
+  if b0 < 0x80 then return false;
+  const len = if b0 < 0xE0 then 2 else if b0 < 0xF0 then 3 else 4;
+  return neighborIsUnicodeWord(s, stop, stop + len - 1, wordRe);
+}
+
+/* Redact `text` for one pattern with Unicode-boundary filtering. Enumerates the
+   same non-overlapping matches Python's re.sub would (RE2's \b is zero-width and
+   its match set is a superset of Python's), drops any whose leading/trailing
+   boundary rests on a non-ASCII Unicode word char, and splices [REDACTED] over
+   the survivors via a single byte buffer (O(n), preserves the fast path's
+   throughput characteristics). Returns (newText, anyRedacted). */
+proc redactFiltered(text: string, const ref re: regex(string),
+                    lead: bool, trail: bool,
+                    const ref wordRe: regex(string)): (string, bool) throws {
+  var starts: list(int);
+  var stops: list(int);
+  var matchedLen = 0;
+  for m in re.matches(text) {
+    const fm = m[0];
+    if !fm.matched then break;
+    const s = fm.byteOffset: int;
+    const e = s + fm.numBytes;
+    var keep = true;
+    if lead && leadingNeighborWord(text, s, wordRe) then keep = false;
+    if keep && trail && trailingNeighborWord(text, e, wordRe) then keep = false;
+    if keep {
+      starts.pushBack(s);
+      stops.pushBack(e);
+      matchedLen += (e - s);
+    }
+  }
+  if starts.size == 0 then return (text, false);
+
+  const marker = "[REDACTED]";
+  const mlen = marker.numBytes;
+  const outLen = text.numBytes - matchedLen + starts.size * mlen;
+  var buf: [0..<outLen] uint(8);
+  var k = 0;
+  var emitted = 0;
+  for i in 0..<starts.size {
+    for bi in emitted..<starts[i] { buf[k] = text.byte(bi); k += 1; }
+    for mi in 0..<mlen { buf[k] = marker.byte(mi); k += 1; }
+    emitted = stops[i];
+  }
+  for bi in emitted..<text.numBytes { buf[k] = text.byte(bi); k += 1; }
+  return (bytes.createCopyingBuffer(c_ptrTo(buf[0]): c_ptrConst(c_char), k).decode(),
+          true);
+}
+
 proc main() throws {
   const raw = stdin.readAll(bytes);
   var redacted = normalizeText(raw);
+
+  const nonAscii = containsNonAscii(redacted);
+  const wordRe = new regex("[\\p{L}\\p{N}]");
 
   var findings: string;
   var first = true;
   for i in secretPatterns.domain {
     const re = new regex(secretPatterns[i]);
-    const (replaced, n) = redacted.replaceAndCount(re, "[REDACTED]");
-    if n > 0 {
+    var matched = false;
+    if nonAscii {
+      const (replaced, any) =
+        redactFiltered(redacted, re, leadAnchored[i], trailAnchored[i], wordRe);
+      if any { redacted = replaced; matched = true; }
+    } else {
+      const (replaced, n) = redacted.replaceAndCount(re, "[REDACTED]");
+      if n > 0 { redacted = replaced; matched = true; }
+    }
+    if matched {
       if !first then findings += ",";
       findings += "pattern-" + (i + 1): string;
       first = false;
-      redacted = replaced;
     }
   }
 

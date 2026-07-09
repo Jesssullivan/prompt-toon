@@ -43,6 +43,21 @@ package-smoke:
 package-smoke-local:
     cd {{root}} && nix build --builders "" .#prompt-toon
 
+# TIN-2708 C1: ptoon binary build lane (src/ptoon/). Remote-only — chpl
+# compilation never runs locally on darwin (AGENTS.md doctrine); this offloads
+# to the x86_64-linux remote builder, nix cache-first. The artifact is a single
+# ELF (proc main / stdin-stdout), not a shared library — see the pivot note in
+# Makefile. `make build-ptoon` is a thin wrapper over this recipe.
+build-ptoon:
+    cd {{root}} && nix build .#packages.x86_64-linux.ptoon --print-build-logs
+
+# TIN-2708 C1: shared golden-corpus parity runner. By default it checks both
+# python (oracle) and chapel (if PROMPT_TOON_PTOON or build/ptoon is present)
+# against fixtures/golden/. Use `--functions` for primitive transform parity
+# and `--require-chapel` in remote gates where SKIP must fail.
+parity *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/parity_runner.py {{args}}
+
 # GloriousFlywheel lane checks (TIN-2704). The wrapper comes from the
 # fleet-managed profile per TIN-2482 (no vendored gloriousflywheel-bazel).
 flywheel-check *targets="//:ci_validation_suite":
@@ -50,3 +65,12 @@ flywheel-check *targets="//:ci_validation_suite":
 
 flywheel-executor-check *targets="//:ci_validation_suite":
     cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed {{targets}}
+
+# TIN-2709 C2, pulled into C1: compile the ptoon Chapel binary on GF REAPI.
+# nix owns the chpl version (the executor image / devshell provides it); Bazel
+# owns the graph, cache, and remote execution. //src/ptoon:ptoon is
+# target_compatible_with linux, so this is the ONLY way it realizes — a local
+# darwin build is incompatible-by-design and the executor lane fails closed
+# (--remote_local_fallback=false) if BAZEL_REMOTE_EXECUTOR is not armed.
+flywheel-chapel *targets="//src/ptoon:ptoon":
+    cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel build --config=executor-backed {{targets}}
