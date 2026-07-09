@@ -101,6 +101,52 @@ just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-
   (`--remote_local_fallback=false`) if `BAZEL_REMOTE_EXECUTOR` is not
   armed. nix owns the chpl version; Bazel owns the graph/cache/execution.
 
+## Primary references checked 2026-07-09
+
+Keep this lane grounded in current upstream docs when touching Chapel/Bazel
+plumbing:
+
+- Chapel 2.9 `main()` technote:
+  https://chapel-lang.org/docs/technotes/main.html. This is the source for
+  `proc main(args: [] string)` explicit argument handling and integer return
+  status.
+- Chapel 2.9 IO docs:
+  https://chapel-lang.org/docs/modules/standard/IO.html. `stdin` is a
+  predefined `fileReader`; `fileReader.readAll(type t = bytes)` reads the
+  remaining stream as `bytes` or `string`.
+- Chapel 2.9 `chpl` man page:
+  https://chapel-lang.org/docs/usingchapel/man.html. This is the source for
+  `--fast`, `-M/--module-dir`, and `-o` in the exact C1 compile command.
+- Chapel 2.9 C interop / `require` docs:
+  https://chapel-lang.org/docs/technotes/extern.html. `require` entries are
+  file-relative to the Chapel source file, which is why `Normalize.chpl`
+  owns the vendored C shim linkage instead of routing it through Mason.
+- Chapel 2.9 library technote and release note:
+  https://chapel-lang.org/docs/technotes/libraries.html and
+  https://chapel-lang.org/blog/posts/announcing-chapel-2.9/. Chapel library
+  interop remains under-development and requires runtime setup/cleanup; 2.9's
+  new dynamically loaded parallel-library support is promising, but it stays a
+  post-C2 investigation, not the C1 engine boundary.
+- Mason manifest docs:
+  https://chapel-lang.org/docs/tools/mason/guide/manifestfile.html. The
+  local `Mason.toml` is `type = "application"` with `compopts = "-M src/ptoon"`;
+  quickchpl remains advisory until pinned into a remote gate.
+- Bazel platforms and common attributes:
+  https://bazel.build/extending/platforms and
+  https://bazel.build/reference/be/common-definitions. These are the sources
+  for `target_compatible_with` and `tags = ["manual"]` keeping
+  `//src/ptoon:ptoon` out of wildcard local builds.
+- Bazel Starlark actions and remote execution docs:
+  https://bazel.build/rules/lib/builtins/actions,
+  https://bazel.build/remote/rbe, and https://bazel.build/remote/rules. These
+  anchor the walking-skeleton `ctx.actions.run_shell` action and the C3
+  follow-up to replace PATH/env `chpl` with a proper Chapel toolchain rule.
+- Bazel command/options and remote-build performance docs:
+  https://bazel.build/docs/user-manual and
+  https://bazel.build/advanced/performance/build-performance-breakdown. These
+  anchor `--platforms`, `--host_platform`, `--extra_execution_platforms`, and
+  `--remote_download_minimal`.
+
 ## Parity gate
 
 `nix build .#packages.x86_64-linux.ptoon-parity` is the C1 correctness

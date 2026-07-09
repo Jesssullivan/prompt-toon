@@ -10,6 +10,9 @@ Deliberately a genrule-grade rule, NOT a hermetic toolchain. `rules_chapel` with
 `rules_nixpkgs` consumer-provided `chpl` label is the C3 deliverable (first-of-kind;
 BCR ships zero Chapel modules today). Here `chpl` is an *environmental* dependency of
 the action, resolved by the executor image -- which is precisely "nix owns versions."
+Bazel's current remote-execution rule guidance says custom rules should prefer
+toolchains over PATH/env tools; this file is the C1/C2 bridge, and C3 is the
+proper toolchain conversion.
 
 `target_compatible_with = ["@platforms//cpu:x86_64", "@platforms//os:linux"]`
 is load-bearing, not cosmetic: chpl emits an x86_64-linux ELF, so on the
@@ -27,6 +30,12 @@ def _chapel_binary_impl(ctx):
     for m in ctx.attr.module_paths:
         module_flags += ["-M", m]
 
+    # Upstream references for this exact shape:
+    # - Chapel chpl man page: --fast, -M/--module-dir, -o.
+    # - Chapel C interop technote: require paths are source-file-relative.
+    # - Bazel actions.run_shell: actions run from the exec root with declared
+    #   inputs/outputs; use_default_shell_env is the deliberate bridge until C3
+    #   supplies an explicit Chapel toolchain.
     # chpl resolves the modules' file-relative `require "../../c_src/..."` from the
     # main source's directory, so the whole srcs+data tree must be action inputs and
     # the action must run from the exec root (Bazel's default cwd).
@@ -81,5 +90,7 @@ chapel_binary = rule(
     # NB: remote-only doctrine (incompatible on darwin, realizes only on the GF
     # linux_x86_64 exec platform) is enforced per-target via
     # `target_compatible_with` in the BUILD file -- it is a common attribute,
-    # not a rule() argument.
+    # not a rule() argument. Pair with tags = ["manual"] on leaf binaries so
+    # wildcard `//...` local checks skip the target even on linux CI unless the
+    # executor-backed lane explicitly names it.
 )

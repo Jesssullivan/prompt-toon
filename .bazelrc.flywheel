@@ -17,6 +17,9 @@ test:ci-cached --experimental_remote_cache_compression
 # Opt-in executor-backed contract. The executor endpoint is intentionally not
 # set here; gloriousflywheel-bazel passes --remote_executor from
 # BAZEL_REMOTE_EXECUTOR only after it validates executor-backed mode.
+# Mirrors current Bazel platform/RBE guidance: host, target, and extra
+# execution platforms are pinned to the GF linux_x86_64 platform; local fallback
+# is disabled; Build without the Bytes is enabled with --remote_download_minimal.
 build:executor-backed --config=ci-cached
 build:executor-backed --remote_local_fallback=false
 build:executor-backed --spawn_strategy=remote

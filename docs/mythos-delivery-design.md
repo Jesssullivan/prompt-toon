@@ -242,8 +242,10 @@ mythos/fable synthesis seat sees any of them.
   is N separate short-lived `ptoon` subprocess invocations, each
   single-threaded. Chapel task-parallelism does nothing here; the metric is
   per-process runtime init + RE2 compile + utf8proc-table amortization. Chapel
-  2.9's dynamically-loadable-libraries + `--no-builtin-runtime` shared
-  runtime is the future lever for this init cost — revisit post-C2.
+  2.9's initial dynamically loaded parallel-library support
+  (`--library --dynamic --no-builtin-runtime`) is the future lever for this
+  init cost, but it remains an upstream "initial support" feature and stays
+  post-C2 research, not the C1 boundary.
 - **MCP gateway stage (surface C, TIN-2524) / `ptoon --stream`:** one
   long-lived process reads a JSONL batch of N documents. Here `coforall`
   batch-across-documents earns its full keep (init paid once) — this is the
@@ -352,3 +354,27 @@ the binary, `auto` falls open to Python when the binary is absent.
   byte-parity** (all corpus cases IDENTICAL, chapel vs Python oracle). C1's
   `ptoon-parity` derivation is that gate. Do not layer task-parallelism onto
   an engine with any live divergence.
+
+### Chapel/Bazel source grounding (checked 2026-07-09)
+
+- Chapel 2.9 `proc main(args: [] string)` and integer exit status:
+  https://chapel-lang.org/docs/technotes/main.html.
+- Chapel 2.9 `stdin` / `fileReader.readAll(bytes|string)`:
+  https://chapel-lang.org/docs/modules/standard/IO.html.
+- Chapel 2.9 `chpl --fast`, `-M`, and `-o` compiler options:
+  https://chapel-lang.org/docs/usingchapel/man.html.
+- Chapel 2.9 `require` C-resource linkage, file-relative:
+  https://chapel-lang.org/docs/technotes/extern.html.
+- Chapel 2.9 library interop caveats and the 2.9 dynamic-library release
+  note: https://chapel-lang.org/docs/technotes/libraries.html and
+  https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
+- Bazel current platform/compatibility, `manual` tag, `run_shell`, and
+  remote-execution rule guidance:
+  https://bazel.build/extending/platforms,
+  https://bazel.build/reference/be/common-definitions,
+  https://bazel.build/rules/lib/builtins/actions, and
+  https://bazel.build/remote/rules.
+- Bazel current command-line platform flags, RBE overview, and
+  `--remote_download_minimal` performance guidance:
+  https://bazel.build/docs/user-manual, https://bazel.build/remote/rbe, and
+  https://bazel.build/advanced/performance/build-performance-breakdown.
