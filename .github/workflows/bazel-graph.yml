@@ -1,0 +1,39 @@
+name: Bazel Graph
+
+# M0 scaffold (TIN-1307 pattern): module-graph integrity + lockfile drift
+# guard, mirroring the tinyland-goo shape.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mod-graph:
+    name: Bazel module-graph integrity
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: bazelisk mod graph
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command just bazel-graph
+      - name: MODULE.bazel.lock has not drifted
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command bazelisk --output_user_root="$BAZEL_OUTPUT_USER_ROOT" mod graph --lockfile_mode=error

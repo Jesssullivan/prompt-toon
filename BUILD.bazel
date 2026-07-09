@@ -15,12 +15,32 @@ sh_binary(
     data = glob(["prompt_toon/**/*.py"]),
 )
 
+filegroup(
+    name = "delegation_policy",
+    srcs = glob(["policy/**"]),
+)
+
+filegroup(
+    name = "skills",
+    srcs = [
+        ".agents/skills/mythos-delegation/SKILL.md",
+        ".agents/skills/prompt-toon/SKILL.md",
+        ".agents/skills/prompt-toon/agents/openai.yaml",
+        ".agents/skills/prompt-toon/references/safety.md",
+        ".agents/skills/prompt-toon/references/toon-decision.md",
+    ],
+)
+
 sh_test(
     name = "unit_tests",
     srcs = ["tests/run_tests.sh"],
-    data = glob([
+    data = [
+        ":delegation_policy",
+        ":skills",
+    ] + glob([
         "prompt_toon/**/*.py",
         "tests/**/*.py",
+        "docs/**/*.md",
     ]),
 )
 

@@ -1,0 +1,38 @@
+name: Build and Test
+
+# M0 scaffold (TIN-1307 pattern): the full local gate (`just check` =
+# compile-check + secrets-scan + unittest suite + bazel-graph + bazel-test)
+# through the Nix devshell so CI == local.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: just check (Nix devshell)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Check (compile + secrets + tests + bazel graph/test)
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command just check

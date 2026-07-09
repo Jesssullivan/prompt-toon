@@ -22,6 +22,8 @@
             mkdir -p "$out/lib/prompt-toon" "$out/bin" "$out/share/prompt-toon/skills"
             cp -R prompt_toon "$out/lib/prompt-toon/"
             cp -R .agents/skills/prompt-toon "$out/share/prompt-toon/skills/"
+            cp -R .agents/skills/mythos-delegation "$out/share/prompt-toon/skills/"
+            cp -R policy "$out/share/prompt-toon/policy"
             cat > "$out/bin/prompt-toon" <<EOF
             #!${pkgs.bash}/bin/bash
             export PYTHONPATH="$out/lib/prompt-toon''${PYTHONPATH:+:''${PYTHONPATH}}"
@@ -40,6 +42,8 @@
           packages = with pkgs; [
             bazelisk
             buildifier
+            dhall
+            dhall-json
             gh
             git
             gitleaks

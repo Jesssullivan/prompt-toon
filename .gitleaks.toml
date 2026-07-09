@@ -1,0 +1,17 @@
+# Gitleaks config: default rules + a narrow allowlist for synthetic secrets.
+#
+# tests/test_safety_matrix.py is the TIN-2695 adversarial fixture corpus: it
+# deliberately contains fake AWS/GCP/JWT/PEM material to prove redaction.
+# fixtures/ will hold the shared Python<->Chapel parity corpus (same nature).
+# A real credential must never be placed in these paths — they are exempt
+# from scanning, and review is the only gate there.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic adversarial fixtures used to test redaction (TIN-2695); never real credentials"
+paths = [
+  '''tests/test_safety_matrix\.py''',
+  '''fixtures/.*''',
+]

@@ -9,7 +9,7 @@ __pycache__/
 .env.*
 .envrc.local
 
-bazel-*
+/bazel-*
 *BAZEL_OUTPUT_USER_ROOT*
 *prompt-toon-bazel-user-root*
 result
@@ -19,3 +19,4 @@ dist/
 *.egg-info/
 
 .DS_Store
+.serena/

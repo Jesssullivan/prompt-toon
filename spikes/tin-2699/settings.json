@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/jess/git/prompt-toon/spikes/tin-2699/task_condense_hook.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -34,7 +34,11 @@ just prompt-toon analyze path/to/results.json
 
 - CLI package: `prompt_toon/`
 - Codex skill: `.agents/skills/prompt-toon/SKILL.md`
+- Delegation skill: `.agents/skills/mythos-delegation/SKILL.md`
+- Delegation policy SSOT: `policy/delegation.json` (Dhall source: `policy/dhall/`)
 - Founding prompt: `docs/founding-prompt.md`
+- Mythos vision addendum: `docs/mythos-vision.md`
+- Delivery design record: `docs/mythos-delivery-design.md`
 - Research decision record: `docs/research-decision.md`
 - Linear map: `docs/linear.md`
 
