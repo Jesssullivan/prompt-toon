@@ -15,6 +15,11 @@ format for flat uniform rows.
 - Use Flywheel only through `justfile.flywheel` recipes and
   `gloriousflywheel-bazel`; do not add repo-specific runners or checked-in
   cache/executor endpoints.
+- Chapel compilation is remote-only (operator doctrine, 2026-07-09): never
+  iterate `chpl` locally on darwin. Use
+  `nix build .#packages.x86_64-linux.<target>` (remote builder, cache-first)
+  or the flywheel executor lane once TIN-2704 arms. Endgame is Chapel-first
+  (`docs/mythos-delivery-design.md` §7); Python is the parity oracle.
 
 ## Safety
 
