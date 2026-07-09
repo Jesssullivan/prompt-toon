@@ -303,13 +303,31 @@ mythos/fable synthesis seat sees any of them.
    0x80` before the confusable map probe (all 45 keys are Greek/Cyrillic,
    ≥ U+0391). One-line hot-loop win; byte-identical to the unguarded lookup.
 
-### `--stream` honesty
+### Budget + input cap — LANDED on `redact-batch` (TIN-2709 C2c)
+
+`ptoon redact-batch` takes two optional positional policy args (argv[2]
+`maxInputBytes`, argv[3] `budgetMs`; 0/absent = unlimited, so C2b parity is
+untouched). Both are **fail-closed — every breach withholds, never emits raw**:
+
+- **Input cap:** a document whose input exceeds `maxInputBytes` is withheld
+  (`reason:"input-cap"`) *before* redaction — never truncated-and-emitted, since
+  a truncated PEM could leak its tail.
+- **Wall-clock budget — completion-time withhold, stated honestly.** Chapel
+  `coforall` tasks cannot be preempted mid-run, so this is NOT a hard mid-task
+  abort. But redaction is linear-time (RE2) and input-capped, so a single
+  document is bounded; the budget guards *aggregate* wall-clock. A document that
+  *completes* past the batch deadline is withheld (`reason:"budget"`), its
+  redacted text discarded. Rejected the alternative (process-level subprocess
+  kill in engine.py) as worse fail-closed granularity — one straggler would lose
+  every document's result.
+
+### `--stream` honesty (C2c, next)
 
 Given the whole-buffer redaction constraint (a PEM block spans lines;
-`[\s\S]+?` needs the full input), `ptoon --stream` is **bounded-buffering
-(≤ `max_input_bytes`) + incremental raw-sha256 + budget-abort**, with true
-streaming only on the *output* side (JSONL card emission after redaction
-completes). It is not a pipeline through redaction. Say so plainly.
+`[\s\S]+?` needs the full input), `ptoon --stream` will be **bounded-buffering
+(≤ `max_input_bytes`) + incremental raw-sha256 + the budget backstop above**,
+with true streaming only on the *output* side (JSONL card emission after
+redaction completes). It is not a pipeline through redaction. Say so plainly.
 
 ### Decline (do not re-propose without new facts)
 
