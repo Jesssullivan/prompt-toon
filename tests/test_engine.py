@@ -211,6 +211,27 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
         self.assertIsInstance(redacted, str)
         self.assertIsInstance(findings, list)
 
+    def test_redact_batch_matches_per_document_redact(self):
+        # The coforall fan-in must be byte-identical to redacting each document
+        # on its own, in input order. Includes a PEM that spans newlines (the
+        # length-prefix framing must carry it) and the F1 injected-literal case.
+        docs = [
+            "token=ghp_abcdefghijklmnopqrstuvwxyz",
+            "no secrets here, just prose.",
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAA\n-----END RSA PRIVATE KEY-----",
+            "token=a@b.co",
+        ]
+        results = self.engine.redact_batch(docs)
+        self.assertEqual([r["i"] for r in results], list(range(len(docs))))
+        for i, doc in enumerate(docs):
+            exp_redacted, exp_findings = self.engine.redact_text(doc)
+            self.assertFalse(results[i].get("withheld", False))
+            self.assertEqual(results[i]["findings"], exp_findings)
+            self.assertEqual(results[i]["redacted"], exp_redacted)
+
+    def test_redact_batch_empty_input(self):
+        self.assertEqual(self.engine.redact_batch([]), [])
+
 
 if __name__ == "__main__":
     unittest.main()

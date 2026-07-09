@@ -52,7 +52,7 @@
  */
 module Main {
   use IO, List;
-  use Normalize, Redact, Defang;
+  use Normalize, Redact, Defang, Batch;
 
   /* Chapel passes the command line via the optional `[] string` formal:
    * args[0] is the executable name and args[1..] are the arguments (0-indexed,
@@ -60,7 +60,7 @@ module Main {
    * process exit status. */
   proc main(args: [] string): int throws {
     if args.size < 2 {
-      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|caps)");
+      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|redact-batch|caps)");
       return 2;
     }
     const sub = args[1];
@@ -100,10 +100,19 @@ module Main {
         stdout.write(caps);
         return 0;
       }
-      // C2: when "condense" { /* --stream length-prefixed N-doc + coforall */ }
+      when "redact-batch" {
+        // C2b fan-in: length-prefixed N-document batch on stdin, coforall
+        // one task per doc, length-prefixed results in input order. All
+        // concurrency stays inside this one Chapel runtime. See Batch.chpl.
+        const raw = stdin.readAll(bytes);
+        const docs = parseBatch(raw);
+        stdout.write(redactBatch(docs));
+        return 0;
+      }
+      // C2c: when "condense" { /* --stream: budget + straggler abort */ }
       otherwise {
         stderr.writeln("ptoon: unknown subcommand '", sub,
-                       "' (want normalize|defang|redact|caps)");
+                       "' (want normalize|defang|redact|redact-batch|caps)");
         return 2;
       }
     }
