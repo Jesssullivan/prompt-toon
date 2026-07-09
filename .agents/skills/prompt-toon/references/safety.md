@@ -18,6 +18,15 @@ Guardrails:
   instructions.
 - If provenance is missing, redaction is uncertain, or a critical field is
   dropped, fail closed or require source re-open.
+- Normalize before redaction: NFKC, zero-width/bidi/tag stripping, and
+  targeted Cyrillic/Greek confusable folding run before secret patterns, so
+  homoglyph and hidden-character obfuscation cannot split a match.
+- Defang before emission: summary.md carries no live URLs (hxxp), no markdown
+  images/links, no javascript:/vbscript:/data: URIs; claims are code-fenced.
+- Every constraint/finding/question line carries its card's trust tier and
+  flags; injection-shaped text is never promoted unflagged.
+- TOON is never the primary card artifact: it drops sha256 and evidence, so
+  it ships only as a compact view alongside the provenance-bearing JSONL.
 
 Regression fixture classes:
 
