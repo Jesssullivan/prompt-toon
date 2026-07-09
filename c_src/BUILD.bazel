@@ -1,0 +1,17 @@
+# Vendored utf8proc v2.9.0 + the pt_* NFKC/word-class FFI shim. Exposed as a
+# filegroup so //src/ptoon:ptoon can hand the whole tree to chpl as action
+# inputs -- the Chapel modules pull these in via file-relative `require`
+# ("../../c_src/normalize_ffi.h", ...), so every header the compile touches
+# (including utf8proc_data.c #include'd by utf8proc.c) must be present.
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "normalize_ffi_srcs",
+    srcs = [
+        "normalize_ffi.c",
+        "normalize_ffi.h",
+        "utf8proc.c",
+        "utf8proc.h",
+        "utf8proc_data.c",
+    ],
+)
