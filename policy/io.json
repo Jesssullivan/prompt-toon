@@ -1,0 +1,87 @@
+{
+  "$comment": "Validated transition artifact. Typed source of truth: policy/dhall/io.dhall. Regenerate with: dhall-to-json --pretty --file policy/dhall/io.dhall. Invariants enforced by tests/test_io_policy.py; enforcement stays locked until the gate tickets close.",
+  "enforcement_gate": {
+    "gated_on": [
+      "TIN-2695",
+      "TIN-2699"
+    ],
+    "rule": "While unlocked is false, every surface must have enabled = false. Flipping unlocked to true requires the gate tickets closed and INV-1 through INV-6 satisfied (docs/mythos-delivery-design.md).",
+    "unlocked": false
+  },
+  "failure_modes": {
+    "condensation": "fail_open",
+    "redaction": "fail_closed"
+  },
+  "metadata": {
+    "name": "toon-of-mythos-io",
+    "owner_linear_issue": "TIN-2700"
+  },
+  "schema_version": 1,
+  "surfaces": [
+    {
+      "enabled": false,
+      "id": "subagent",
+      "purpose": "Task-tool returns condensed before the fable synthesis seat reads them (Claude PostToolUse updatedToolOutput). Highest fable-token payoff; controlled source set."
+    },
+    {
+      "enabled": false,
+      "id": "mcp",
+      "purpose": "MCP tool results condensed by the TIN-2524 gateway condenser stage (TIN-2702). Harness-agnostic; MCP-sourced output only."
+    },
+    {
+      "enabled": false,
+      "id": "bash",
+      "purpose": "Shell output condensation in-harness (Claude only today)."
+    },
+    {
+      "enabled": false,
+      "id": "read",
+      "purpose": "Large file-read condensation in-harness (Claude only today)."
+    },
+    {
+      "enabled": false,
+      "id": "webfetch",
+      "purpose": "Web content condensation in-harness; always untrusted tier, always defanged (INV-4)."
+    }
+  ],
+  "thresholds": {
+    "enforce_threshold_tokens": 600,
+    "max_input_bytes": 2000000,
+    "min_savings": 0.25,
+    "wall_clock_budget_ms": 2000
+  },
+  "trust_tiers": [
+    {
+      "source": "Task",
+      "tier": "subagent_return"
+    },
+    {
+      "source": "Bash",
+      "tier": "untrusted_tool_output"
+    },
+    {
+      "source": "Read",
+      "tier": "repo_source"
+    },
+    {
+      "source": "WebFetch",
+      "tier": "untrusted_web"
+    },
+    {
+      "source": "WebSearch",
+      "tier": "untrusted_web"
+    },
+    {
+      "source": "mcp:searxng",
+      "tier": "untrusted_web"
+    },
+    {
+      "source": "mcp:linear",
+      "tier": "semi_trusted_service"
+    },
+    {
+      "source": "mcp:github",
+      "tier": "semi_trusted_service"
+    }
+  ]
+}
