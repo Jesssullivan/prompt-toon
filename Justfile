@@ -42,3 +42,11 @@ package-smoke:
 
 package-smoke-local:
     cd {{root}} && nix build --builders "" .#prompt-toon
+
+# GloriousFlywheel lane checks (TIN-2704). The wrapper comes from the
+# fleet-managed profile per TIN-2482 (no vendored gloriousflywheel-bazel).
+flywheel-check *targets="//:ci_validation_suite":
+    cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=shared-cache-backed GF_BAZEL_REMOTE_UPLOAD=false BAZEL_REMOTE_EXECUTOR= gloriousflywheel-bazel test --config=ci-cached {{targets}}
+
+flywheel-executor-check *targets="//:ci_validation_suite":
+    cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed {{targets}}

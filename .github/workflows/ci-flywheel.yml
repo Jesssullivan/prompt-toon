@@ -1,0 +1,87 @@
+name: Flywheel Lanes
+
+# TIN-2704: GloriousFlywheel two-tier lanes (TIN-2287 goo pattern, adapted
+# for a PRIVATE personal repo). Both lanes are dormant until the operator
+# arms the repo variables AND the jesssullivan-infra overlay carries the
+# repo-scoped ARC anchor + token-exchange allowlist entry:
+#   - vars.FLYWHEEL_ENABLED='true'          → cache lane (skip-green until then)
+#   - vars.FLYWHEEL_EXECUTOR_ENABLED='true' → executor lane (never required)
+# Endpoint-free by contract: endpoints arrive from the ARC runner env; the
+# vendored scripts default to the public exchange front door only.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # (A) Cache-first lane: shared-cache-backed, read-only uploads.
+  flywheel-cache:
+    name: Flywheel cache-first (shared-cache-backed)
+    runs-on: tinyland-nix
+    timeout-minutes: 20
+    if: ${{ vars.FLYWHEEL_ENABLED == 'true' }}
+    env:
+      GF_BAZEL_SUBSTRATE_MODE: shared-cache-backed
+      GF_BAZEL_REMOTE_UPLOAD: 'false'
+      GF_FLYWHEEL_PROFILE_STATE: shared-cache-backed
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Flywheel doctor
+        run: nix develop --command just flywheel-doctor
+      - name: Flywheel cache-first remote check
+        run: nix develop --command just flywheel-check
+
+  # (B) Executor-backed RBE proof lane. NON-REQUIRED, double-gated.
+  flywheel-executor:
+    name: Flywheel executor-backed RBE (proof lane; non-required)
+    if: >-
+      vars.FLYWHEEL_EXECUTOR_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: tinyland-nix
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Require executor-backed GloriousFlywheel lane
+        run: |
+          set -euo pipefail
+          if [ -z "${BAZEL_REMOTE_CACHE:-}" ]; then
+            echo "::error::BAZEL_REMOTE_CACHE is missing. This job must run on the in-cluster GloriousFlywheel ARC lane."
+            exit 1
+          fi
+          if [ -z "${BAZEL_REMOTE_EXECUTOR:-}" ]; then
+            echo "::error::BAZEL_REMOTE_EXECUTOR is missing. Refusing to run as shared-cache local work on an RBE-named lane."
+            exit 1
+          fi
+          echo "GF_BAZEL_SUBSTRATE_MODE=executor-backed" >> "$GITHUB_ENV"
+          echo "GF_BAZEL_REMOTE_EXECUTION_PLATFORM=${GF_BAZEL_REMOTE_EXECUTION_PLATFORM:-gloriousflywheel-rbe-linux-x86_64}" >> "$GITHUB_ENV"
+      - name: Mint GloriousFlywheel REAPI token
+        env:
+          GF_REAPI_TOKEN_EXCHANGE_TTL: 45m
+          GF_REAPI_TOKEN_EXCHANGE_URL: ${{ vars.GF_REAPI_TOKEN_EXCHANGE_URL }}
+        run: nix develop --command bash scripts/mint-gf-reapi-token-from-exchange.sh
+      - name: Validate executor-backed attachment
+        run: nix develop --command bash scripts/cache-attachment-contract.sh --strict
+      - name: Remote check + test (executor-backed RBE)
+        run: nix develop --command just flywheel-executor-check
