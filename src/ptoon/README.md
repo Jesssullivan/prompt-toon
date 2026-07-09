@@ -1,12 +1,15 @@
-# TIN-2708 C1: `ptoon` (Chapel normalize/redact/defang core)
+# TIN-2708/C2: `ptoon` (Chapel normalize/redact/defang core)
 
 This directory is the permanent home of `ptoon`, the standalone Chapel
 binary behind `--engine=chapel` (`docs/mythos-delivery-design.md` §7–8,
-C1). As of C1 it carries **real semantics** graduated in from
+C1/C2). As of C1 it carries **real semantics** graduated in from
 `spikes/tin-2707/ptoon_spike.chpl` (the proven C0 parity port): NFKC
 normalization + confusable/zero-width folding, Unicode-boundary-exact
 secret redaction, and markdown/URI defanging, all byte-parity-gated
-against the `prompt_toon/cli.py` Python oracle.
+against the `prompt_toon/cli.py` Python oracle. As of C2b it also exposes
+the `redact-batch` coforall fan-in entrypoint: N documents are redacted
+concurrently inside one Chapel process while preserving byte-identical
+per-document semantics.
 
 ## Architecture pivot: subprocess binary, not a C-ABI library
 
@@ -35,17 +38,33 @@ bytes:
 - `ptoon defang`    → defanged text to stdout, exit 0.
 - `ptoon redact`    → exactly one line `findings:<comma-joined pattern
   names or empty>\n`, then the redacted text verbatim, exit 0.
+- `ptoon redact-batch` → length-prefixed N-document stdin; length-prefixed
+  per-document JSON+body results in input order, exit 0.
 - `ptoon caps`      → engine-caps JSON to stdout, exit 0.
 - unknown subcommand → stderr message, exit 2.
 
 `prompt_toon/engine.py`'s `ChapelEngine` shells out over this protocol.
+The `redact-batch` protocol is:
+
+```text
+stdin:  <n>\n then repeated n times: <byteLen>\n<raw bytes>
+stdout: <n>\n then repeated n times:
+        <metaJson>\n<redactedByteLen>\n<redacted bytes>
+```
+
+Malformed batch frames fail closed: malformed lengths, overrun bodies, and
+trailing bytes make the process exit nonzero rather than guessing.
 
 ## Layout
 
 - `Main.chpl` — `proc main(args)`: the binary entry. Dispatches `argv[1]`
-  (normalize/redact/defang/caps) over the fixed protocol above; reads
-  stdin with `stdin.readAll(bytes)`, writes stdout. `use Normalize,
-  Redact, Defang`.
+  (normalize/redact/defang/redact-batch/caps) over the fixed protocol above;
+  reads stdin with `stdin.readAll(bytes)`, writes stdout. `use Normalize,
+  Redact, Defang, Batch`.
+- `Batch.chpl` — `redactBatch`: parses the C2b length-prefixed batch,
+  runs one `coforall` task per document, each task calling the full sequential
+  `redactText`, then emits input-ordered length-prefixed results. A per-doc
+  redaction exception withholds that document with zero body bytes.
 - `Normalize.chpl` — `normalizeText` (NFKC via utf8proc + strip/fold),
   plus `isWordCp`/`unicodeVersion`. FFI to the vendored C shim via
   `require "../../c_src/normalize_ffi.h", ...` (file-relative, repo-root
@@ -53,7 +72,8 @@ bytes:
 - `Redact.chpl` — `redactText`: the nine `SECRET_PATTERNS` as RE2
   candidate generators, each match re-validated against Python's Unicode
   `\b` (`isWordCp`) and spliced with `[REDACTED]`. This is the C0
-  boundary-divergence fix (see the module header).
+  boundary-divergence fix (see the module header). C2a hoists the generators
+  to module-level `const` so C2b batch tasks share them read-only.
 - `Defang.chpl` — `defangText`: markdown image/link + dangerous-URI
   neutralization in cli.py's exact sub/replace order.
 - `Toon.chpl` — `toonEscape`/`encodeRows`. **Not** compiled into the C1
@@ -68,10 +88,13 @@ bytes:
 
 ## Fail-open / fail-closed contract (INV-5)
 
-Any caught Chapel error in a transform makes the binary exit nonzero with
-a stderr message — never a partial result on stdout (redact/normalize/
-defang fail closed). `prompt_toon/engine.py` raises `EngineError` on any
-nonzero exit or non-empty stderr; policy lives one layer up in
+Any caught Chapel error in a top-level single-document transform makes the
+binary exit nonzero with a stderr message — never a partial result on stdout
+(redact/normalize/defang fail closed). `redact-batch` adds a per-document
+fail-closed result: a redaction exception for one document emits
+`withheld=true`, a reason, and zero body bytes; malformed framing still makes
+the whole process exit nonzero. `prompt_toon/engine.py` raises `EngineError`
+on any nonzero exit or non-empty stderr; policy lives one layer up in
 `prompt_toon/cli.py`'s `resolve_engine`: `--engine=chapel` fails closed
 (SystemExit) when the `ptoon` binary is unavailable, `--engine=auto`
 fails open to the Python engine, and `--engine=python` (the default)
@@ -160,9 +183,8 @@ otherwise-skipped chapel-dependent assertions execute.
 
 ## What's next (C2 and beyond)
 
-- `coforall` batch entrypoint (`ptoon --stream` / batch-across-documents)
-  so a wide research spool condenses N subagent outputs concurrently
-  inside the Chapel runtime.
+- C2c `condense --stream`: wall-clock budget + straggler abort; budget
+  breaches withhold fail-closed, never pass raw.
 - Compile `Toon.chpl` into the binary with typed-row handling (JSON
   scalar → TOON cell) so TOON can be driven through the protocol.
 - Repo-pin quickchpl and wire the property tests into a remote-only gate.

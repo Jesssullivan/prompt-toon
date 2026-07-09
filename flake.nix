@@ -219,6 +219,8 @@
             python3 tools/parity_runner.py --functions --require-chapel | tee parity-functions.md
             echo "== condense parity (chapel vs python goldens, byte-identical) =="
             python3 tools/parity_runner.py --require-chapel | tee parity-condense.md
+            echo "== batch parity (redact-batch coforall == per-doc redact) =="
+            python3 tools/batch_parity.py | tee parity-batch.md
             echo "== engine unittest with ptoon binary present =="
             python3 -m unittest discover -s tests -p 'test_engine.py' -v 2>&1 | tee engine-tests.txt
             echo "== full suite with ptoon binary present (chapel-dependent tests now run) =="
@@ -228,7 +230,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp parity-functions.md parity-condense.md parity-batch.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };

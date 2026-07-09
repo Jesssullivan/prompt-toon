@@ -266,18 +266,32 @@ mythos/fable synthesis seat sees any of them.
 
 ### Build for C2/C3 (earn their complexity)
 
-1. **`coforall` batch entrypoint (a `ptoon` batch/stream subcommand)** — one
-   qthreads task per document, full pipeline independent per doc, N docs read
-   from one JSONL batch. This is the literal fan-in case (no Amdahl ceiling)
-   and it **confines all concurrency inside the Chapel runtime** of a single
-   `proc main` process — strictly safer than N external host threads
-   re-entering a runtime that assumes it owns its workers. (The pivot to a
-   subprocess binary, below, is what makes this the natural shape rather than
-   a C-ABI batch export.)
-2. **Hoist the 9 redaction regexes to module-level `const`** (Redact.chpl
-   currently compiles per `redactText` call). Prerequisite for the batch:
-   9 patterns × 16 docs = 144 compiles otherwise; hoisted, tasks share 9
-   RE2 objects (RE2 `Match` is `const`/concurrent-safe — verify Chapel's
+1. **`coforall` batch entrypoint — LANDED as `ptoon redact-batch`
+   (TIN-2709 C2b, src/ptoon/Batch.chpl).** One qthreads task per document, full
+   sequential redaction independent per doc, N docs read from one framed batch.
+   The literal fan-in case (no Amdahl ceiling); it **confines all concurrency
+   inside the Chapel runtime** of a single `proc main` process — strictly safer
+   than N external host threads re-entering a runtime that assumes it owns its
+   workers. (The subprocess-binary pivot is what makes this the natural shape
+   rather than a C-ABI batch export.)
+   - **Wire format = length-prefixed, not JSON-string-escaped.** stdin:
+     `<n>\n` then per doc `<byteLen>\n<raw bytes>`; stdout: `<n>\n` then per doc
+     `<metaJson>\n<redactedByteLen>\n<redacted bytes>`, in input order. Length
+     prefixes carry embedded newlines with zero escaping — a redacted PEM block
+     spans lines, so line-delimiting cannot frame it. Read via one
+     `stdin.readAll` + a hand-walked byte cursor (no incremental-IO dependency).
+   - **Fail-closed (INV-5):** a doc whose redaction throws is emitted as
+     `{"i":I,"withheld":true,"reason":...}` with redacted length 0 and NO
+     bytes — its raw text is never emitted.
+   - **Proven:** `tools/batch_parity.py` gate — `redact-batch` is byte-identical
+     to per-document `redact` on all 18 fixtures (findings + redacted bytes),
+     incl. PEM-split (08), embedded-NUL/CRLF (11), and the F1 injected-literal
+     rescan (18). Order-independent. `engine.py:redact_batch` consumes it.
+2. **Hoist the 9 redaction regexes to module-level `const` — LANDED
+   (TIN-2709 C2a, Redact.chpl `const gens`).** Was compiling per `redactText`
+   call (9 × N per batch); now compiled once at init, shared read-only across
+   `coforall` tasks. RE2 objects are immutable and `regex.search` takes
+   `const ref this`, confirmed concurrent-safe under the batch gate (RE2
    `regex.search` is a const method under `coforall` stress).
 3. **Runtime lifecycle is `proc main`, not manual `chpl_library_init`.** The
    subprocess pivot (below) obviates the ctypes-era init/finalize handshake:
@@ -285,8 +299,9 @@ mythos/fable synthesis seat sees any of them.
    invocation. Keep `CHPL_COMM=none` to preserve the single-static-ish-binary
    packaging goal (§7). The remaining per-process init cost (RE2 + utf8proc
    tables) is what the batch/stream entrypoint amortizes across N docs.
-4. **ASCII fast-path guard** on the confusable lookup (`if c >= 0x80` before
-   the map probe — all 45 keys are ≥ U+03B1). One-line hot-loop win.
+4. **ASCII fast-path guard — LANDED** (TIN-2709 C2a, Normalize.chpl): `if c >=
+   0x80` before the confusable map probe (all 45 keys are Greek/Cyrillic,
+   ≥ U+0391). One-line hot-loop win; byte-identical to the unguarded lookup.
 
 ### `--stream` honesty
 

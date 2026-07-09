@@ -18,6 +18,8 @@ of stdin as raw bytes:
 - ``ptoon defang``    -> writes defanged text to stdout, exit 0.
 - ``ptoon redact``    -> writes exactly one line ``findings:<comma-joined
   pattern names or empty>\\n`` then the redacted text verbatim, exit 0.
+- ``ptoon redact-batch`` -> writes length-prefixed per-document redaction
+  results in input order; this is the C2b coforall fan-in entrypoint.
 - ``ptoon caps``      -> writes the engine-caps JSON to stdout, exit 0.
 - unknown subcommand  -> stderr message, exit 2.
 
@@ -83,12 +85,12 @@ class ChapelEngine:
             )
         return self._path
 
-    def _run(self, subcommand: str, text: str) -> bytes:
+    def _run_bytes(self, subcommand: str, data: bytes) -> bytes:
         binary = self._require_binary()
         try:
             proc = subprocess.run(
                 [str(binary), subcommand],
-                input=text.encode("utf-8"),
+                input=data,
                 capture_output=True,
             )
         except OSError as exc:
@@ -102,6 +104,9 @@ class ChapelEngine:
             stderr = proc.stderr.decode("utf-8", errors="replace").strip()
             raise EngineError(f"ptoon {subcommand} wrote to stderr: {stderr}")
         return proc.stdout
+
+    def _run(self, subcommand: str, text: str) -> bytes:
+        return self._run_bytes(subcommand, text.encode("utf-8"))
 
     def normalize_text(self, text: str) -> str:
         return self._run("normalize", text).decode("utf-8", errors="replace")
@@ -121,6 +126,79 @@ class ChapelEngine:
         findings = [item for item in findings_text.split(",") if item] if findings_text else []
         redacted = raw[newline_index + 1 :].decode("utf-8", errors="replace")
         return redacted, findings
+
+    def redact_batch(self, docs: list[str]) -> list[dict[str, Any]]:
+        """Fan-in redaction (TIN-2709 C2b): frame N documents, run one
+        `ptoon redact-batch` process (coforall one task per doc inside the
+        Chapel runtime), and return per-document results IN INPUT ORDER.
+
+        This is the shape the wide-research-spool user flow needs: N subagent
+        outputs condensed concurrently in a single process before the synthesis
+        seat sees any. Each result dict carries ``i`` (position), ``withheld``
+        (bool), and ``findings`` (list). A non-withheld result also carries
+        ``redacted`` (str); a withheld one carries ``reason`` and NO redacted
+        text -- fail-closed (INV-5), the raw document is never returned.
+
+        Wire format mirrors src/ptoon/Batch.chpl: length-prefixed framing,
+        which carries embedded newlines (a redacted PEM spans lines) with no
+        escaping.
+        """
+        framed = bytearray()
+        framed += f"{len(docs)}\n".encode("utf-8")
+        for doc in docs:
+            body = doc.encode("utf-8")
+            framed += f"{len(body)}\n".encode("utf-8")
+            framed += body
+        return self._parse_batch(self._run_bytes("redact-batch", bytes(framed)))
+
+    @staticmethod
+    def _parse_batch(raw: bytes) -> list[dict[str, Any]]:
+        pos = 0
+
+        def read_line() -> bytes:
+            nonlocal pos
+            newline_index = raw.find(b"\n", pos)
+            if newline_index == -1:
+                raise EngineError("ptoon redact-batch output truncated (no newline)")
+            line = raw[pos:newline_index]
+            pos = newline_index + 1
+            return line
+
+        def read_int(context: str) -> int:
+            try:
+                value = int(read_line())
+            except ValueError as exc:
+                raise EngineError(f"ptoon redact-batch output has invalid {context}") from exc
+            if value < 0:
+                raise EngineError(f"ptoon redact-batch output has negative {context}")
+            return value
+
+        count = read_int("document count")
+        results: list[dict[str, Any]] = []
+        for expected_i in range(count):
+            meta = json.loads(read_line().decode("utf-8"))
+            if meta.get("i") != expected_i:
+                raise EngineError(
+                    "ptoon redact-batch output index "
+                    f"{meta.get('i')!r} does not match position {expected_i}"
+                )
+            body_len = read_int(f"body length for document {expected_i}")
+            if pos + body_len > len(raw):
+                raise EngineError(
+                    "ptoon redact-batch output truncated: "
+                    f"document {expected_i} declares {body_len} bytes with "
+                    f"{len(raw) - pos} remaining"
+                )
+            body = raw[pos : pos + body_len]
+            pos += body_len
+            if not meta.get("withheld", False):
+                meta["redacted"] = body.decode("utf-8", errors="replace")
+            results.append(meta)
+        if pos != len(raw):
+            raise EngineError(
+                f"ptoon redact-batch output has {len(raw) - pos} trailing byte(s)"
+            )
+        return results
 
     def engine_caps(self) -> dict[str, Any]:
         raw = self._run("caps", "")
