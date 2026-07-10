@@ -223,6 +223,8 @@
             python3 tools/batch_parity.py | tee parity-batch.md
             echo "== stream parity (condense-batch cards == python oracle cards) =="
             python3 tools/stream_parity.py | tee parity-stream.md
+            echo "== hook canary (PostToolUse adapter end-to-end vs the real binary) =="
+            python3 tools/hook_canary.py | tee hook-canary.md
             echo "== engine unittest with ptoon binary present =="
             python3 -m unittest discover -s tests -p 'test_engine.py' -v 2>&1 | tee engine-tests.txt
             echo "== full suite with ptoon binary present (chapel-dependent tests now run) =="
@@ -232,7 +234,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };
