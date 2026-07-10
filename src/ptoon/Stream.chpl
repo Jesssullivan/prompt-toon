@@ -253,17 +253,60 @@ module Stream {
     }
   }
 
+  private inline proc isDigitCp(cp: int(32)): bool {
+    return cp >= 0x30 && cp <= 0x39;
+  }
+
+  private inline proc isDigitOneToNineCp(cp: int(32)): bool {
+    return cp >= 0x31 && cp <= 0x39;
+  }
+
   private proc checkJsonNumber(const ref s: string) throws {
     if s.size == 0 then throw new Error("condense: empty minToonSavings");
-    var sawDigit = false;
-    for cp0 in s.codepoints() {
-      const cp = cp0: int(32);
-      if cp >= 0x30 && cp <= 0x39 then sawDigit = true;
-      else if cp != 0x2E && cp != 0x2D && cp != 0x2B &&
-              cp != 0x65 && cp != 0x45 then
+
+    var cps = new list(int(32));
+    for cp0 in s.codepoints() do cps.pushBack(cp0: int(32));
+    const n = cps.size;
+    var i = 0;
+
+    // RFC 8259 number grammar:
+    // number = [ minus ] int [ frac ] [ exp ]
+    // int    = zero / ( digit1-9 *DIGIT )
+    // frac   = "." 1*DIGIT
+    // exp    = ("e" / "E") [ minus / plus ] 1*DIGIT
+    if cps[i] == 0x2D {  // -
+      i += 1;
+      if i >= n then
         throw new Error("condense: minToonSavings is not a JSON number");
     }
-    if !sawDigit then throw new Error("condense: minToonSavings has no digits");
+
+    if cps[i] == 0x30 {  // 0
+      i += 1;
+      if i < n && isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+    } else if isDigitOneToNineCp(cps[i]) {
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    } else {
+      throw new Error("condense: minToonSavings is not a JSON number");
+    }
+
+    if i < n && cps[i] == 0x2E {  // .
+      i += 1;
+      if i >= n || !isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    }
+
+    if i < n && (cps[i] == 0x65 || cps[i] == 0x45) {  // e/E
+      i += 1;
+      if i < n && (cps[i] == 0x2D || cps[i] == 0x2B) then i += 1;
+      if i >= n || !isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    }
+
+    if i != n then
+      throw new Error("condense: minToonSavings is not a JSON number");
   }
 
   proc parseCondenseRun(const ref raw: bytes, ref header: CondenseRunHeader,
