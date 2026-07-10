@@ -25,6 +25,7 @@ chapel_binary(
         "Sha256.chpl",  # C2d raw-bytes digests for card provenance (INV-1)
         "Cards.chpl",   # C2d source-card extraction (Python-byte-exact)
         "Stream.chpl",  # C2d condense-batch JSONL surface (Main uses Stream)
+        "Summary.chpl", # C2e run-level summary.md/manifest rendering
         # Toon.chpl is intentionally excluded from the C1 binary (TOON is
         # Chapel-property-tested, not exposed through the binary protocol
         # until C2). Kept out of srcs so the compile graph matches the flake.

@@ -97,7 +97,7 @@ module Main {
         // Same JSON shape Abi.ptoon_engine_caps emitted, same version source.
         const caps = '{"engine":"chapel","utf8proc":true,"unicode_version":"' +
                      unicodeVersion() +
-                     '","patterns":9,"features":["normalize","redact","defang","redact-batch","condense-batch"]}';
+                     '","patterns":9,"features":["normalize","redact","defang","redact-batch","condense-batch","condense"]}';
         stdout.write(caps);
         return 0;
       }
@@ -180,11 +180,53 @@ module Main {
         condenseStream(docs, maxInputBytes, budgetMs, maxCards);
         return 0;
       }
-      // C2 remainder: summary/manifest rendering + iocache HMAC parity ride
-      // on this same dispatch point in a later slice.
+      when "condense" {
+        // C2e run-level surface: five length-prefixed run-header fields
+        // (runId, generatedAt, minToonSavings, defaultTier,
+        // tierOverridesJson — caller-supplied, echoed never computed), then
+        // the condense-batch triplet framing. Emits everything
+        // condense-batch emits plus one summary event (render_summary
+        // byte-parity) and one manifest event (value-parity) before the
+        // batch tally. Policy args identical to condense-batch.
+        if args.size > 5 {
+          stderr.writeln("ptoon condense: too many policy args (want maxInputBytes budgetMs maxCards)");
+          return 2;
+        }
+        var maxInputBytes = 0;
+        var budgetMs = 0;
+        var maxCards = 24;
+        try {
+          if args.size >= 3 then maxInputBytes = args[2]: int;
+          if args.size >= 4 then budgetMs = args[3]: int;
+          if args.size >= 5 then maxCards = args[4]: int;
+        } catch e {
+          stderr.writeln("ptoon condense: policy args must be decimal integers");
+          return 2;
+        }
+        if maxInputBytes < 0 || budgetMs < 0 {
+          stderr.writeln("ptoon condense: policy args must be nonnegative");
+          return 2;
+        }
+        if budgetMs > 0 && maxInputBytes == 0 {
+          stderr.writeln("ptoon condense: budgetMs requires positive maxInputBytes");
+          return 2;
+        }
+        if maxCards <= 0 {
+          stderr.writeln("ptoon condense: maxCards must be positive");
+          return 2;
+        }
+        const raw = stdin.readAll(bytes);
+        var header: CondenseRunHeader;
+        var docs: list(StreamDoc);
+        parseCondenseRun(raw, header, docs);
+        condenseRun(docs, header, maxInputBytes, budgetMs, maxCards);
+        return 0;
+      }
+      // C2 remainder: iocache HMAC parity + the hook canary ride on this
+      // same dispatch point in later slices.
       otherwise {
         stderr.writeln("ptoon: unknown subcommand '", sub,
-                       "' (want normalize|defang|redact|redact-batch|condense-batch|caps)");
+                       "' (want normalize|defang|redact|redact-batch|condense-batch|condense|caps)");
         return 2;
       }
     }
