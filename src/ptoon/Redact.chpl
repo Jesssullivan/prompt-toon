@@ -149,6 +149,47 @@ module Redact {
     return ranges;
   }
 
+  /* C2d: boolean Python-semantics search for the card-surface patterns
+   * (Cards.chpl CRITICAL/INJECTION), which assert \b on BOTH ends. Same
+   * candidate-generator + edge-revalidation scheme as acceptedRanges, but
+   * the caller only needs "does any Python-valid match exist?". The same
+   * soundness argument holds: RE2's ASCII \b can only fail where Python's
+   * Unicode \b also fails (an ASCII-word neighbor is a word char in both
+   * alphabets), so RE2 never suppresses a candidate Python would accept —
+   * rejection + rescan-from-next-codepoint reproduces Python's scan. */
+  proc pySearchBounded(const ref text: string,
+                       const ref gen: regex(string)): bool throws {
+    const b = text.encode();
+    const n = b.size;
+    if n == 0 then return false;
+    const arr = toArr(b);
+
+    var scanFrom = 0;
+    while scanFrom < n {
+      const tail = text.this((scanFrom: byteIndex)..);
+      const m = gen.search(tail);
+      if !m.matched then break;
+      const off = scanFrom + m.byteOffset: int;
+      const len = m.numBytes;
+      if len == 0 {
+        scanFrom = off + 1;  // zero-width match is never a keyword hit
+        continue;
+      }
+      const firstCp = cpAt(arr, off);
+      const lastStart = cpStart(arr, off + len - 1);
+      const lastCp = cpAt(arr, lastStart);
+      const leftOk =
+        edgeOk(firstCp, off > 0, if off > 0 then cpBefore(arr, off) else 0);
+      const rightOk =
+        edgeOk(lastCp, off + len < n, if off + len < n then cpAt(arr, off + len) else 0);
+      if leftOk && rightOk then return true;
+      var nxt = off + 1;
+      while nxt < n && (arr[nxt] & 0xC0) == 0x80 do nxt += 1;
+      scanFrom = nxt;
+    }
+    return false;
+  }
+
   private proc splice(const ref text: string,
                       const ref ranges: list((int, int))): string throws {
     var acc: string;

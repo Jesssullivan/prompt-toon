@@ -14,6 +14,7 @@ via self.skipTest() when it isn't present.
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import tempfile
@@ -233,6 +234,348 @@ printf '0\\n'
                 [],
             )
 
+    # --- condense-batch (C2d) stream-grammar and pre-spawn validation ---
+
+    @staticmethod
+    def _stream(*events: dict) -> bytes:
+        return b"".join(json.dumps(e).encode() + b"\n" for e in events)
+
+    @staticmethod
+    def _doc_event(i: int, withheld: bool = False, **extra) -> dict:
+        event = {
+            "event": "doc", "i": i, "source": "s", "trust_tier": "t",
+            "bytes": 1, "sha256": "0" * 64, "withheld": withheld,
+            "findings": [],
+        }
+        event.update(extra)
+        return event
+
+    @staticmethod
+    def _card(**extra) -> dict:
+        card = {
+            "claim": "claim",
+            "confidence": "low",
+            "evidence": "evidence",
+            "flags": [],
+            "id": "src-001",
+            "line_end": 1,
+            "line_start": 1,
+            "sha256": "0" * 64,
+            "source": "s",
+            "trust_tier": "t",
+        }
+        card.update(extra)
+        return card
+
+    @staticmethod
+    def _meta(**extra) -> dict:
+        meta = {
+            "source": "s",
+            "trust_tier": "t",
+            "bytes": 1,
+            "sha256": "0" * 64,
+        }
+        meta.update(extra)
+        return meta
+
+    def _parse(
+        self,
+        raw: bytes,
+        expected_docs: int,
+        *,
+        metas: list[dict] | None = None,
+        max_cards: int = 24,
+    ) -> list[dict]:
+        if metas is None:
+            metas = [self._meta() for _ in range(expected_docs)]
+        return engine_module.ChapelEngine._parse_stream(
+            raw, expected_docs, expected_meta=metas, max_cards=max_cards
+        )
+
+    def test_condense_batch_rejects_bad_policy_args_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/nonexistent"))
+        doc = [{"source": "s", "trust_tier": "t", "body": "x"}]
+        for kwargs in (
+            {"max_input_bytes": -1},
+            {"budget_ms": -1},
+            {"budget_ms": 5},              # budget without cap
+            {"max_cards": 0},
+            {"max_cards": -3},
+            {"max_input_bytes": True},     # bool is not an int here
+        ):
+            with self.assertRaises(ValueError):
+                engine.condense_batch(doc, **kwargs)
+
+    def test_condense_batch_rejects_bad_doc_shape_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/nonexistent"))
+        cases = [
+            ([None], "doc 0 must be a dict"),
+            ([{"source": "s", "trust_tier": "t"}], "missing required field 'body'"),
+            ([{"source": "s", "body": "x"}], "missing required field 'trust_tier'"),
+            ([{"source": 1, "trust_tier": "t", "body": "x"}], "must be strings"),
+            ([{"source": "s", "trust_tier": "t", "body": b"x"}], "must be strings"),
+        ]
+        for docs, pattern in cases:
+            with self.subTest(pattern=pattern):
+                with self.assertRaisesRegex(ValueError, pattern):
+                    engine.condense_batch(docs)
+
+    def test_parse_stream_accepts_wellformed_events(self):
+        card = self._card()
+        raw = self._stream(
+            self._doc_event(0, findings=["pattern-1"]),
+            {"event": "card", "i": 0, "card": card},
+            {"event": "end", "i": 0, "cards": 1},
+            self._doc_event(1, withheld=True, reason="input-cap"),
+            {"event": "end", "i": 1, "cards": 0},
+            {"event": "batch", "docs": 2, "cards": 1, "withheld": 1},
+        )
+        results = self._parse(raw, 2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["cards"], [card])
+        self.assertTrue(results[1]["withheld"])
+        self.assertEqual(results[1]["reason"], "input-cap")
+        self.assertNotIn("cards", results[1])
+
+    def test_parse_stream_rejects_out_of_order_doc_index(self):
+        raw = self._stream(
+            self._doc_event(1),
+            {"event": "end", "i": 1, "cards": 0},
+            {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(raw, 1)
+
+    def test_parse_stream_rejects_card_from_withheld_doc(self):
+        raw = self._stream(
+            self._doc_event(0, withheld=True, reason="budget"),
+            {"event": "card", "i": 0, "card": self._card()},
+            {"event": "end", "i": 0, "cards": 1},
+            {"event": "batch", "docs": 1, "cards": 0, "withheld": 1},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(raw, 1)
+
+    def test_parse_stream_rejects_spoofed_doc_event_types(self):
+        cases = {
+            "withheld-string": self._stream(
+                self._doc_event(0, withheld="false"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "bad-sha": self._stream(
+                self._doc_event(0, sha256="not-a-sha256"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "bad-findings": self._stream(
+                self._doc_event(0, findings=["ok", 7]),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "negative-bytes": self._stream(
+                self._doc_event(0, bytes=-1),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "non-string-source": self._stream(
+                self._doc_event(0, source=12),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "withheld-missing-reason": self._stream(
+                self._doc_event(0, withheld=True),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 1},
+            ),
+            "withheld-empty-reason": self._stream(
+                self._doc_event(0, withheld=True, reason=""),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 1},
+            ),
+            "non-withheld-reason": self._stream(
+                self._doc_event(0, reason="budget"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "withheld-findings": self._stream(
+                self._doc_event(0, withheld=True, reason="budget", findings=["secret"]),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 1},
+            ),
+            "withheld-bad-reason": self._stream(
+                self._doc_event(0, withheld=True, reason="leaked detail"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 1},
+            ),
+            "extra-doc-key": self._stream(
+                self._doc_event(0, raw="secret"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+        }
+        for name, raw in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(engine_module.EngineError):
+                    self._parse(raw, 1)
+
+    def test_parse_stream_rejects_doc_metadata_mismatch(self):
+        cases = {
+            "source": self._stream(
+                self._doc_event(0, source="spoofed"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "trust-tier": self._stream(
+                self._doc_event(0, trust_tier="operator"),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "bytes": self._stream(
+                self._doc_event(0, bytes=2),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "sha256": self._stream(
+                self._doc_event(0, sha256="1" * 64),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+        }
+        for name, raw in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(engine_module.EngineError):
+                    self._parse(raw, 1)
+
+    def test_parse_stream_rejects_spoofed_card_end_and_batch_types(self):
+        cases = {
+            "bad-card-payload": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": "not an object"},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "bad-card-index": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": True, "card": self._card()},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "extra-card-event-key": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(), "raw": "secret"},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "extra-card-object-key": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(raw="secret")},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "bad-card-flags": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(flags=["ok", 7])},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "bad-card-line-span": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(line_start=3, line_end=2)},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "card-source-mismatch": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(source="spoofed")},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "card-trust-tier-mismatch": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(trust_tier="operator")},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "card-sha-mismatch": self._stream(
+                self._doc_event(0),
+                {"event": "card", "i": 0, "card": self._card(sha256="1" * 64)},
+                {"event": "end", "i": 0, "cards": 1},
+                {"event": "batch", "docs": 1, "cards": 1, "withheld": 0},
+            ),
+            "bad-end-count": self._stream(
+                self._doc_event(0),
+                {"event": "end", "i": 0, "cards": True},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "extra-end-key": self._stream(
+                self._doc_event(0),
+                {"event": "end", "i": 0, "cards": 0, "raw": "secret"},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            ),
+            "bad-batch-docs": self._stream(
+                self._doc_event(0),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": True, "cards": 0, "withheld": 0},
+            ),
+            "extra-batch-key": self._stream(
+                self._doc_event(0),
+                {"event": "end", "i": 0, "cards": 0},
+                {"event": "batch", "docs": 1, "cards": 0, "withheld": 0, "raw": "secret"},
+            ),
+        }
+        for name, raw in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(engine_module.EngineError):
+                    self._parse(raw, 1)
+
+    def test_parse_stream_rejects_more_cards_than_policy_cap(self):
+        raw = self._stream(
+            self._doc_event(0),
+            {"event": "card", "i": 0, "card": self._card(id="src-001")},
+            {"event": "card", "i": 0, "card": self._card(id="src-002")},
+            {"event": "end", "i": 0, "cards": 2},
+            {"event": "batch", "docs": 1, "cards": 2, "withheld": 0},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(raw, 1, max_cards=1)
+
+    def test_parse_stream_rejects_end_count_mismatch(self):
+        raw = self._stream(
+            self._doc_event(0),
+            {"event": "end", "i": 0, "cards": 3},
+            {"event": "batch", "docs": 1, "cards": 3, "withheld": 0},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(raw, 1)
+
+    def test_parse_stream_rejects_missing_or_mismatched_batch_summary(self):
+        no_batch = self._stream(
+            self._doc_event(0),
+            {"event": "end", "i": 0, "cards": 0},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(no_batch, 1)
+        bad_tally = self._stream(
+            self._doc_event(0),
+            {"event": "end", "i": 0, "cards": 0},
+            {"event": "batch", "docs": 1, "cards": 5, "withheld": 0},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(bad_tally, 1)
+
+    def test_parse_stream_rejects_trailing_or_unterminated_output(self):
+        trailing = self._stream(
+            self._doc_event(0),
+            {"event": "end", "i": 0, "cards": 0},
+            {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+            {"event": "doc", "i": 9},
+        )
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(trailing, 1)
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(b'{"event":"batch"}', 0)
+
 
 class ChapelEngineBinaryDependentTests(unittest.TestCase):
     """Only runs meaningfully when a real ptoon binary build artifact is
@@ -295,6 +638,59 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
         docs = ["token=ghp_abcdefghijklmnopqrstuvwxyz", "plain text"]
         baseline = self.engine.redact_batch(docs)
         budgeted = self.engine.redact_batch(docs, max_input_bytes=10000, budget_ms=60000)
+        self.assertEqual(budgeted, baseline)
+
+    def test_condense_batch_matches_python_oracle_cards(self):
+        # C2d: sha256 of the RAW bytes, findings, and every card object must
+        # equal the Python oracle's cards_from_text for the same input.
+        import hashlib
+
+        from prompt_toon.cli import cards_from_text, redact_text as py_redact
+
+        body = (
+            "# Findings\n"
+            "- deploy MUST be approved by the owner\n"
+            "- see https://example.com/spec for details\n"
+            "token=ghp_abcdefghijklmnopqrstuvwxyz\n"
+            "plain closing line\n"
+        )
+        results = self.engine.condense_batch(
+            [{"source": "note.md", "trust_tier": "repo_source", "body": body}]
+        )
+        self.assertEqual(len(results), 1)
+        got = results[0]
+        raw = body.encode("utf-8")
+        self.assertFalse(got["withheld"])
+        self.assertEqual(got["sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(got["bytes"], len(raw))
+        self.assertEqual(got["findings"], py_redact(body)[1])
+        expected = cards_from_text(
+            "note.md", body, got["sha256"], "repo_source", 24, resolve_engine("python")
+        )
+        self.assertEqual(got["cards"], [card.as_dict() for card in expected])
+
+    def test_condense_batch_input_cap_withholds_without_cards(self):
+        # Fail-closed: an over-cap doc emits provenance (sha256/bytes) but
+        # nothing derived from the body -- no cards key at all.
+        small = {"source": "a", "trust_tier": "t", "body": "- fine MUST line"}
+        big = {"source": "b", "trust_tier": "t", "body": "x" * 5000}
+        results = self.engine.condense_batch([small, big], max_input_bytes=1000)
+        self.assertFalse(results[0]["withheld"])
+        self.assertIn("cards", results[0])
+        self.assertTrue(results[1]["withheld"])
+        self.assertEqual(results[1]["reason"], "input-cap")
+        self.assertNotIn("cards", results[1])
+        self.assertEqual(results[1]["findings"], [])
+
+    def test_condense_batch_generous_budget_matches_baseline(self):
+        docs = [
+            {"source": "a", "trust_tier": "t", "body": "- deploy MUST be approved"},
+            {"source": "b", "trust_tier": "t", "body": "plain text"},
+        ]
+        baseline = self.engine.condense_batch(docs)
+        budgeted = self.engine.condense_batch(
+            docs, max_input_bytes=10000, budget_ms=60000
+        )
         self.assertEqual(budgeted, baseline)
 
 
