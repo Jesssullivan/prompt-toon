@@ -37,6 +37,9 @@ sh_test(
     data = [
         ":delegation_policy",
         ":skills",
+        # TIN-2706: tests/test_manifest.py regenerates the manifest in-sandbox.
+        ":manifest_srcs",
+        "//tools/packaging:gen_manifest.py",
     ] + glob([
         "prompt_toon/**/*.py",
         "tests/**/*.py",
@@ -44,7 +47,26 @@ sh_test(
     ]),
 )
 
+# TIN-2706: everything the packaging-manifest generator reads, so the drift
+# gate can regenerate the manifest inside the test sandbox. Skill dirs are
+# represented by :skills (iterdir only needs the directories to exist in
+# runfiles, which their SKILL.md files guarantee).
+filegroup(
+    name = "manifest_srcs",
+    srcs = [
+        "MODULE.bazel",
+        "pyproject.toml",
+        "packaging/manifest.json",
+        "prompt_toon/__init__.py",
+        ":delegation_policy",
+        ":skills",
+    ],
+)
+
 test_suite(
     name = "ci_validation_suite",
-    tests = [":unit_tests"],
+    tests = [
+        ":unit_tests",
+        "//tools/packaging:manifest_drift_test",
+    ],
 )

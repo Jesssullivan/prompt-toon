@@ -435,6 +435,28 @@ bytes, tamper→quarantine→re-derive. Verdict `HOOK CANARY: PASS`. Residual
 (operator-side): the live-harness PostToolUse matcher probe (Task vs Agent
 naming) per the Sec8 note, and the Dhall policy flip itself.
 
+### Packaging-SSOT manifest — LANDED (TIN-2706, TIN-2046 pattern)
+
+`packaging/manifest.json` is the packaging truth the install lanes derive
+from, COMMITTED and drift-gated (the dhall→json artifact pattern: the only
+writer is `tools/packaging/gen_manifest.py`; `//tools/packaging:
+manifest_drift_test` regenerates + byte-diffs inside `bazel test //...`, so
+drift is a required-lane CI failure). Version SSOT = `prompt_toon/
+__init__.py:__version__` — pyproject derives it (setuptools dynamic), the
+nix derivations read it from the manifest (`lib.importJSON`), the shipped
+skill set is the manifest's `skills[]`, and the one residual static
+declaration (MODULE.bazel, cosmetic until the registry lane opens) is
+asserted equal by the generator. `policy[]` carries sha256 digests of the
+delegation/io SSOT artifacts, tying packaging integrity to INV-8.
+DETERMINISM SPLIT: the committed manifest is a pure function of repo
+content (`git_rev: UNSTAMPED`, targets[] sha256 null); the release lane
+re-runs the generator with `--git-rev/--tag/--ci-run/--with-binary` to
+stamp provenance and inject the real ptoon digest — GH-Release
+`source.json`, brew, and nfpm lanes consume the stamped emission. Lane
+flags in `derived_lanes`: nix/HM enabled; bazel-registry + GH Release
+phase gates OPEN since C2 (static binary exists) but not yet built;
+brew/rpm stay C3-gated.
+
 ### Decline (do not re-propose without new facts)
 
 - **Parallel pattern-sweep over the original text + disjointness guard.**
