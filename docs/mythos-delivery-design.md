@@ -385,7 +385,8 @@ identity-shaped is computed in-binary): `runId`, `generatedAt`,
 `minToonSavings` (raw JSON number string), `defaultTier`,
 `tierOverridesJson` (pre-serialized object). Header echoes that splice into
 JSON verbatim are grammar-checked fail-closed (no control chars — a raw
-newline would break JSONL framing; number charset; brace-delimited object).
+newline would break JSONL framing; RFC 8259 JSON-number grammar;
+brace-delimited object).
 After the per-doc events, the binary emits `{"event":"summary","text":…}`
 (Summary.chpl `renderSummary`, BYTE-exact vs Python `render_summary` — the
 golden's regex mask is a no-op when the gate passes

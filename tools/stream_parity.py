@@ -237,6 +237,11 @@ def assert_condense_header_rejected(binary: str) -> None:
     cases: dict[str, list[bytes]] = {
         "non-number-savings": [b"fixed-run-id", b"GENERATED_AT", b"abc", b"tier", b"{}"],
         "empty-savings": [b"fixed-run-id", b"GENERATED_AT", b"", b"tier", b"{}"],
+        "dangling-exponent-savings": [b"fixed-run-id", b"GENERATED_AT", b"1e", b"tier", b"{}"],
+        "signed-only-savings": [b"fixed-run-id", b"GENERATED_AT", b"-", b"tier", b"{}"],
+        "double-sign-savings": [b"fixed-run-id", b"GENERATED_AT", b"++1", b"tier", b"{}"],
+        "leading-zero-savings": [b"fixed-run-id", b"GENERATED_AT", b"01", b"tier", b"{}"],
+        "fraction-without-digit-savings": [b"fixed-run-id", b"GENERATED_AT", b"1.", b"tier", b"{}"],
         "newline-in-overrides": [b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b'{"a":\n"b"}'],
         "non-object-overrides": [b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b"[]"],
         "newline-in-savings": [b"fixed-run-id", b"GENERATED_AT", b"0.\n2", b"tier", b"{}"],
