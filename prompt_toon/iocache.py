@@ -21,6 +21,7 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
+import shutil
 import time
 from hashlib import sha256
 from pathlib import Path
@@ -78,7 +79,16 @@ def store(raw: bytes, settings: dict[str, Any], artifacts: dict[str, str]) -> Pa
     root = cache_root()
     secret = _secret(root)
     entry_dir = root / entry_key(raw, settings)
-    entry_dir.mkdir(parents=True, exist_ok=True)
+    if entry_dir.exists():
+        for child in entry_dir.iterdir():
+            if child.is_symlink() or child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
+    else:
+        entry_dir.mkdir(parents=True, exist_ok=True)
 
     (entry_dir / RAW_FILE).write_bytes(raw)
     for name, content in artifacts.items():
