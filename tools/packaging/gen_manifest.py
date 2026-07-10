@@ -156,8 +156,8 @@ def build_manifest(args: argparse.Namespace) -> dict:
                 "note": "phase gate OPEN since C2 (static binary exists); enabling = building the lane (source.json derives from targets[].sha256)",
             },
             "gh_release": {
-                "enabled": False,
-                "note": "phase gate OPEN since C2; stamped manifest emission is the release artifact input",
+                "enabled": True,
+                "note": "operated via `just release <version>` (remote-builder ptoon build + stamped manifest + gh release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
             },
             "brew": {"enabled": False, "note": "C3 phase gate"},
             "rpm_deb": {"enabled": False, "note": "C3 phase gate (nfpm)"},
