@@ -37,6 +37,17 @@ sys.path.insert(0, str(ROOT))
 from prompt_toon.cli import cards_from_text, redact_text, resolve_engine  # noqa: E402
 from prompt_toon.engine import ChapelEngine  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "tools"))
+from gen_golden import (  # noqa: E402
+    CONDENSE_CASES,
+    FIXED_RUN_ID,
+    TIMESTAMP_PLACEHOLDER,
+    mask_manifest_bytes,
+    mask_summary_text,
+)
+
+GOLDEN = ROOT / "fixtures" / "golden"
+
 TRUST_TIER = "untrusted_tool_output"
 MAX_CARDS = 24
 SYNTHETIC_INPUTS: list[tuple[str, bytes]] = [
@@ -209,11 +220,124 @@ def chapel_raw_card_json(binary: str, docs: list[tuple[str, str, bytes]]) -> lis
     return cards_by_doc
 
 
+def frame_condense_run(header_fields: list[bytes], docs: list[tuple[str, str, bytes]]) -> bytes:
+    parts: list[bytes] = []
+    for field in header_fields:
+        parts += [str(len(field)).encode(), b"\n", field]
+    parts += [frame(docs)]
+    return b"".join(parts)
+
+
+def assert_condense_header_rejected(binary: str) -> None:
+    """Malformed run headers must exit nonzero with NO stdout (fail-closed
+    before any event is emitted). The overrides/minToonSavings fields are
+    spliced verbatim into the manifest event, so their grammar checks are
+    load-bearing: a raw newline or a non-number would corrupt JSONL framing."""
+    good = [b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b"{}"]
+    cases: dict[str, list[bytes]] = {
+        "non-number-savings": [b"fixed-run-id", b"GENERATED_AT", b"abc", b"tier", b"{}"],
+        "empty-savings": [b"fixed-run-id", b"GENERATED_AT", b"", b"tier", b"{}"],
+        "dangling-exponent-savings": [b"fixed-run-id", b"GENERATED_AT", b"1e", b"tier", b"{}"],
+        "signed-only-savings": [b"fixed-run-id", b"GENERATED_AT", b"-", b"tier", b"{}"],
+        "double-sign-savings": [b"fixed-run-id", b"GENERATED_AT", b"++1", b"tier", b"{}"],
+        "leading-zero-savings": [b"fixed-run-id", b"GENERATED_AT", b"01", b"tier", b"{}"],
+        "fraction-without-digit-savings": [b"fixed-run-id", b"GENERATED_AT", b"1.", b"tier", b"{}"],
+        "newline-in-overrides": [b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b'{"a":\n"b"}'],
+        "non-object-overrides": [b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b"[]"],
+        "newline-in-savings": [b"fixed-run-id", b"GENERATED_AT", b"0.\n2", b"tier", b"{}"],
+    }
+    for name, header in cases.items():
+        payload = frame_condense_run(header, [])
+        proc = subprocess.run([binary, "condense"], input=payload, capture_output=True)
+        if proc.returncode == 0:
+            raise AssertionError(f"{name}: malformed run header unexpectedly succeeded")
+        if proc.stdout:
+            raise AssertionError(f"{name}: malformed run header wrote stdout")
+    truncated = frame_condense_run(good[:3], [])
+    proc = subprocess.run([binary, "condense"], input=truncated, capture_output=True)
+    if proc.returncode == 0 or proc.stdout:
+        raise AssertionError("truncated-header: malformed run header not rejected cleanly")
+
+
+def run_case_docs(case) -> list[dict[str, str]]:
+    docs = []
+    for name in case.inputs:
+        path = f"fixtures/inputs/{name}"
+        tier = case.tier_overrides.get(path, case.trust_tier)
+        body = (ROOT / path).read_bytes().decode("utf-8", errors="replace")
+        docs.append({"source": path, "trust_tier": tier, "body": body})
+    return docs
+
+
+def condense_run_parity(engine: ChapelEngine) -> tuple[list[str], int]:
+    """C2e: `ptoon condense` summary/manifest/cards vs the python-oracle
+    goldens gen_golden.py wrote. summary.md is BYTE-exact (regex mask only;
+    generated_at=GENERATED_AT makes it a no-op); manifest.json is compared
+    through the same structural mask/re-serialization the golden went
+    through; source-cards.jsonl is reassembled from per-doc results and
+    byte-diffed."""
+    rows = ["", "| condense case | summary.md | manifest.json | source-cards.jsonl |", "|---|---|---|---|"]
+    fails = 0
+    for case in CONDENSE_CASES:
+        golden_dir = GOLDEN / case.name
+        if not golden_dir.is_dir():
+            rows.append(f"| {case.name} | MISSING-GOLDEN | MISSING-GOLDEN | MISSING-GOLDEN |")
+            fails += 1
+            continue
+        results, summary_text, manifest = engine.condense_run(
+            run_case_docs(case),
+            run_id=FIXED_RUN_ID,
+            generated_at=TIMESTAMP_PLACEHOLDER,
+            tier_overrides=case.tier_overrides,
+            default_trust_tier=case.trust_tier,
+        )
+        summary_ok = (
+            mask_summary_text(summary_text).encode("utf-8")
+            == (golden_dir / "summary.md").read_bytes()
+        )
+        manifest_ok = (
+            mask_manifest_bytes(json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
+            == (golden_dir / "manifest.json").read_bytes()
+        )
+        cards_jsonl = "".join(
+            json.dumps(card, ensure_ascii=False, sort_keys=True) + "\n"
+            for result in results
+            for card in result.get("cards", [])
+        )
+        cards_ok = cards_jsonl.encode("utf-8") == (golden_dir / "source-cards.jsonl").read_bytes()
+        rows.append(
+            f"| {case.name} | {'PASS' if summary_ok else 'DIFF'} | "
+            f"{'PASS' if manifest_ok else 'DIFF'} | {'PASS' if cards_ok else 'DIFF'} |"
+        )
+        if not (summary_ok and manifest_ok and cards_ok):
+            fails += 1
+            if not summary_ok:
+                golden = (golden_dir / "summary.md").read_text(encoding="utf-8")
+                got = mask_summary_text(summary_text)
+                for j, (gl, gg) in enumerate(zip(golden.splitlines(), got.splitlines())):
+                    if gl != gg:
+                        print(f"SUMMARY DIFF {case.name} line {j}:\n  py: {gl!r}\n  ch: {gg!r}")
+                        break
+                if len(golden.splitlines()) != len(got.splitlines()):
+                    print(
+                        f"SUMMARY DIFF {case.name}: line count py={len(golden.splitlines())} "
+                        f"ch={len(got.splitlines())}"
+                    )
+            if not manifest_ok:
+                golden_obj = json.loads((golden_dir / "manifest.json").read_bytes())
+                for key in sorted(set(golden_obj) | set(manifest)):
+                    masked = manifest.get(key) if key != "generated_at" else TIMESTAMP_PLACEHOLDER
+                    if golden_obj.get(key) != masked:
+                        print(f"MANIFEST DIFF {case.name} key {key}:\n  py: {golden_obj.get(key)!r}\n  ch: {masked!r}")
+    return rows, fails
+
+
 def main() -> None:
     binary = _binary()
     assert_malformed_rejected(binary)
     assert_policy_args_rejected(binary)
     assert_bad_body_utf8_withheld(binary)
+    assert_condense_header_rejected(binary)
 
     files = sorted(p for p in INPUTS.iterdir() if p.is_file())
     if not files:
@@ -274,9 +398,16 @@ def main() -> None:
                         f"ch={len(raw_cards[i])}"
                     )
 
+    run_rows, run_fails = condense_run_parity(engine)
+    rows.extend(run_rows)
+
     print("\n".join(rows))
     print(f"\n{len(inputs)} fixture(s) — PASS={len(inputs) - fails}, DIFF={fails}")
-    if fails:
+    print(
+        f"{len(CONDENSE_CASES)} condense case(s) — "
+        f"PASS={len(CONDENSE_CASES) - run_fails}, DIFF={run_fails}"
+    )
+    if fails or run_fails:
         print("STREAM PARITY: FAIL")
         sys.exit(1)
     print("STREAM PARITY: PASS")

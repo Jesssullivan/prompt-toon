@@ -374,8 +374,36 @@ redaction. Say so plainly. As landed:
   Python `strip()` and `\s`; fan-in isolation). The gate also compares raw
   nested `card` JSON bytes directly from Chapel's JSONL stream, plus
   malformed-frame, bad-body-withholding, and policy-arg preflights.
-  Verdict line `STREAM PARITY: PASS`. Summary/manifest rendering and iocache
-  HMAC parity remain (next slice) — condense-batch emits cards only.
+  Verdict line `STREAM PARITY: PASS`. iocache HMAC parity remains (next
+  slice); summary/manifest landed as `ptoon condense` (C2e, below).
+
+### Run-level artifacts — LANDED as `ptoon condense` (TIN-2709 C2e)
+
+`condense` = `condense-batch` plus a five-field run header the caller
+supplies and the binary only ECHOES (determinism doctrine: nothing time- or
+identity-shaped is computed in-binary): `runId`, `generatedAt`,
+`minToonSavings` (raw JSON number string), `defaultTier`,
+`tierOverridesJson` (pre-serialized object). Header echoes that splice into
+JSON verbatim are grammar-checked fail-closed (no control chars — a raw
+newline would break JSONL framing; RFC 8259 JSON-number grammar;
+brace-delimited object).
+After the per-doc events, the binary emits `{"event":"summary","text":…}`
+(Summary.chpl `renderSummary`, BYTE-exact vs Python `render_summary` — the
+golden's regex mask is a no-op when the gate passes
+`generatedAt=GENERATED_AT`) and `{"event":"manifest","manifest":{…}}`
+(VALUE-exact: gen_golden's structural mask re-serializes through Python's
+json module, so compact sorted-key emission suffices), then the batch tally.
+Two more Python-`\s` ports ride in Summary.chpl as manual codepoint scans
+(the C2d U+1680 lesson): `OPEN_QUESTION_RE` and `rough_token_count` (the
+`format_analysis.jsonl_tokens` source). engine.py `condense_run` binds the
+run artifacts back to what was framed: id/generated_at echoes, `inputs[]`
+against per-doc sha256/bytes/source/tier, `mixed_trust_tiers`, and every
+settings echo — a drifted manifest raises, never returns. Gate: the
+stream-parity derivation now replays all 17 `gen_golden` CONDENSE_CASES
+(16 solo + the mixed-tier composite) through `ptoon condense` and diffs
+summary.md (byte), manifest.json (masked-structural), and a reassembled
+source-cards.jsonl (byte) against the existing python-oracle goldens, plus a
+malformed-run-header preflight.
 
 ### Decline (do not re-propose without new facts)
 
