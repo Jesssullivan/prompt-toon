@@ -20,6 +20,10 @@ of stdin as raw bytes:
   pattern names or empty>\\n`` then the redacted text verbatim, exit 0.
 - ``ptoon redact-batch`` -> writes length-prefixed per-document redaction
   results in input order; this is the C2b coforall fan-in entrypoint.
+- ``ptoon condense-batch`` -> triplet-framed docs in, JSONL doc/card/end/
+  batch events out (C2d streaming source cards).
+- ``ptoon condense`` -> condense-batch plus a caller-supplied run header;
+  adds one summary event and one manifest event (C2e run-level artifacts).
 - ``ptoon caps``      -> writes the engine-caps JSON to stdout, exit 0.
 - unknown subcommand  -> stderr message, exit 2.
 
@@ -271,21 +275,35 @@ class ChapelEngine:
         if max_cards <= 0:
             raise ValueError("condense_batch max_cards must be positive")
 
+        framed, expected_meta = self._frame_docs(docs)
+        extra_args: tuple[str, ...] = ()
+        if max_input_bytes or budget_ms or max_cards != 24:
+            extra_args = (str(max_input_bytes), str(budget_ms), str(max_cards))
+        raw = self._run_bytes("condense-batch", bytes(framed), extra_args)
+        return self._parse_stream(
+            raw, len(docs), expected_meta=expected_meta, max_cards=max_cards
+        )
+
+    @staticmethod
+    def _frame_docs(docs: list[dict[str, str]]) -> tuple[bytearray, list[dict[str, Any]]]:
+        """Triplet framing shared by condense_batch and condense_run, plus
+        the per-doc metadata used to bind the binary's doc events back to
+        the framed input (provenance binding)."""
         framed = bytearray()
         framed += f"{len(docs)}\n".encode("utf-8")
         expected_meta: list[dict[str, Any]] = []
         for index, doc in enumerate(docs):
             if not isinstance(doc, dict):
-                raise ValueError(f"condense_batch doc {index} must be a dict")
+                raise ValueError(f"condense doc {index} must be a dict")
             try:
                 fields = (doc["source"], doc["trust_tier"], doc["body"])
             except KeyError as exc:
                 raise ValueError(
-                    f"condense_batch doc {index} missing required field {exc.args[0]!r}"
+                    f"condense doc {index} missing required field {exc.args[0]!r}"
                 ) from exc
             if not all(isinstance(field, str) for field in fields):
                 raise ValueError(
-                    f"condense_batch doc {index} source, trust_tier, and body must be strings"
+                    f"condense doc {index} source, trust_tier, and body must be strings"
                 )
             source, trust_tier, body = fields
             body_bytes = body.encode("utf-8")
@@ -300,13 +318,112 @@ class ChapelEngine:
             for encoded in (source.encode("utf-8"), trust_tier.encode("utf-8"), body_bytes):
                 framed += f"{len(encoded)}\n".encode("utf-8")
                 framed += encoded
-        extra_args: tuple[str, ...] = ()
-        if max_input_bytes or budget_ms or max_cards != 24:
-            extra_args = (str(max_input_bytes), str(budget_ms), str(max_cards))
-        raw = self._run_bytes("condense-batch", bytes(framed), extra_args)
-        return self._parse_stream(
-            raw, len(docs), expected_meta=expected_meta, max_cards=max_cards
+        return framed, expected_meta
+
+    def condense_run(
+        self,
+        docs: list[dict[str, str]],
+        run_id: str,
+        generated_at: str,
+        max_input_bytes: int = 0,
+        budget_ms: int = 0,
+        max_cards: int = 24,
+        min_toon_savings: str = "0.2",
+        default_trust_tier: str = "untrusted_tool_output",
+        tier_overrides: dict[str, str] | None = None,
+    ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
+        """Run-level condensation (TIN-2709 C2e): condense_batch plus the
+        summary.md text and manifest object, rendered inside the binary.
+
+        The binary computes nothing time- or identity-shaped: ``run_id`` and
+        ``generated_at`` are echoed verbatim, as are the settings values the
+        manifest merely reports (``min_toon_savings`` as a raw JSON number
+        string, ``tier_overrides`` serialized here with json.dumps). Returns
+        ``(per_doc_results, summary_text, manifest)`` after cross-checking
+        the manifest's echoes and inputs[] against what was framed --
+        a spoofed or drifted manifest raises EngineError, never returns.
+        """
+        for name, value in (
+            ("run_id", run_id),
+            ("generated_at", generated_at),
+            ("min_toon_savings", min_toon_savings),
+            ("default_trust_tier", default_trust_tier),
+        ):
+            if not isinstance(value, str):
+                raise ValueError(f"condense_run {name} must be a string")
+        for name, value in (
+            ("max_input_bytes", max_input_bytes),
+            ("budget_ms", budget_ms),
+            ("max_cards", max_cards),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"condense_run {name} must be an int")
+        if max_input_bytes < 0 or budget_ms < 0:
+            raise ValueError("condense_run policy args must be nonnegative")
+        if budget_ms > 0 and max_input_bytes == 0:
+            raise ValueError("condense_run budget_ms requires positive max_input_bytes")
+        if max_cards <= 0:
+            raise ValueError("condense_run max_cards must be positive")
+        try:
+            parsed_savings = json.loads(min_toon_savings)
+        except json.JSONDecodeError as exc:
+            raise ValueError("condense_run min_toon_savings must be a JSON number") from exc
+        if isinstance(parsed_savings, bool) or not isinstance(parsed_savings, (int, float)):
+            raise ValueError("condense_run min_toon_savings must be a JSON number")
+        overrides = tier_overrides if tier_overrides is not None else {}
+        if not isinstance(overrides, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in overrides.items()
+        ):
+            raise ValueError("condense_run tier_overrides must be a dict[str, str]")
+        overrides_json = json.dumps(overrides, ensure_ascii=False, sort_keys=True,
+                                    separators=(",", ":"))
+
+        header = bytearray()
+        for field in (run_id, generated_at, min_toon_savings,
+                      default_trust_tier, overrides_json):
+            encoded = field.encode("utf-8")
+            header += f"{len(encoded)}\n".encode("utf-8")
+            header += encoded
+        framed, expected_meta = self._frame_docs(docs)
+        raw = self._run_bytes("condense", bytes(header) + bytes(framed), (
+            (str(max_input_bytes), str(budget_ms), str(max_cards))
+            if (max_input_bytes or budget_ms or max_cards != 24) else ()
+        ))
+        results, summary_text, manifest = self._parse_stream(
+            raw, len(docs), expected_meta=expected_meta, max_cards=max_cards,
+            expect_run_events=True,
         )
+
+        # Provenance binding for the run-level artifacts: every echo and
+        # every computed inputs[] entry must match what was framed.
+        if manifest.get("id") != run_id or manifest.get("generated_at") != generated_at:
+            raise EngineError("ptoon condense: manifest id/generated_at echo mismatch")
+        expected_inputs = [
+            {
+                "bytes": meta["bytes"],
+                "sha256": meta["sha256"],
+                "source": meta["source"],
+                "trust_tier": meta["trust_tier"],
+            }
+            for meta in expected_meta
+        ]
+        if manifest.get("inputs") != expected_inputs:
+            raise EngineError("ptoon condense: manifest inputs do not match framed docs")
+        distinct_tiers = {meta["trust_tier"] for meta in expected_meta}
+        if manifest.get("mixed_trust_tiers") != (len(distinct_tiers) > 1):
+            raise EngineError("ptoon condense: manifest mixed_trust_tiers mismatch")
+        settings = manifest.get("settings")
+        if (
+            not isinstance(settings, dict)
+            or settings.get("format") != "jsonl"
+            or settings.get("max_cards_per_input") != max_cards
+            or settings.get("min_toon_savings") != parsed_savings
+            or settings.get("trust_tier") != default_trust_tier
+            or settings.get("input_tier_overrides") != overrides
+            or settings.get("store_raw") is not False
+        ):
+            raise EngineError("ptoon condense: manifest settings echo mismatch")
+        return results, summary_text, manifest
 
     @staticmethod
     def _parse_stream(
@@ -314,13 +431,17 @@ class ChapelEngine:
         expected_docs: int,
         expected_meta: list[dict[str, Any]] | None = None,
         max_cards: int | None = None,
-    ) -> list[dict[str, Any]]:
+        expect_run_events: bool = False,
+    ) -> Any:
         """Parse the condense-batch JSONL event stream, enforcing the event
         grammar: for each doc IN ORDER, one `doc` event, then `card` events
         (non-withheld docs only), then one `end` event whose count must
         match; exactly one trailing `batch` event whose tallies must match.
-        Any grammar violation raises EngineError -- a malformed stream is
-        never partially trusted."""
+        With ``expect_run_events`` (the C2e `condense` subcommand), exactly
+        one `summary` event and one `manifest` event must sit between the
+        last doc's `end` and the `batch` tally, and the return value becomes
+        ``(results, summary_text, manifest)``. Any grammar violation raises
+        EngineError -- a malformed stream is never partially trusted."""
         if expected_meta is not None and len(expected_meta) != expected_docs:
             raise EngineError("ptoon condense-batch: expected metadata length mismatch")
         if max_cards is not None and (
@@ -549,6 +670,24 @@ class ChapelEngine:
                 total_cards += len(cards)
             results.append(doc)
 
+        summary_text: str | None = None
+        manifest: dict[str, Any] | None = None
+        if expect_run_events:
+            if pos >= len(events) or events[pos].get("event") != "summary":
+                raise EngineError("ptoon condense: missing summary event")
+            summary_event = events[pos]
+            pos += 1
+            reject_unknown_keys(summary_event, {"event", "text"}, "summary event")
+            summary_text = require_str(summary_event, "text", "summary event")
+            if pos >= len(events) or events[pos].get("event") != "manifest":
+                raise EngineError("ptoon condense: missing manifest event")
+            manifest_event = events[pos]
+            pos += 1
+            reject_unknown_keys(manifest_event, {"event", "manifest"}, "manifest event")
+            manifest = manifest_event.get("manifest")
+            if not isinstance(manifest, dict):
+                raise EngineError("ptoon condense: manifest event has invalid manifest")
+
         if pos >= len(events) or events[pos].get("event") != "batch":
             raise EngineError("ptoon condense-batch: missing trailing batch event")
         batch = events[pos]
@@ -564,6 +703,8 @@ class ChapelEngine:
             raise EngineError(
                 "ptoon condense-batch: batch summary tallies do not match events"
             )
+        if expect_run_events:
+            return results, summary_text, manifest
         return results
 
     def engine_caps(self) -> dict[str, Any]:

@@ -59,7 +59,9 @@ module Cards {
     "(?i)\\b(ignore previous|system:|developer:|assistant:|user:|tool:|" +
     "reveal secrets|exfiltrate|send to|curl\\s+http|base64)\\b");
 
-  private inline proc isPyWhitespace(cp: int(32)): bool {
+  /* Public (not private): Summary.chpl reuses this predicate for the
+   * OPEN_QUESTION_RE scan and rough_token_count port. */
+  inline proc isPyWhitespace(cp: int(32)): bool {
     if cp >= 0x09 && cp <= 0x0D then return true;
     if cp >= 0x1C && cp <= 0x1F then return true;
     if cp == 0x20 || cp == 0x85 || cp == 0xA0 || cp == 0x1680 then return true;
@@ -133,7 +135,9 @@ module Cards {
     }
     return false;
   }
-  private proc hasCritical(const ref s: string): bool throws {
+  /* Public (not private): Summary.chpl reuses this for constraint
+   * extraction over claim+"\n"+evidence (render_summary parity). */
+  proc hasCritical(const ref s: string): bool throws {
     return pySearchBounded(s, criticalGen);
   }
   private proc hasInjection(const ref s: string): bool throws {
