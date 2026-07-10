@@ -17,16 +17,19 @@
  *     no-trailing-empty-segment rule.
  *   - CRITICAL_RE and INJECTION_RE carry Python \b at both ends; RE2's \b is
  *     ASCII-only. Searched via Redact.pySearchBounded (RE2 candidates +
- *     Python Unicode edge revalidation). URL_RE has no \b: plain RE2 search.
- *   - Python str.strip()/rstrip() strip Unicode whitespace; inside a line
- *     post-normalization the only survivors are space and \t (NFKC folds the
- *     exotic spaces, CONTROL_RE strips the rest), and evidence joins add \n.
+ *     Python Unicode edge revalidation). The curl\s+http injection alternative
+ *     and URL_RE both need Python \s semantics too, so U+1680 is handled by
+ *     explicit CPython-whitespace checks rather than trusting RE2 \s.
+ *   - Python str.strip()/rstrip() strip Unicode whitespace. NFKC/control
+ *     stripping folds or removes most of it, but U+1680 survives and remains
+ *     whitespace to Python, so stripPy carries CPython's whitespace set.
  *   - clean_claim truncation counts CODEPOINTS (Python len/slice), not bytes.
  *
  * Cards read the REDACTED text (redaction precedes card extraction, INV-2);
  * the sha256 field carries the digest of the RAW input bytes (INV-1). */
 module Cards {
   use Regex, List, Set;
+  use Normalize;
   use Redact;
 
   record Card {
@@ -56,14 +59,85 @@ module Cards {
     "(?i)\\b(ignore previous|system:|developer:|assistant:|user:|tool:|" +
     "reveal secrets|exfiltrate|send to|curl\\s+http|base64)\\b");
 
+  private inline proc isPyWhitespace(cp: int(32)): bool {
+    if cp >= 0x09 && cp <= 0x0D then return true;
+    if cp >= 0x1C && cp <= 0x1F then return true;
+    if cp == 0x20 || cp == 0x85 || cp == 0xA0 || cp == 0x1680 then return true;
+    if cp >= 0x2000 && cp <= 0x200A then return true;
+    if cp == 0x2028 || cp == 0x2029 || cp == 0x202F ||
+       cp == 0x205F || cp == 0x3000 then return true;
+    return false;
+  }
+
+  private inline proc edgeOk(insideCp: int(32), hasOutside: bool,
+                             outsideCp: int(32)): bool {
+    const insideWord = isWordCp(insideCp);
+    const outsideWord = if hasOutside then isWordCp(outsideCp) else false;
+    return insideWord != outsideWord;
+  }
+
+  private inline proc asciiLower(cp: int(32)): int(32) {
+    if cp >= 0x41 && cp <= 0x5A then return cp + 0x20;
+    return cp;
+  }
+
+  private inline proc asciiEq(cp: int(32), ascii: int(32)): bool {
+    return asciiLower(cp) == ascii;
+  }
+
+  private proc hasCurlHttpPyWhitespace(const ref s: string): bool {
+    var cps = new list(int(32));
+    for cp in s.codepoints() do cps.pushBack(cp: int(32));
+    const n = cps.size;
+    for i in 0..<n {
+      if i + 4 >= n then break;
+      if !(asciiEq(cps[i], 0x63) && asciiEq(cps[i + 1], 0x75) &&
+           asciiEq(cps[i + 2], 0x72) && asciiEq(cps[i + 3], 0x6C)) then
+        continue;
+      if !edgeOk(cps[i], i > 0, if i > 0 then cps[i - 1] else 0) then
+        continue;
+      var j = i + 4;
+      if !isPyWhitespace(cps[j]) then continue;
+      while j < n && isPyWhitespace(cps[j]) do j += 1;
+      if j + 3 >= n then continue;
+      if !(asciiEq(cps[j], 0x68) && asciiEq(cps[j + 1], 0x74) &&
+           asciiEq(cps[j + 2], 0x74) && asciiEq(cps[j + 3], 0x70)) then
+        continue;
+      const last = j + 3;
+      if edgeOk(cps[last], last + 1 < n,
+                if last + 1 < n then cps[last + 1] else 0) then
+        return true;
+    }
+    return false;
+  }
+
   private proc hasUrl(const ref s: string): bool throws {
-    return urlGen.search(s).matched;
+    const b = s.encode();
+    const n = b.size;
+    var scanFrom = 0;
+    while scanFrom < n {
+      const tail = s.this((scanFrom: byteIndex)..);
+      const m = urlGen.search(tail);
+      if !m.matched then break;
+      const off = scanFrom + m.byteOffset: int;
+      const len = m.numBytes;
+      const matched = s.this((off: byteIndex)..<((off + len): byteIndex));
+      const restStart = if matched.startsWith("https://") then 8 else 7;
+      var firstRest = -1: int(32);
+      for cp in matched.this((restStart: byteIndex)..).codepoints() {
+        firstRest = cp: int(32);
+        break;
+      }
+      if firstRest >= 0 && !isPyWhitespace(firstRest) then return true;
+      scanFrom = off + 1;
+    }
+    return false;
   }
   private proc hasCritical(const ref s: string): bool throws {
     return pySearchBounded(s, criticalGen);
   }
   private proc hasInjection(const ref s: string): bool throws {
-    return pySearchBounded(s, injectionGen);
+    return pySearchBounded(s, injectionGen) || hasCurlHttpPyWhitespace(s);
   }
 
   /* Python str.splitlines() over normalized text: split on \n / NEL / LS /
@@ -85,22 +159,47 @@ module Cards {
     return lines;
   }
 
+  private proc stripPy(const ref s: string, leading: bool = true,
+                       trailing: bool = true): string throws {
+    var start = 0;
+    var end = 0;
+    var byteOff = 0;
+    var sawNonLeading = false;
+    for (cp, item) in zip(s.codepoints(), s.items()) {
+      const w = item.numBytes;
+      const ws = isPyWhitespace(cp: int(32));
+      if leading && !sawNonLeading && ws {
+        start = byteOff + w;
+      } else {
+        sawNonLeading = true;
+        if !trailing || !ws then end = byteOff + w;
+      }
+      byteOff += w;
+    }
+    if !trailing then end = byteOff;
+    if start >= end then return "";
+    return s.this((start: byteIndex)..<(end: byteIndex));
+  }
+
+  private inline proc isClaimMarkerPrefix(cp: int(32)): bool {
+    return cp == 0x2D || cp == 0x2A || cp == 0x23 || cp == 0x3E ||
+           cp == 0x2E || (cp >= 0x30 && cp <= 0x39) || isPyWhitespace(cp);
+  }
+
   /* clean_claim (cli.py:215-220): strip, drop the ^[-*#>\s0-9.]+ marker
    * prefix, strip again, truncate to 220 codepoints with a "..." tail. */
   private proc cleanClaim(const ref line: string): string throws {
-    var s = line.strip(" \t");
+    var s = stripPy(line);
     var drop = 0;
     for (cp, item) in zip(s.codepoints(), s.items()) {
-      if cp == 0x2D || cp == 0x2A || cp == 0x23 || cp == 0x3E ||
-         cp == 0x20 || cp == 0x09 || cp == 0x2E ||
-         (cp >= 0x30 && cp <= 0x39) {
+      if isClaimMarkerPrefix(cp: int(32)) {
         drop += item.numBytes;
       } else {
         break;
       }
     }
     if drop > 0 then s = s.this((drop: byteIndex)..);
-    s = s.strip(" \t");
+    s = stripPy(s);
     if s.size > 220 {
       var acc: string;
       var count = 0;
@@ -109,7 +208,7 @@ module Cards {
         acc += item;
         count += 1;
       }
-      return acc.strip(" \t", leading=false, trailing=true) + "...";
+      return stripPy(acc, leading=false, trailing=true) + "...";
     }
     return s;
   }
@@ -117,7 +216,7 @@ module Cards {
   /* line_excerpt (cli.py:209-212), radius 1: 1-based inclusive line span +
    * the joined excerpt stripped Python-style (leading/trailing \n included). */
   private proc lineExcerpt(const ref lines: list(string),
-                           idx: int): (int, int, string) {
+                           idx: int): (int, int, string) throws {
     const lo = max(0, idx - 1);
     const hi = min(lines.size, idx + 2);
     var ev: string;
@@ -125,7 +224,7 @@ module Cards {
       if j > lo then ev += "\n";
       ev += lines[j];
     }
-    return (lo + 1, hi, ev.strip(" \t\n"));
+    return (lo + 1, hi, stripPy(ev));
   }
 
   /* flags_for (cli.py:223-231): order is fixed — redacted, injection-shaped,
@@ -156,7 +255,7 @@ module Cards {
 
     var candidates = new list(int);
     for j in 0..<lines.size {
-      const stripped = lines[j].strip(" \t");
+      const stripped = stripPy(lines[j]);
       if stripped.size == 0 then continue;
       if hasCritical(stripped) || hasUrl(stripped) ||
          stripped.startsWith("-") || stripped.startsWith("*") ||
@@ -166,7 +265,7 @@ module Cards {
     if candidates.size == 0 {
       for j in 0..<lines.size {
         if candidates.size >= maxCards then break;
-        if lines[j].strip(" \t").size > 0 then candidates.pushBack(j);
+        if stripPy(lines[j]).size > 0 then candidates.pushBack(j);
       }
     }
 

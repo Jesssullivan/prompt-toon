@@ -39,6 +39,18 @@ from prompt_toon.engine import ChapelEngine  # noqa: E402
 
 TRUST_TIER = "untrusted_tool_output"
 MAX_CARDS = 24
+SYNTHETIC_INPUTS: list[tuple[str, bytes]] = [
+    (
+        "99-ogham-whitespace.txt",
+        "\N{OGHAM SPACE MARK}# MUST trim\N{OGHAM SPACE MARK}\n"
+        "\N{OGHAM SPACE MARK}".encode("utf-8"),
+    ),
+    (
+        "99-python-whitespace-regex.txt",
+        "curl\N{OGHAM SPACE MARK}http now\n"
+        "http://\N{OGHAM SPACE MARK}not-a-url".encode("utf-8"),
+    ),
+]
 
 
 def _binary() -> str:
@@ -61,7 +73,7 @@ def frame(docs: list[tuple[str, str, bytes]]) -> bytes:
 def assert_malformed_rejected(binary: str) -> None:
     cases = {
         "huge-count-before-allocation": b"999999999999999999999\n",
-        "count-exceeds-minimum-frame-size": b"5\n0\n0\n0\n",
+        "count-exceeds-minimum-triplet-frame-size": b"2\n0\n0\n0\n",
         "overrun-source": b"1\n10\nabc",
         "missing-fields": b"1\n1\ns\n",
         "trailing-bytes": b"0\ntrailing",
@@ -98,6 +110,48 @@ def assert_policy_args_rejected(binary: str) -> None:
             raise AssertionError(f"{name}: malformed policy args wrote stdout")
 
 
+def assert_bad_body_utf8_withheld(binary: str) -> None:
+    raw_body = b"\xff"
+    proc = subprocess.run(
+        [binary, "condense-batch"],
+        input=frame([("bad-body.txt", TRUST_TIER, raw_body)]),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "bad-utf8-body: expected per-doc withholding, got nonzero exit "
+            f"{proc.returncode}: {proc.stderr.decode(errors='replace')}"
+        )
+    if proc.stderr:
+        raise AssertionError(
+            f"bad-utf8-body: expected silent success, got stderr {proc.stderr!r}"
+        )
+    digest = hashlib.sha256(raw_body).hexdigest()
+    [got] = ChapelEngine._parse_stream(
+        proc.stdout,
+        1,
+        expected_meta=[
+            {
+                "source": "bad-body.txt",
+                "trust_tier": TRUST_TIER,
+                "bytes": len(raw_body),
+                "sha256": digest,
+            }
+        ],
+        max_cards=MAX_CARDS,
+    )
+    if not got.get("withheld") or got.get("reason") != "condense-error":
+        raise AssertionError(f"bad-utf8-body: expected condense-error withholding, got {got}")
+    if "cards" in got:
+        raise AssertionError("bad-utf8-body: withheld doc emitted cards")
+    if got.get("sha256") != digest:
+        raise AssertionError("bad-utf8-body: sha256 did not cover raw body bytes")
+    if got.get("bytes") != len(raw_body):
+        raise AssertionError("bad-utf8-body: bytes did not cover raw body bytes")
+    if got.get("findings") != []:
+        raise AssertionError("bad-utf8-body: withheld malformed text emitted findings")
+
+
 def oracle_expectations(name: str, data: bytes) -> tuple[str, list[str], list[str]]:
     """Python-oracle (sha256, findings, card json lines) for one input."""
     text = data.decode("utf-8", errors="replace")
@@ -120,10 +174,46 @@ def chapel_results(engine: ChapelEngine, docs: list[tuple[str, str, bytes]]) -> 
     )
 
 
+def chapel_raw_card_json(binary: str, docs: list[tuple[str, str, bytes]]) -> list[list[str]]:
+    proc = subprocess.run(
+        [binary, "condense-batch", "0", "0", str(MAX_CARDS)],
+        input=frame(docs),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "raw-card-json: condense-batch failed "
+            f"{proc.returncode}: {proc.stderr.decode(errors='replace')}"
+        )
+    if proc.stderr:
+        raise AssertionError(f"raw-card-json: condense-batch wrote stderr {proc.stderr!r}")
+
+    cards_by_doc: list[list[str]] = [[] for _ in docs]
+    marker = b',"card":'
+    for line in proc.stdout.splitlines():
+        event = json.loads(line.decode("utf-8"))
+        if event.get("event") != "card":
+            continue
+        doc_i = event.get("i")
+        if (
+            not isinstance(doc_i, int)
+            or isinstance(doc_i, bool)
+            or doc_i < 0
+            or doc_i >= len(docs)
+        ):
+            raise AssertionError(f"raw-card-json: invalid card doc index {doc_i!r}")
+        start = line.find(marker)
+        if start == -1 or not line.endswith(b"}"):
+            raise AssertionError(f"raw-card-json: malformed card event line {line!r}")
+        cards_by_doc[doc_i].append(line[start + len(marker) : -1].decode("utf-8"))
+    return cards_by_doc
+
+
 def main() -> None:
     binary = _binary()
     assert_malformed_rejected(binary)
     assert_policy_args_rejected(binary)
+    assert_bad_body_utf8_withheld(binary)
 
     files = sorted(p for p in INPUTS.iterdir() if p.is_file())
     if not files:
@@ -131,17 +221,19 @@ def main() -> None:
         sys.exit(0)
 
     engine = ChapelEngine(Path(binary))
-    docs = [(f.name, TRUST_TIER, f.read_bytes()) for f in files]
+    inputs = [(f.name, f.read_bytes()) for f in files] + SYNTHETIC_INPUTS
+    docs = [(name, TRUST_TIER, data) for name, data in inputs]
 
     batch = chapel_results(engine, docs)
+    raw_cards = chapel_raw_card_json(binary, docs)
     if len(batch) != len(docs):
         print(f"FAIL: batch returned {len(batch)} docs, expected {len(docs)}")
         sys.exit(1)
 
     rows = ["| fixture | sha256 | findings | cards | solo==batch |", "|---|---|---|---|---|"]
     fails = 0
-    for i, f in enumerate(files):
-        exp_digest, exp_findings, exp_cards = oracle_expectations(f.name, docs[i][2])
+    for i, (name, data) in enumerate(inputs):
+        exp_digest, exp_findings, exp_cards = oracle_expectations(name, data)
         got = batch[i]
 
         sha_ok = got.get("sha256") == exp_digest
@@ -150,14 +242,15 @@ def main() -> None:
             json.dumps(card, ensure_ascii=False, sort_keys=True)
             for card in got.get("cards", [])
         ]
-        cards_ok = got_cards == exp_cards
+        raw_cards_ok = raw_cards[i] == exp_cards
+        cards_ok = got_cards == exp_cards and raw_cards_ok
 
         solo = chapel_results(engine, [docs[i]])[0]
         solo["i"] = got["i"] = 0  # position differs by construction; rest must not
         solo_ok = solo == got
 
         rows.append(
-            f"| {f.name} | {'PASS' if sha_ok else 'DIFF'} | "
+            f"| {name} | {'PASS' if sha_ok else 'DIFF'} | "
             f"{'PASS' if findings_ok else 'DIFF'} | {'PASS' if cards_ok else 'DIFF'} | "
             f"{'PASS' if solo_ok else 'DIFF'} |"
         )
@@ -166,14 +259,23 @@ def main() -> None:
             if got_cards != exp_cards:
                 for j, (exp, gotc) in enumerate(zip(exp_cards, got_cards)):
                     if exp != gotc:
-                        print(f"DIFF {f.name} card {j}:\n  py: {exp}\n  ch: {gotc}")
+                        print(f"DIFF {name} card {j}:\n  py: {exp}\n  ch: {gotc}")
                 if len(exp_cards) != len(got_cards):
                     print(
-                        f"DIFF {f.name}: card count py={len(exp_cards)} ch={len(got_cards)}"
+                        f"DIFF {name}: card count py={len(exp_cards)} ch={len(got_cards)}"
+                    )
+            if raw_cards[i] != exp_cards:
+                for j, (exp, gotc) in enumerate(zip(exp_cards, raw_cards[i])):
+                    if exp != gotc:
+                        print(f"RAW DIFF {name} card {j}:\n  py: {exp}\n  ch: {gotc}")
+                if len(exp_cards) != len(raw_cards[i]):
+                    print(
+                        f"RAW DIFF {name}: card count py={len(exp_cards)} "
+                        f"ch={len(raw_cards[i])}"
                     )
 
     print("\n".join(rows))
-    print(f"\n{len(files)} fixture(s) — PASS={len(files) - fails}, DIFF={fails}")
+    print(f"\n{len(inputs)} fixture(s) — PASS={len(inputs) - fails}, DIFF={fails}")
     if fails:
         print("STREAM PARITY: FAIL")
         sys.exit(1)

@@ -347,6 +347,14 @@ redaction. Say so plainly. As landed:
   Redact.pySearchBounded, codepoint-counted claim truncation, and Python JSON
   string escaping. Stream records carry **no timestamps and no run ids**:
   output is a pure function of (input, policy args).
+- **Engine parser** (`prompt_toon/engine.py:_parse_stream`) treats that JSONL
+  as a closed event grammar, not an open bag of fields: doc/card/end/batch
+  event keys are allowlisted, bools are not accepted as ints, doc metadata
+  must match the framed input (`source`, `trust_tier`, raw byte count, raw
+  sha256), card provenance must match the enclosing doc, withheld docs must
+  carry an allowed non-empty reason with empty findings and no cards, and card
+  count may not exceed `maxCards`. Malformed streams raise `EngineError`
+  rather than returning partial or body-derived data.
 - **Output-side streaming, honestly scoped**: doc i's events are written as
   soon as doc i completes and docs 0..i-1 have been written (sync-slot array +
   a concurrent writer task draining in input order while later docs compute).
@@ -361,8 +369,11 @@ redaction. Say so plainly. As landed:
   never emitted for a withheld doc (INV-5).
 - **Gate**: `tools/stream_parity.py` (in the ptoon-parity derivation, remote
   builder): per fixture, chapel cards ≡ python-oracle `cards_from_text`
-  (sha256 + findings + every card object) AND solo-batch ≡ 18-doc-batch
-  results (fan-in isolation); plus malformed-frame and policy-arg preflights.
+  (sha256 + findings + every card object) AND solo-batch ≡ 20-doc-batch
+  results (18 generated fixtures + U+1680 whitespace parity edges for
+  Python `strip()` and `\s`; fan-in isolation). The gate also compares raw
+  nested `card` JSON bytes directly from Chapel's JSONL stream, plus
+  malformed-frame, bad-body-withholding, and policy-arg preflights.
   Verdict line `STREAM PARITY: PASS`. Summary/manifest rendering and iocache
   HMAC parity remain (next slice) — condense-batch emits cards only.
 

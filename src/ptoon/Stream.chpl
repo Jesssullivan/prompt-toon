@@ -70,9 +70,11 @@ module Stream {
     var pos = 0;
     const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("condense-batch: negative document count");
-    // Minimum frame per doc is three "0\n" fields.
-    if n > (total - pos) / 2 then
-      throw new Error("condense-batch: document count overruns input before allocation");
+    // Minimum frame per doc is three "0\n" fields (source, tier, body).
+    // Bound allocation by the maximum number of triplets the remaining frame
+    // could possibly encode, not by raw bytes.
+    if n > (total - pos) / 6 then
+      throw new Error("condense-batch: document count exceeds possible frame size before allocation");
     var docs: [0..<n] StreamDoc;
 
     proc readField(ref pos: int, what: string, docIdx: int): bytes throws {
@@ -165,7 +167,8 @@ module Stream {
               const (red, finds) = redactText(text);
               const docCards = cardsFromText(d.source, red, finds.size > 0,
                                              digest, d.tier, maxCards);
-              if budgetMs > 0 && sw.elapsed() * 1000.0 > budgetMs: real {
+              const elapsedMs = sw.elapsed() * 1000.0;
+              if budgetMs > 0 && elapsedMs > (budgetMs: real) {
                 // Fail-closed budget: discard cards + redaction, withhold.
                 acc = docEventJson(i, d, digest, true, "budget", noFindings) +
                       endEventJson(i, 0);
