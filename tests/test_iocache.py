@@ -77,6 +77,48 @@ class IoCacheTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             iocache.store(RAW, SETTINGS, {"../escape": "x"})
 
+    # --- format-stability goldens (TIN-2709 C2f: "iocache HMAC parity") ---
+    # The cache stays PYTHON-owned (design record Sec8): the ptoon binary's
+    # stream output is deterministic and is the cache VALUE; key derivation,
+    # digest-map canonicalization, and the HMAC live here. These literals pin
+    # the on-disk format — if any of them drifts, every fleet cache entry
+    # silently misses (or worse, a format change masquerades as tampering),
+    # so drift must be a reviewed, versioned decision, never an accident.
+
+    def test_entry_key_format_golden(self):
+        raw = b"golden raw bytes\n"
+        settings = {"engine": "chapel", "format_version": 1,
+                    "max_cards": 24, "tier": "subagent_return"}
+        self.assertEqual(
+            iocache.entry_key(raw, settings),
+            "4f46d9533d9d289f7536b035aa6c32bb089121fc486d11abdfa3e558be498fda"
+            "-17ec9d68a48762d4",
+        )
+
+    def test_mac_format_golden(self):
+        digests = {"entry.json": "aa" * 32, "raw.bin": "bb" * 32,
+                   "summary.md": "cc" * 32}
+        self.assertEqual(
+            iocache._mac(b"\x42" * 32, digests),
+            "7512b9a3443d75c3016849c2a73466fe87fa150a197136d4c12bb18adb965c78",
+        )
+
+    def test_store_then_load_with_fixed_secret_roundtrips(self):
+        # End-to-end with a pinned secret: the MAC file must verify on load
+        # even across the entry.json timestamp (digest map covers content).
+        root = iocache.cache_root()
+        root.mkdir(parents=True, exist_ok=True)
+        key = root / ".key"
+        key.touch(mode=0o600)
+        key.write_bytes(b"\x42" * 32)
+        key.chmod(0o600)
+        raw = b"golden raw bytes\n"
+        settings = {"engine": "chapel", "format_version": 1}
+        iocache.store(raw, settings, {"summary.md": "# s\n"})
+        got = iocache.load(raw, settings)
+        self.assertIsNotNone(got)
+        self.assertEqual(got["artifacts"]["summary.md"], "# s\n")
+
     def test_savings_gate_blocks_inflation(self):
         raw_text = "word " * 50
         self.assertFalse(iocache.beats_margin(raw_text, raw_text + "extra tokens appended", 0.25))

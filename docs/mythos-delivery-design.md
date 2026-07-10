@@ -405,6 +405,36 @@ summary.md (byte), manifest.json (masked-structural), and a reassembled
 source-cards.jsonl (byte) against the existing python-oracle goldens, plus a
 malformed-run-header preflight.
 
+### iocache + hook adapter — LANDED, cache stays Python-owned (TIN-2709 C2f)
+
+**Decision (the plan's sanctioned fallback, recorded honestly): the HMAC
+cache is NOT reproduced in Chapel.** The binary's stream output is a pure
+function of (input, policy, run header) — the perfect cache VALUE; key
+derivation, digest-map canonicalization, and the HMAC (plus its 0600
+store-local secret) stay in prompt_toon/iocache.py, whose on-disk format is
+now pinned by literal goldens (tests/test_iocache.py: exact entry_key
+string, exact MAC hex under a fixed key) so drift is a reviewed decision,
+never an accident. Putting secret handling inside the binary would widen
+its surface for zero throughput gain — caching is an orchestration concern.
+
+`hooks/post_tool_condense.py` is the production-shaped hook (the TIN-2699
+spike stays as the live-firing evidence probe): policy-gated on io.json's
+enforcement gate + `subagent` surface (flipping the fleet policy remains a
+Dhall-side operator change, INV-8), Task/Agent text extraction (the spike's
+proven contract), token-threshold + beats_margin gates (never inflates, by
+construction), iocache-first with authenticated serve and
+quarantine-on-tamper (INV-6), derivation via ChapelEngine.condense_run with
+the policy's cap/budget as the binary's fail-closed args, deliberate
+NO-Python-fallback (binary absent ⇒ fail open, raw passes), a withheld doc
+⇒ no rewrite (nothing half-redacted is ever emitted), JSONL audit trail.
+
+Gate: tools/hook_canary.py in the ptoon-parity derivation — locked-policy
+no-op, binary-absent fail-open, rewrite shape (provenance header, INV-3
+tier tags, INV-4 defang), planted-secret never-leak, miss→hit identical
+bytes, tamper→quarantine→re-derive. Verdict `HOOK CANARY: PASS`. Residual
+(operator-side): the live-harness PostToolUse matcher probe (Task vs Agent
+naming) per the Sec8 note, and the Dhall policy flip itself.
+
 ### Decline (do not re-propose without new facts)
 
 - **Parallel pattern-sweep over the original text + disjointness guard.**
