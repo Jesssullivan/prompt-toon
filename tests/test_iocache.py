@@ -119,6 +119,20 @@ class IoCacheTests(unittest.TestCase):
         self.assertIsNotNone(got)
         self.assertEqual(got["artifacts"]["summary.md"], "# s\n")
 
+    def test_store_replaces_stale_artifacts_before_hmac(self):
+        raw = b"golden raw bytes\n"
+        settings = {"engine": "chapel", "format_version": 1}
+        entry_dir = iocache.store(
+            raw,
+            settings,
+            {"summary.md": "# old\n", "stale-extra.txt": "do not authenticate\n"},
+        )
+        iocache.store(raw, settings, {"summary.md": "# new\n"})
+        got = iocache.load(raw, settings)
+        self.assertIsNotNone(got)
+        self.assertEqual(got["artifacts"], {"summary.md": "# new\n"})
+        self.assertFalse((entry_dir / "stale-extra.txt").exists())
+
     def test_savings_gate_blocks_inflation(self):
         raw_text = "word " * 50
         self.assertFalse(iocache.beats_margin(raw_text, raw_text + "extra tokens appended", 0.25))
