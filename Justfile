@@ -53,6 +53,32 @@ package-smoke-local:
 manifest:
     cd {{root}} && python3 tools/packaging/gen_manifest.py
 
+# TIN-2706 gh_release lane: local-operated release. Builds ptoon on the
+# remote substrate (never local chpl), stamps the manifest with provenance
+# + the real binary digest, tags, and publishes a GitHub Release whose
+# assets the derived lanes (brew/nfpm/bazel-registry source.json) key off.
+# CI tag-push automation stays gated on a publicly reachable chapel cache.
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{root}}
+    [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "release from main only" >&2; exit 1; }
+    git diff --quiet && git diff --cached --quiet || { echo "release requires a clean tree" >&2; exit 1; }
+    [ "$(python3 -c 'import prompt_toon; print(prompt_toon.__version__)')" = "{{version}}" ] || { echo "SSOT version != {{version}}; bump prompt_toon/__init__.py first" >&2; exit 1; }
+    python3 tools/packaging/gen_manifest.py --check
+    nix build .#packages.x86_64-linux.ptoon --print-build-logs
+    rev="$(git rev-parse HEAD)"
+    stage="$(mktemp -d)"
+    cp -L result/bin/ptoon "$stage/ptoon-x86_64-linux"
+    chmod +w "$stage/ptoon-x86_64-linux" >/dev/null 2>&1 || true
+    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "v{{version}}" --with-binary "$stage/ptoon-x86_64-linux" > "$stage/manifest-v{{version}}.json"
+    git tag -a "v{{version}}" -m "prompt-toon v{{version}}" "$rev"
+    git push origin "v{{version}}"
+    gh release create "v{{version}}" "$stage/ptoon-x86_64-linux" "$stage/manifest-v{{version}}.json" \
+      --title "prompt-toon v{{version}}" \
+      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon asset. Built on the remote x86_64-linux substrate; parity + hook canary gates green at $rev."
+    echo "released v{{version}} at $rev"
+
 build-ptoon:
     cd {{root}} && nix build .#packages.x86_64-linux.ptoon --print-build-logs
 
