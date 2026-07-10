@@ -49,8 +49,8 @@
  * the document body.
  */
 module Stream {
-  use IO, List, CTypes, Time;
-  use Batch, Redact, Cards, Sha256;
+  use IO, List, Set, CTypes, Time;
+  use Batch, Redact, Cards, Sha256, Summary;
 
   record StreamDoc {
     var source: string;
@@ -134,6 +134,66 @@ module Stream {
            ',"cards":' + nCards: string + "}\n";
   }
 
+  /* Per-document outcome: the rendered event block plus what run-level
+   * aggregation (C2e summary/manifest) needs. `cards` is retained ONLY for
+   * non-withheld docs — a withheld doc contributes nothing body-derived
+   * (INV-5), just its digest/withheld flag. */
+  record DocOutcome {
+    var block: string;
+    var cards: list(Card);
+    var digest: string;
+    var withheld: bool;
+  }
+
+  /* One document through the full fail-closed policy: cap check before
+   * decode/redaction, completion-time budget withhold, catch-all
+   * condense-error withhold. Shared verbatim by condense-batch (C2d) and
+   * condense (C2e) so the two surfaces cannot drift. `sw` is the shared
+   * batch stopwatch (concurrent read-only elapsed() calls, the proven
+   * Batch.chpl idiom). */
+  private proc processDoc(i: int, const ref d: StreamDoc, maxInputBytes: int,
+                          budgetMs: int, maxCards: int,
+                          const ref sw: stopwatch): DocOutcome {
+    var outc: DocOutcome;
+    outc.digest = sha256Hex(d.body);
+    const noFindings = new list(string);
+    if maxInputBytes > 0 && d.body.size > maxInputBytes {
+      // Fail-closed input cap: withhold before decode/redaction.
+      outc.block = docEventJson(i, d, outc.digest, true, "input-cap", noFindings) +
+                   endEventJson(i, 0);
+      outc.withheld = true;
+    } else {
+      try {
+        const text = d.body.decode();
+        const (red, finds) = redactText(text);
+        const docCards = cardsFromText(d.source, red, finds.size > 0,
+                                       outc.digest, d.tier, maxCards);
+        const elapsedMs = sw.elapsed() * 1000.0;
+        if budgetMs > 0 && elapsedMs > (budgetMs: real) {
+          // Fail-closed budget: discard cards + redaction, withhold.
+          outc.block = docEventJson(i, d, outc.digest, true, "budget", noFindings) +
+                       endEventJson(i, 0);
+          outc.withheld = true;
+        } else {
+          var acc = docEventJson(i, d, outc.digest, false, "", finds);
+          for c in docCards do
+            acc += '{"event":"card","i":' + i: string +
+                   ',"card":' + cardJson(c) + "}\n";
+          acc += endEventJson(i, docCards.size);
+          outc.block = acc;
+          outc.cards = docCards;
+        }
+      } catch e {
+        // Fail-closed: bad UTF-8 / redaction / card failure => nothing
+        // derived from the body is emitted.
+        outc.block = docEventJson(i, d, outc.digest, true, "condense-error", noFindings) +
+                     endEventJson(i, 0);
+        outc.withheld = true;
+      }
+    }
+    return outc;
+  }
+
   /* Condense N documents concurrently, emitting JSONL incrementally in input
    * order. One qthreads task per document (cross-document parallelism only —
    * purple-team F1 doctrine; each doc runs the full sequential redactText).
@@ -152,44 +212,11 @@ module Stream {
     cobegin {
       {
         coforall i in 0..<n {
-          const ref d = docs[i];
-          const digest = sha256Hex(d.body);
-          const noFindings = new list(string);
-          var acc: string;
-          if maxInputBytes > 0 && d.body.size > maxInputBytes {
-            // Fail-closed input cap: withhold before decode/redaction.
-            acc = docEventJson(i, d, digest, true, "input-cap", noFindings) +
-                  endEventJson(i, 0);
-            withheldCount.add(1);
-          } else {
-            try {
-              const text = d.body.decode();
-              const (red, finds) = redactText(text);
-              const docCards = cardsFromText(d.source, red, finds.size > 0,
-                                             digest, d.tier, maxCards);
-              const elapsedMs = sw.elapsed() * 1000.0;
-              if budgetMs > 0 && elapsedMs > (budgetMs: real) {
-                // Fail-closed budget: discard cards + redaction, withhold.
-                acc = docEventJson(i, d, digest, true, "budget", noFindings) +
-                      endEventJson(i, 0);
-                withheldCount.add(1);
-              } else {
-                acc = docEventJson(i, d, digest, false, "", finds);
-                for c in docCards do
-                  acc += '{"event":"card","i":' + i: string +
-                         ',"card":' + cardJson(c) + "}\n";
-                acc += endEventJson(i, docCards.size);
-                totalCards.add(docCards.size);
-              }
-            } catch e {
-              // Fail-closed: bad UTF-8 / redaction / card failure => nothing
-              // derived from the body is emitted.
-              acc = docEventJson(i, d, digest, true, "condense-error", noFindings) +
-                    endEventJson(i, 0);
-              withheldCount.add(1);
-            }
-          }
-          slots[i].writeEF(acc);
+          const outc = processDoc(i, docs[i], maxInputBytes, budgetMs,
+                                  maxCards, sw);
+          if outc.withheld then withheldCount.add(1);
+          else totalCards.add(outc.cards.size);
+          slots[i].writeEF(outc.block);
         }
       }
       {
@@ -201,5 +228,203 @@ module Stream {
     stdout.write('{"event":"batch","docs":' + n: string +
                  ',"cards":' + totalCards.read(): string +
                  ',"withheld":' + withheldCount.read(): string + "}\n");
+  }
+
+  /* C2e run header: five caller-supplied fields the binary echoes but never
+   * computes (determinism doctrine). minToonSavings and tierOverridesJson
+   * are spliced VERBATIM into the manifest event's JSON, so they are
+   * grammar-checked fail-closed here: no control characters (a raw newline
+   * would break JSONL framing), minToonSavings must look like a bare JSON
+   * number, tierOverridesJson must be brace-delimited. Semantic validity of
+   * the overrides object stays with the caller (engine.py builds it with
+   * json.dumps; the manifest gate re-parses and would reject corruption). */
+  record CondenseRunHeader {
+    var runId: string;
+    var generatedAt: string;
+    var minToonSavings: string;
+    var defaultTier: string;
+    var tierOverridesJson: string;
+  }
+
+  private proc checkNoControlChars(const ref s: string, what: string) throws {
+    for cp in s.codepoints() {
+      if cp: int(32) < 0x20 then
+        throw new Error("condense: control character in " + what);
+    }
+  }
+
+  private inline proc isDigitCp(cp: int(32)): bool {
+    return cp >= 0x30 && cp <= 0x39;
+  }
+
+  private inline proc isDigitOneToNineCp(cp: int(32)): bool {
+    return cp >= 0x31 && cp <= 0x39;
+  }
+
+  private proc checkJsonNumber(const ref s: string) throws {
+    if s.size == 0 then throw new Error("condense: empty minToonSavings");
+
+    var cps = new list(int(32));
+    for cp0 in s.codepoints() do cps.pushBack(cp0: int(32));
+    const n = cps.size;
+    var i = 0;
+
+    // RFC 8259 number grammar:
+    // number = [ minus ] int [ frac ] [ exp ]
+    // int    = zero / ( digit1-9 *DIGIT )
+    // frac   = "." 1*DIGIT
+    // exp    = ("e" / "E") [ minus / plus ] 1*DIGIT
+    if cps[i] == 0x2D {  // -
+      i += 1;
+      if i >= n then
+        throw new Error("condense: minToonSavings is not a JSON number");
+    }
+
+    if cps[i] == 0x30 {  // 0
+      i += 1;
+      if i < n && isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+    } else if isDigitOneToNineCp(cps[i]) {
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    } else {
+      throw new Error("condense: minToonSavings is not a JSON number");
+    }
+
+    if i < n && cps[i] == 0x2E {  // .
+      i += 1;
+      if i >= n || !isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    }
+
+    if i < n && (cps[i] == 0x65 || cps[i] == 0x45) {  // e/E
+      i += 1;
+      if i < n && (cps[i] == 0x2D || cps[i] == 0x2B) then i += 1;
+      if i >= n || !isDigitCp(cps[i]) then
+        throw new Error("condense: minToonSavings is not a JSON number");
+      while i < n && isDigitCp(cps[i]) do i += 1;
+    }
+
+    if i != n then
+      throw new Error("condense: minToonSavings is not a JSON number");
+  }
+
+  proc parseCondenseRun(const ref raw: bytes, ref header: CondenseRunHeader,
+                        ref docs: list(StreamDoc)) throws {
+    var arr = toArr(raw);   // var, not const: c_ptrTo below needs a ref actual
+    const total = arr.size;
+    var pos = 0;
+
+    proc readField(ref pos: int, what: string): bytes throws {
+      const len = readIntLine(arr, pos, total - pos);
+      if pos + len > total then
+        throw new Error("condense: " + what + " length " + len: string +
+                        " overruns input");
+      var field: bytes;
+      if len > 0 {
+        field = bytes.createCopyingBuffer(
+          c_ptrTo(arr[pos]): c_ptrConst(c_char), len);
+      }
+      pos += len;
+      return field;
+    }
+
+    header.runId = readField(pos, "runId").decode();
+    header.generatedAt = readField(pos, "generatedAt").decode();
+    header.minToonSavings = readField(pos, "minToonSavings").decode();
+    header.defaultTier = readField(pos, "defaultTier").decode();
+    header.tierOverridesJson = readField(pos, "tierOverridesJson").decode();
+    checkNoControlChars(header.minToonSavings, "minToonSavings");
+    checkJsonNumber(header.minToonSavings);
+    checkNoControlChars(header.tierOverridesJson, "tierOverridesJson");
+    if !(header.tierOverridesJson.startsWith("{") &&
+         header.tierOverridesJson.endsWith("}")) then
+      throw new Error("condense: tierOverridesJson is not a JSON object");
+
+    const n = readIntLine(arr, pos, total - pos);
+    if n < 0 then throw new Error("condense: negative document count");
+    // Minimum frame per doc is three "0\n" fields (source, tier, body).
+    if n > (total - pos) / 6 then
+      throw new Error("condense: document count exceeds possible frame size before allocation");
+    for i in 0..<n {
+      const src = readField(pos, "doc " + i: string + " source");
+      const tier = readField(pos, "doc " + i: string + " trust_tier");
+      const body = readField(pos, "doc " + i: string + " body");
+      docs.pushBack(new StreamDoc(src.decode(), tier.decode(), body));
+    }
+    if pos != total then
+      throw new Error("condense: trailing bytes after document " + n: string);
+  }
+
+  /* C2e: condense-batch plus the run-level artifacts — after every doc's
+   * events have streamed (input order, same incremental writer), emit ONE
+   * summary event (render_summary byte-parity) and ONE manifest event
+   * (value-parity; the gate masks structurally), then the batch tally. */
+  proc condenseRun(const ref docs: list(StreamDoc),
+                   const ref header: CondenseRunHeader, maxInputBytes: int,
+                   budgetMs: int, maxCards: int) throws {
+    const n = docs.size;
+    var docsArr: [0..<n] StreamDoc;
+    for i in 0..<n do docsArr[i] = docs[i];
+
+    var slots: [0..<n] sync string;
+    var outcomes: [0..<n] DocOutcome;
+
+    var sw: stopwatch;
+    sw.start();
+
+    cobegin {
+      {
+        coforall i in 0..<n {
+          const outc = processDoc(i, docsArr[i], maxInputBytes, budgetMs,
+                                  maxCards, sw);
+          outcomes[i] = outc;
+          slots[i].writeEF(outc.block);
+        }
+      }
+      {
+        for i in 0..<n do
+          stdout.write(slots[i].readFE());
+      }
+    }
+
+    // Run-level aggregation: the cobegin join is the barrier, so outcomes[]
+    // reads below are race-free. Card order is input order (Python extends
+    // the global card list input-by-input).
+    var allCards = new list(Card);
+    var jsonlText: string;
+    var inputs = new list(ManifestInput);
+    var tiersSeen = new set(string);
+    var totalCards = 0;
+    var withheld = 0;
+    for i in 0..<n {
+      inputs.pushBack(new ManifestInput(docsArr[i].source, docsArr[i].tier,
+                                        outcomes[i].digest,
+                                        docsArr[i].body.size));
+      tiersSeen.add(docsArr[i].tier);
+      if outcomes[i].withheld {
+        withheld += 1;
+      } else {
+        for c in outcomes[i].cards {
+          allCards.pushBack(c);
+          jsonlText += cardJson(c) + "\n";
+          totalCards += 1;
+        }
+      }
+    }
+    const mixed = tiersSeen.size > 1;
+
+    const summaryText = renderSummary(header.runId, header.generatedAt, n,
+                                      mixed, allCards);
+    stdout.write('{"event":"summary","text":"' + escapeJson(summaryText) +
+                 '"}\n');
+    const manifest = manifestJson(header.runId, header.generatedAt, inputs,
+                                  mixed, maxCards, header.minToonSavings,
+                                  header.defaultTier, header.tierOverridesJson,
+                                  roughTokenCount(jsonlText));
+    stdout.write('{"event":"manifest","manifest":' + manifest + "}\n");
+    stdout.write('{"event":"batch","docs":' + n: string +
+                 ',"cards":' + totalCards: string +
+                 ',"withheld":' + withheld: string + "}\n");
   }
 }

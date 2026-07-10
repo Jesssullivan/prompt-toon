@@ -576,6 +576,64 @@ printf '0\\n'
         with self.assertRaises(engine_module.EngineError):
             self._parse(b'{"event":"batch"}', 0)
 
+    # --- condense (C2e) run-events grammar and pre-spawn validation ---
+
+    def _parse_run(self, raw: bytes, expected_docs: int):
+        metas = [self._meta() for _ in range(expected_docs)]
+        return engine_module.ChapelEngine._parse_stream(
+            raw, expected_docs, expected_meta=metas, max_cards=24,
+            expect_run_events=True,
+        )
+
+    def _run_stream(self, *, summary=True, manifest=True, extra_summary_key=False):
+        events = [
+            self._doc_event(0),
+            {"event": "end", "i": 0, "cards": 0},
+        ]
+        if summary:
+            event = {"event": "summary", "text": "# prompt-toon condensation r\n"}
+            if extra_summary_key:
+                event["sneaky"] = 1
+            events.append(event)
+        if manifest:
+            events.append({"event": "manifest", "manifest": {"id": "r"}})
+        events.append({"event": "batch", "docs": 1, "cards": 0, "withheld": 0})
+        return self._stream(*events)
+
+    def test_parse_stream_run_mode_returns_triple(self):
+        results, summary_text, manifest = self._parse_run(self._run_stream(), 1)
+        self.assertEqual(len(results), 1)
+        self.assertTrue(summary_text.startswith("# prompt-toon condensation"))
+        self.assertEqual(manifest, {"id": "r"})
+
+    def test_parse_stream_run_mode_requires_summary_and_manifest(self):
+        with self.assertRaises(engine_module.EngineError):
+            self._parse_run(self._run_stream(summary=False), 1)
+        with self.assertRaises(engine_module.EngineError):
+            self._parse_run(self._run_stream(manifest=False), 1)
+        with self.assertRaises(engine_module.EngineError):
+            self._parse_run(self._run_stream(extra_summary_key=True), 1)
+
+    def test_parse_stream_batch_mode_rejects_run_events(self):
+        # A condense-batch stream must NOT carry summary/manifest events.
+        with self.assertRaises(engine_module.EngineError):
+            self._parse(self._run_stream(), 1)
+
+    def test_condense_run_rejects_bad_args_before_spawn(self):
+        engine = engine_module.ChapelEngine(binary_path=Path("/nonexistent"))
+        doc = [{"source": "s", "trust_tier": "t", "body": "x"}]
+        for kwargs in (
+            {"min_toon_savings": "abc"},
+            {"min_toon_savings": "true"},
+            {"tier_overrides": {"a": 1}},
+            {"max_cards": 0},
+            {"budget_ms": 5},
+        ):
+            with self.assertRaises(ValueError):
+                engine.condense_run(doc, "run", "GENERATED_AT", **kwargs)
+        with self.assertRaises(ValueError):
+            engine.condense_run(doc, 7, "GENERATED_AT")  # run_id not a string
+
 
 class ChapelEngineBinaryDependentTests(unittest.TestCase):
     """Only runs meaningfully when a real ptoon binary build artifact is
@@ -692,6 +750,32 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
             docs, max_input_bytes=10000, budget_ms=60000
         )
         self.assertEqual(budgeted, baseline)
+
+    def test_condense_run_emits_bound_summary_and_manifest(self):
+        # C2e: run-level artifacts echo the caller's identity fields, bind
+        # inputs[] to the framed docs, and carry the same cards as
+        # condense-batch for identical inputs.
+        docs = [
+            {"source": "a.md", "trust_tier": "repo_source",
+             "body": "- deploy MUST be approved by the owner\n"},
+            {"source": "b.txt", "trust_tier": "untrusted_tool_output",
+             "body": "plain closing line\n"},
+        ]
+        results, summary_text, manifest = self.engine.condense_run(
+            docs, "run-x", "GENERATED_AT",
+            tier_overrides={"a.md": "repo_source"},
+        )
+        self.assertEqual(manifest["id"], "run-x")
+        self.assertEqual(manifest["generated_at"], "GENERATED_AT")
+        self.assertTrue(manifest["mixed_trust_tiers"])
+        self.assertIn("# prompt-toon condensation run-x", summary_text)
+        self.assertIn("- Generated: GENERATED_AT", summary_text)
+        self.assertIn("- WARNING: inputs span multiple trust tiers", summary_text)
+        batch_results = self.engine.condense_batch(docs)
+        self.assertEqual(
+            [r.get("cards") for r in results],
+            [r.get("cards") for r in batch_results],
+        )
 
 
 if __name__ == "__main__":
