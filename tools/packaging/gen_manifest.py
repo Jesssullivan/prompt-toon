@@ -43,6 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = ROOT / "packaging" / "manifest.json"
 SCHEMA_VERSION = 1
+SAFE_PACKAGE_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def version_from_init() -> str:
@@ -80,12 +81,23 @@ def file_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
+def validate_package_component(kind: str, value: str) -> str:
+    if not SAFE_PACKAGE_COMPONENT_RE.fullmatch(value):
+        raise SystemExit(
+            f"gen_manifest: unsafe {kind} name {value!r}; use only "
+            "ASCII letters, digits, dot, underscore, and dash"
+        )
+    return value
+
+
 def build_manifest(args: argparse.Namespace) -> dict:
     version = version_from_init()
     assert_declared_versions_agree(version)
 
     skills = sorted(
-        p.name for p in (ROOT / ".agents" / "skills").iterdir() if p.is_dir()
+        validate_package_component("skill", p.name)
+        for p in (ROOT / ".agents" / "skills").iterdir()
+        if p.is_dir()
     )
     policy = [
         {"file": f"policy/{p.name}", "sha256": file_digest(p)}

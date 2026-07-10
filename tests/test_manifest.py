@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GEN = ROOT / "tools" / "packaging" / "gen_manifest.py"
 MANIFEST = ROOT / "packaging" / "manifest.json"
+sys.path.insert(0, str(ROOT / "tools" / "packaging"))
+import gen_manifest  # noqa: E402
 
 
 class ManifestTests(unittest.TestCase):
@@ -69,6 +71,14 @@ class ManifestTests(unittest.TestCase):
             p.name for p in (ROOT / ".agents" / "skills").iterdir() if p.is_dir()
         )
         self.assertEqual(self.manifest["skills"], on_disk)
+        for skill in self.manifest["skills"]:
+            self.assertEqual(gen_manifest.validate_package_component("skill", skill), skill)
+
+    def test_unsafe_skill_names_fail_before_packaging_interpolation(self):
+        for name in ("bad/name", "bad name", "bad;name", "../escape"):
+            with self.subTest(name=name):
+                with self.assertRaises(SystemExit):
+                    gen_manifest.validate_package_component("skill", name)
 
     def test_stamped_emission_injects_binary_digest(self):
         # The fake binary lives in a tempdir, never the source tree — the

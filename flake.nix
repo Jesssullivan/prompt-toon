@@ -254,7 +254,7 @@
             mkdir -p "$out/lib/prompt-toon" "$out/bin" "$out/share/prompt-toon/skills"
             cp -R prompt_toon "$out/lib/prompt-toon/"
             ${lib.concatMapStringsSep "\n" (skill: ''
-              cp -R .agents/skills/${skill} "$out/share/prompt-toon/skills/"
+              cp -R ${lib.escapeShellArg ".agents/skills/${skill}"} "$out/share/prompt-toon/skills/"
             '') manifest.skills}
             cp -R policy "$out/share/prompt-toon/policy"
             cat > "$out/bin/prompt-toon" <<EOF
