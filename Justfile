@@ -48,6 +48,11 @@ package-smoke-local:
 # to the x86_64-linux remote builder, nix cache-first. The artifact is a single
 # ELF (proc main / stdin-stdout), not a shared library — see the pivot note in
 # Makefile. `make build-ptoon` is a thin wrapper over this recipe.
+# TIN-2706: regenerate the committed packaging-SSOT manifest (drift-gated
+# by //tools/packaging:manifest_drift_test inside `just check`).
+manifest:
+    cd {{root}} && python3 tools/packaging/gen_manifest.py
+
 build-ptoon:
     cd {{root}} && nix build .#packages.x86_64-linux.ptoon --print-build-logs
 

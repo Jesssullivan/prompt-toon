@@ -1,0 +1,78 @@
+{
+  "build": {
+    "chapel": {
+      "flags": "--fast",
+      "source": "github:Jesssullivan/chapel/llvm-21-support",
+      "substrate": "remote-only (nix remote builder / GF REAPI; never local darwin)"
+    },
+    "python": ">=3.11",
+    "toolchain": "chapel+python"
+  },
+  "derived_lanes": {
+    "bazel_registry": {
+      "enabled": false,
+      "note": "phase gate OPEN since C2 (static binary exists); enabling = building the lane (source.json derives from targets[].sha256)"
+    },
+    "brew": {
+      "enabled": false,
+      "note": "C3 phase gate"
+    },
+    "gh_release": {
+      "enabled": false,
+      "note": "phase gate OPEN since C2; stamped manifest emission is the release artifact input"
+    },
+    "home_manager": {
+      "enabled": true
+    },
+    "nix": {
+      "enabled": true
+    },
+    "pipx": {
+      "enabled": false,
+      "note": "warm; private-repo auth gated"
+    },
+    "rpm_deb": {
+      "enabled": false,
+      "note": "C3 phase gate (nfpm)"
+    }
+  },
+  "git_rev": "UNSTAMPED",
+  "name": "prompt-toon",
+  "policy": [
+    {
+      "file": "policy/delegation.json",
+      "sha256": "40f94f040b848b4320605eca69dd905c00f31eddbfdd4a5c69136a17e3d25be1"
+    },
+    {
+      "file": "policy/io.json",
+      "sha256": "15bfef5586399f1baf7648650fa9b09caa7523009f487906d71940b99434d296"
+    }
+  ],
+  "provenance": {
+    "ci_run": null,
+    "repo": "github.com/Jesssullivan/prompt-toon",
+    "tag": null
+  },
+  "schema_version": 1,
+  "skills": [
+    "mythos-delegation",
+    "prompt-toon"
+  ],
+  "targets": [
+    {
+      "artifact": "ptoon",
+      "kind": "static-binary",
+      "platform": "x86_64-linux",
+      "sha256": null,
+      "size": null
+    },
+    {
+      "artifact": "prompt_toon",
+      "kind": "python-package",
+      "platform": "any",
+      "sha256": null,
+      "size": null
+    }
+  ],
+  "version": "0.1.0"
+}

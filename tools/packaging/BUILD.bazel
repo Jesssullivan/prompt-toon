@@ -1,0 +1,27 @@
+# TIN-2706: the packaging-SSOT manifest generator and its drift gate.
+#
+# `packaging/manifest.json` is COMMITTED (nix consumes it via importJSON and
+# cannot run Bazel inside its sandbox), so the gate is the same shape as the
+# dhall->json policy artifacts: regenerate and byte-diff. The test is NOT
+# tagged manual — it is pure python3 over repo files, so it joins `bazel
+# test //...` on every platform, which makes manifest drift a required-lane
+# CI failure.
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["gen_manifest.py"])
+
+sh_binary(
+    name = "gen_manifest",
+    srcs = ["gen_manifest_runner.sh"],
+    data = ["gen_manifest.py"],
+)
+
+sh_test(
+    name = "manifest_drift_test",
+    srcs = ["manifest_drift_test.sh"],
+    data = [
+        "gen_manifest.py",
+        "//:manifest_srcs",
+    ],
+)

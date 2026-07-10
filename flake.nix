@@ -62,12 +62,18 @@
             }
         '';
 
+        # TIN-2706 packaging SSOT: every derivation's version and the shipped
+        # skill set derive from the committed, drift-gated manifest (a Bazel
+        # sh_test regenerates and byte-diffs it in //...). Bump the version in
+        # prompt_toon/__init__.py, regenerate, and everything here follows.
+        manifest = lib.importJSON ./packaging/manifest.json;
+
         # C0 spike (TIN-2707): compile the Chapel normalize+redact port and
         # run the 12-case parity corpus + benchmark against the Python
         # oracle, entirely inside the build (remote-only substrate).
         ptoonSpikeParity = pkgs.stdenv.mkDerivation {
           pname = "ptoon-spike-parity";
-          version = "0.1.0";
+          version = manifest.version;
           src = self;
           nativeBuildInputs = [ chapelWrapped pkgs.python3 ];
           buildPhase = ''
@@ -112,7 +118,7 @@
         # still in burn-in.
         ptoonBinary = pkgs.stdenv.mkDerivation {
           pname = "ptoon";
-          version = "0.1.0";
+          version = manifest.version;
           src = self;
           nativeBuildInputs = [ chapelWrapped pkgs.binutils ];
           buildPhase = ''
@@ -185,7 +191,7 @@
         # is where the C0 Unicode-\b fix in Redact.chpl gets proven.
         ptoonParity = pkgs.stdenv.mkDerivation {
           pname = "ptoon-parity";
-          version = "0.1.0";
+          version = manifest.version;
           src = self;
           nativeBuildInputs = [ pkgs.python3 ];
           dontConfigure = true;
@@ -240,15 +246,16 @@
         };
         promptToon = pkgs.stdenvNoCC.mkDerivation {
           pname = "prompt-toon";
-          version = "0.1.0";
+          version = manifest.version;
           src = self;
           dontBuild = true;
           installPhase = ''
             runHook preInstall
             mkdir -p "$out/lib/prompt-toon" "$out/bin" "$out/share/prompt-toon/skills"
             cp -R prompt_toon "$out/lib/prompt-toon/"
-            cp -R .agents/skills/prompt-toon "$out/share/prompt-toon/skills/"
-            cp -R .agents/skills/mythos-delegation "$out/share/prompt-toon/skills/"
+            ${lib.concatMapStringsSep "\n" (skill: ''
+              cp -R ${lib.escapeShellArg ".agents/skills/${skill}"} "$out/share/prompt-toon/skills/"
+            '') manifest.skills}
             cp -R policy "$out/share/prompt-toon/policy"
             cat > "$out/bin/prompt-toon" <<EOF
             #!${pkgs.bash}/bin/bash
