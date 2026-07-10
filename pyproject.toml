@@ -4,9 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prompt-toon"
-version = "0.1.0"
+# Version SSOT is prompt_toon/__init__.py:__version__ (TIN-2706 packaging
+# manifest derives from it; a release bump edits that ONE string).
+dynamic = ["version"]
 description = "Local agent research condenser with provenance-preserving prompt minimization and measured TOON support"
 requires-python = ">=3.11"
 
 [project.scripts]
 prompt-toon = "prompt_toon.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "prompt_toon.__version__"}
