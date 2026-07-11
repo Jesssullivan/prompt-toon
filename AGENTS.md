@@ -18,7 +18,12 @@ format for flat uniform rows.
 - Chapel compilation is remote-only (operator doctrine, 2026-07-09): never
   iterate `chpl` locally on darwin. Use
   `nix build .#packages.x86_64-linux.<target>` (remote builder, cache-first)
-  or the flywheel executor lane once TIN-2704 arms. Endgame is Chapel-first
+  or the flywheel executor lane (armed: FLYWHEEL_ENABLED and
+  FLYWHEEL_EXECUTOR_ENABLED repo vars are true; jobs queue until the
+  operator lands the repo-scoped ARC runner anchor, TIN-2704). Releases:
+  bump prompt_toon/__init__.py + MODULE.bazel, `just manifest`, merge, then
+  `just release X.Y.Z` (parity preflight + remote binary build + stamped
+  manifest + GH release). Endgame is Chapel-first
   (`docs/mythos-delivery-design.md` §7); Python is the parity oracle.
 
 ## Safety

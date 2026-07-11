@@ -150,10 +150,10 @@ def build_manifest(args: argparse.Namespace) -> dict:
         "derived_lanes": {
             "nix": {"enabled": True},
             "home_manager": {"enabled": True},
-            "pipx": {"enabled": False, "note": "warm; private-repo auth gated"},
+            "pipx": {"enabled": False, "note": "installable (explicit setuptools packages); private-repo auth gated"},
             "bazel_registry": {
                 "enabled": False,
-                "note": "phase gate OPEN since C2 (static binary exists); enabling = building the lane (source.json derives from targets[].sha256)",
+                "note": "phase gate OPEN since C2; enabling = building the lane. Per tinyland-inc/bazel-registry convention source.json integrity is the SRI of the TAG TARBALL (not targets[].sha256); repo visibility (private) is the consumption gate.",
             },
             "gh_release": {
                 "enabled": True,
