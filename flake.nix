@@ -232,8 +232,8 @@
             python3 tools/stream_parity.py | tee parity-stream.md
             echo "== hook canary (PostToolUse adapter end-to-end vs the real binary) =="
             python3 tools/hook_canary.py | tee hook-canary.md
-            echo "== analyze regression (JSONL fixtures vs goldens, python oracle) =="
-            python3 tools/parity_runner.py --analyze | tee parity-analyze.md
+            echo "== analyze regression (python oracle vs COMMITTED pinned baseline) =="
+            python3 tools/parity_runner.py --analyze --require-chapel | tee parity-analyze.md
             echo "== engine unittest with ptoon binary present =="
             python3 -m unittest discover -s tests -p 'test_engine.py' -v 2>&1 | tee engine-tests.txt
             echo "== full suite with ptoon binary present (chapel-dependent tests now run) =="

@@ -41,11 +41,14 @@ just prompt-toon analyze path/to/results.json
 
 Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).
 Subcommands: `normalize | defang | redact | redact-batch | condense-batch |
-condense | caps`. The batch/stream surfaces are length-prefix framed on stdin
-and emit JSONL events in input order; every policy breach withholds
-fail-closed — raw text is never emitted (INV-5). `prompt_toon/engine.py`
-resolves the binary via `$PROMPT_TOON_PTOON` (not PATH) and cross-checks all
-stream output against what was framed.
+condense | caps`. The batch/stream surfaces are length-prefix framed on
+stdin; `condense-batch` and `condense` emit JSONL events in input order,
+while `redact-batch` emits length-prefixed per-document results (one
+meta-JSON line, then raw redacted bytes — see `src/ptoon/Batch.chpl`). Every
+policy breach withholds fail-closed — raw text is never emitted (INV-5).
+`prompt_toon/engine.py` resolves the binary via `$PROMPT_TOON_PTOON`, then
+`build/ptoon` at the repo root (never PATH), and cross-checks all stream
+output against what was framed.
 
 `hooks/post_tool_condense.py` is the PostToolUse adapter: policy-gated by
 `policy/io.json` (enforcement gate ships locked), cache-first via the
@@ -57,9 +60,10 @@ fully-redacted summary exists.
 
 - `just check` — compile/secrets/tests + Bazel graph and test (includes the
   packaging-manifest drift gate).
-- Remote parity derivation (`make parity-remote`): functions 48/48, condense
-  34/34, redact-batch, stream + condense-run vs goldens, analyze regression,
-  hook canary. Runs at release time via `just release` preflight.
+- Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
+  redact-batch, stream + condense-run vs goldens, analyze vs the committed
+  pinned baseline (`tests/goldens/analyze/`), hook canary. Runs at release
+  time via the `just release` preflight.
 
 ## Releases & packaging
 

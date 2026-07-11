@@ -1,0 +1,23 @@
+{
+  "compact_json_bytes": 510,
+  "compact_json_tokens": 281,
+  "input": "fixtures/inputs/14-toon-uniform-rows.jsonl",
+  "recommendation": "toon",
+  "uniform_row_sets": [
+    {
+      "compact_json_tokens": 281,
+      "eligible": true,
+      "fields": [
+        "id",
+        "language",
+        "license",
+        "name",
+        "version"
+      ],
+      "path": "$",
+      "rows": 6,
+      "toon_savings": 0.6726,
+      "toon_tokens": 92
+    }
+  ]
+}
