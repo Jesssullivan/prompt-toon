@@ -19,5 +19,8 @@ prompt-toon = "prompt_toon.cli:main"
 # (breaking pip/pipx install outright). Only prompt_toon ships as python.
 packages = ["prompt_toon"]
 
+[tool.setuptools.data-files]
+"share/prompt-toon/policy" = ["policy/delegation.json", "policy/io.json"]
+
 [tool.setuptools.dynamic]
 version = {attr = "prompt_toon.__version__"}

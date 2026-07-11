@@ -721,6 +721,26 @@ def command_encode_toon(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_gateway(args: argparse.Namespace) -> int:
+    from .gateway import run_gateway
+
+    return run_gateway(args)
+
+
+def default_io_policy_path() -> str:
+    configured = os.environ.get("PROMPT_TOON_IO_POLICY")
+    if configured:
+        return configured
+    candidates = (
+        Path(__file__).resolve().parent.parent / "policy" / "io.json",
+        Path(sys.prefix) / "share" / "prompt-toon" / "policy" / "io.json",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return str(candidates[0])
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="prompt-toon")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -790,6 +810,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Text-transform engine (TIN-2708); no normalize/redact/defang call sites in encode-toon today.",
     )
     encode.set_defaults(func=command_encode_toon)
+
+    gateway = sub.add_parser(
+        "gateway",
+        help="Run the opt-in loopback Anthropic Messages shadow gateway.",
+    )
+    gateway.add_argument("--listen", default="127.0.0.1")
+    gateway.add_argument("--port", type=int, default=8787)
+    gateway.add_argument(
+        "--upstream",
+        default=os.environ.get(
+            "PROMPT_TOON_ANTHROPIC_UPSTREAM", "https://api.anthropic.com"
+        ),
+        help="Provider base URL; deliberately does not read ANTHROPIC_BASE_URL.",
+    )
+    gateway.add_argument("--upstream-timeout", type=float, default=300.0)
+    gateway.add_argument("--ingress-header-timeout", type=float, default=10.0)
+    gateway.add_argument("--ingress-body-timeout", type=float, default=30.0)
+    gateway.add_argument("--shutdown-grace", type=float, default=10.0)
+    gateway.add_argument("--policy", default=default_io_policy_path())
+    gateway.add_argument("--ptoon")
+    gateway.add_argument(
+        "--require-ptoon",
+        action="store_true",
+        help="Fail startup instead of forwarding with shadow analysis unavailable.",
+    )
+    gateway.set_defaults(func=command_gateway)
 
     return parser
 

@@ -269,6 +269,7 @@
             cat > "$out/bin/prompt-toon" <<EOF
             #!${pkgs.bash}/bin/bash
             export PYTHONPATH="$out/lib/prompt-toon''${PYTHONPATH:+:''${PYTHONPATH}}"
+            export PROMPT_TOON_IO_POLICY="''${PROMPT_TOON_IO_POLICY:-$out/share/prompt-toon/policy/io.json}"
             exec ${pkgs.python3}/bin/python -m prompt_toon "\$@"
             EOF
             chmod +x "$out/bin/prompt-toon"
