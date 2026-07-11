@@ -210,9 +210,10 @@
             # runtime's hwloc topology probe aborts and segfaults inside
             # chpl_library_init. Hand hwloc a synthetic topology so it skips
             # OS discovery, and pin the qthreads worker count so the runtime
-            # never reads /sys. (C1 exercises single-doc calls only; the
-            # batch/coforall path is C2 and runs on the flywheel executor,
-            # where /sys is present.)
+            # never reads /sys. The batch/stream coforall paths run right
+            # here in-sandbox under this pinned 2-worker topology (batch,
+            # stream, and hook-canary gates below), so budget-sensitive
+            # tests must use generous budgets.
             export HWLOC_SYNTHETIC="core:2 pu:1"
             export CHPL_RT_NUM_THREADS_PER_LOCALE=2
             export QT_NUM_SHEPHERDS=1
@@ -231,6 +232,8 @@
             python3 tools/stream_parity.py | tee parity-stream.md
             echo "== hook canary (PostToolUse adapter end-to-end vs the real binary) =="
             python3 tools/hook_canary.py | tee hook-canary.md
+            echo "== analyze regression (python oracle vs COMMITTED pinned baseline) =="
+            python3 tools/parity_runner.py --analyze --require-chapel | tee parity-analyze.md
             echo "== engine unittest with ptoon binary present =="
             python3 -m unittest discover -s tests -p 'test_engine.py' -v 2>&1 | tee engine-tests.txt
             echo "== full suite with ptoon binary present (chapel-dependent tests now run) =="
@@ -240,7 +243,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };

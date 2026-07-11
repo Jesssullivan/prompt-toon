@@ -11,7 +11,7 @@
   "derived_lanes": {
     "bazel_registry": {
       "enabled": false,
-      "note": "phase gate OPEN since C2 (static binary exists); enabling = building the lane (source.json derives from targets[].sha256)"
+      "note": "phase gate OPEN since C2; enabling = building the lane. Per tinyland-inc/bazel-registry convention source.json integrity is the SRI of the TAG TARBALL (not targets[].sha256); repo visibility (private) is the consumption gate."
     },
     "brew": {
       "enabled": false,
@@ -29,7 +29,7 @@
     },
     "pipx": {
       "enabled": false,
-      "note": "warm; private-repo auth gated"
+      "note": "installable (explicit setuptools packages); private-repo auth gated"
     },
     "rpm_deb": {
       "enabled": false,

@@ -1,0 +1,7 @@
+{
+  "compact_json_bytes": 124,
+  "compact_json_tokens": 66,
+  "input": "fixtures/inputs/15-toon-ragged-rows.jsonl",
+  "recommendation": "compact-json",
+  "uniform_row_sets": []
+}
