@@ -1,10 +1,16 @@
 # prompt-toon
 
-Private local tool and Codex skill for safe agent research condensation.
+Private local tool and agent skill for safe research condensation.
 
 `prompt-toon` turns noisy subagent/research output into a durable handoff:
 `summary.md`, `source-cards.jsonl`, and `manifest.json`. It is deterministic by
 default: no LLM call, no network call, no hidden transport change.
+
+Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` binary
+(x86_64-linux, built remote-only) owns normalize/redact/defang, the coforall
+batch fan-in, and the full condense rendering — proven byte-identical to the
+Python oracle by the parity gates. Python remains the oracle and the default
+engine until the C3 flip (TIN-2710).
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -15,10 +21,11 @@ against compact JSON/JSONL and emits TOON only when explicitly requested or when
 ```sh
 direnv allow
 just check
-just prompt-toon doctor
+just prompt-toon doctor        # reports both engines; chapel needs the binary
 ```
 
-Condense files:
+Condense files (Python engine by default; `--engine chapel` fails closed,
+`--engine auto` fails open):
 
 ```sh
 just prompt-toon condense docs/founding-prompt.md --output-dir /tmp/prompt-toon-demo
@@ -30,17 +37,49 @@ Analyze JSON rows:
 just prompt-toon analyze path/to/results.json
 ```
 
+## The `ptoon` binary (Chapel engine)
+
+Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).
+Subcommands: `normalize | defang | redact | redact-batch | condense-batch |
+condense | caps`. The batch/stream surfaces are length-prefix framed on stdin
+and emit JSONL events in input order; every policy breach withholds
+fail-closed — raw text is never emitted (INV-5). `prompt_toon/engine.py`
+resolves the binary via `$PROMPT_TOON_PTOON` (not PATH) and cross-checks all
+stream output against what was framed.
+
+`hooks/post_tool_condense.py` is the PostToolUse adapter: policy-gated by
+`policy/io.json` (enforcement gate ships locked), cache-first via the
+HMAC-authenticated iocache (INV-6), derives through `ptoon condense`, and
+fails open — the session sees the raw return unless a provably-better,
+fully-redacted summary exists.
+
+## Gates
+
+- `just check` — compile/secrets/tests + Bazel graph and test (includes the
+  packaging-manifest drift gate).
+- Remote parity derivation (`make parity-remote`): functions 48/48, condense
+  34/34, redact-batch, stream + condense-run vs goldens, analyze regression,
+  hook canary. Runs at release time via `just release` preflight.
+
+## Releases & packaging
+
+`packaging/manifest.json` is the committed, drift-gated packaging SSOT
+(TIN-2706): version, skills, policy digests, and per-lane enablement all
+derive from it. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
+regenerates via `just manifest`, merges, then `just release X.Y.Z` — parity
+preflight, remote binary build, stamped manifest (provenance + binary
+sha256), tag, GitHub Release. Fleet install rides the lab home-manager module
+(rev-pinned per INV-7; `bump-prompt-toon` recipe there).
+
 ## Project Surfaces
 
-- CLI package: `prompt_toon/`
-- Codex skill: `.agents/skills/prompt-toon/SKILL.md`
-- Delegation skill: `.agents/skills/mythos-delegation/SKILL.md`
-- Delegation policy SSOT: `policy/delegation.json` (Dhall source: `policy/dhall/`)
-- Founding prompt: `docs/founding-prompt.md`
-- Mythos vision addendum: `docs/mythos-vision.md`
-- Delivery design record: `docs/mythos-delivery-design.md`
-- Research decision record: `docs/research-decision.md`
-- Linear map: `docs/linear.md`
+- CLI package: `prompt_toon/` · Chapel engine: `src/ptoon/` + `c_src/`
+- Hook adapter: `hooks/post_tool_condense.py`
+- Skills: `.agents/skills/{prompt-toon,mythos-delegation}/`
+- Policy SSOTs: `policy/{delegation,io}.json` (Dhall sources: `policy/dhall/`)
+- Packaging SSOT: `packaging/manifest.json` (`tools/packaging/gen_manifest.py`)
+- Design record: `docs/mythos-delivery-design.md` · Linear map: `docs/linear.md`
+- Founding prompt: `docs/founding-prompt.md` · Vision: `docs/mythos-vision.md`
 
 ## Operating Position
 

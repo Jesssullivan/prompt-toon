@@ -13,5 +13,11 @@ requires-python = ">=3.11"
 [project.scripts]
 prompt-toon = "prompt_toon.cli:main"
 
+[tool.setuptools]
+# Explicit discovery: the repo also carries the Chapel tree under src/,
+# which setuptools' auto-discovery misreads as a src-layout python package
+# (breaking pip/pipx install outright). Only prompt_toon ships as python.
+packages = ["prompt_toon"]
+
 [tool.setuptools.dynamic]
 version = {attr = "prompt_toon.__version__"}

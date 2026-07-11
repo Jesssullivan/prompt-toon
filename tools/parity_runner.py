@@ -55,10 +55,12 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT))
 from gen_golden import (  # noqa: E402
     CONDENSE_CASES,
+    JSONL_FIXTURES,
     TEXT_FIXTURES,
     INPUTS,
     CondenseCase,
     TextFixture,
+    run_analyze,
     run_condense,
 )
 from prompt_toon.cli import defang_text, normalize_text, redact_text  # noqa: E402
@@ -235,6 +237,43 @@ def run_functions_mode(fixtures: list[TextFixture], *, require_chapel: bool = Fa
 # --------------------------------------------------------------------------
 
 
+def run_analyze_mode() -> int:
+    """Regression gate for the two JSONL fixtures: regenerate analyze.json
+    (python oracle; analyze has no normalize/redact/defang call sites, so a
+    chapel column would be vacuous) and byte-diff against the goldens."""
+    # Corpus convention (same as batch/stream gates): fixtures/ and golden/
+    # are gitignored and regenerated inside the parity derivation; outside it
+    # a missing corpus is a SKIP, and the derivation is where SKIP cannot
+    # happen (gen_fixtures + gen_golden run first).
+    missing = [
+        f.name for f in JSONL_FIXTURES
+        if not (INPUTS / f.filename).is_file()
+        or not (GOLDEN / f.name / "analyze.json").is_file()
+    ]
+    if missing:
+        print(f"SKIP: analyze corpus incomplete ({', '.join(missing)}); run tools/gen_fixtures.py + tools/gen_golden.py first.")
+        return 0
+
+    rows = ["| fixture | analyze.json |", "|---|---|"]
+    fails = 0
+    for fixture in JSONL_FIXTURES:
+        rc, canonical, err = run_analyze(fixture, engine="python")
+        golden = GOLDEN / fixture.name / "analyze.json"
+        ok = rc == 0 and golden.is_file() and canonical == golden.read_bytes()
+        rows.append(f"| {fixture.name} | {'PASS' if ok else 'DIFF'} |")
+        if not ok:
+            fails += 1
+            if rc != 0:
+                print(f"DIFF {fixture.name}: analyze rc={rc}: {err.decode('utf-8', 'replace')[:200]}")
+    print("\n".join(rows))
+    print(f"\n{len(JSONL_FIXTURES)} fixture(s) — PASS={len(JSONL_FIXTURES) - fails}, DIFF={fails}")
+    if fails:
+        print("ANALYZE PARITY: FAIL")
+        return 1
+    print("ANALYZE PARITY: PASS")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--case", action="append", default=None, help="restrict to condense case name(s); repeatable")
@@ -248,7 +287,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="treat a missing/unavailable ptoon binary as a failure instead of SKIP",
     )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="python-regression diff of analyze.json for the JSONL fixtures "
+        "against their goldens (no chapel column: analyze has no engine call "
+        "sites; this gives fixtures 14/15 a consumer and catches drift)",
+    )
     args = parser.parse_args(argv)
+
+    if args.analyze:
+        return run_analyze_mode()
 
     if args.functions:
         fixtures = [f for f in TEXT_FIXTURES if args.case is None or f.name in args.case]

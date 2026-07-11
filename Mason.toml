@@ -1,6 +1,6 @@
 [brick]
 name = "ptoon"
-version = "0.1.0"
+version = "0.2.0"  # advisory only: Mason is not consumed by any lane; kept for the quickchpl dev-dep note
 type = "application"
 chplVersion = "2.6.0..2.8.0"
 license = "MIT"
