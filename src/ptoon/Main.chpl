@@ -61,7 +61,7 @@ module Main {
    * process exit status. */
   proc main(args: [] string): int throws {
     if args.size < 2 {
-      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|redact-batch|caps)");
+      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|redact-batch|condense-batch|condense|caps)");
       return 2;
     }
     const sub = args[1];
