@@ -41,7 +41,12 @@
     "codex_skill": "TIN-2694",
     "safety_tests": "TIN-2695",
     "lab_hm_install": "TIN-2696",
-    "keyword_tuner": "TIN-2697"
+    "keyword_tuner": "TIN-2697",
+    "c4_online_io_gateway": "TIN-2790",
+    "c4a_resident_ptoon_serve": "TIN-2792",
+    "c4b_claude_messages_gateway": "TIN-2793",
+    "c4c_codex_responses_gateway": "TIN-2794",
+    "c4d_home_manager_rollout": "TIN-2791"
   },
   "boundaries": {
     "calls_llm_by_default": false,

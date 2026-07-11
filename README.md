@@ -12,6 +12,11 @@ batch fan-in, and the full condense rendering — proven byte-identical to the
 Python oracle by the parity gates. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
+The installed v0.2.0 fleet surface remains advisory. IO enforcement ships
+locked, and the PostToolUse adapter is neither packaged nor registered with a
+harness. C4a adds the resident transform boundary in source; no provider
+gateway or fleet service profile is enabled yet.
+
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
 `--format auto` proves a material savings.
@@ -41,29 +46,50 @@ just prompt-toon analyze path/to/results.json
 
 Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).
 Subcommands: `normalize | defang | redact | redact-batch | condense-batch |
-condense | caps`. The batch/stream surfaces are length-prefix framed on
+condense | serve | caps`. The batch/stream surfaces are length-prefix framed on
 stdin; `condense-batch` and `condense` emit JSONL events in input order,
 while `redact-batch` emits length-prefixed per-document results (one
-meta-JSON line, then raw redacted bytes — see `src/ptoon/Batch.chpl`). Every
+meta-JSON line, then raw redacted bytes — see `src/ptoon/Batch.chpl`). These
+remain bounded one-shot commands. `serve` keeps one Chapel runtime alive,
+drains a bounded request ring with fixed workers, and returns out-of-order
+length-prefixed responses keyed by request and stream IDs. Provider HTTP,
+credentials, and SSE never enter this process. Every
 policy breach withholds fail-closed — raw text is never emitted (INV-5).
 `prompt_toon/engine.py` resolves the binary via `$PROMPT_TOON_PTOON`, then
 `build/ptoon` at the repo root (never PATH), and cross-checks all stream
 output against what was framed.
 
-`hooks/post_tool_condense.py` is the PostToolUse adapter: policy-gated by
-`policy/io.json` (enforcement gate ships locked), cache-first via the
-HMAC-authenticated iocache (INV-6), derives through `ptoon condense`, and
-fails open — the session sees the raw return unless a provably-better,
-fully-redacted summary exists.
+`prompt_toon/resident.py:ResidentEngine` owns the child, enforces the typed IO
+policy ceilings, bounds active streams, continuously drains stdout/stderr, and
+validates each response against the framed provenance before completing its
+future. Defaults are 64 streams, 16 workers, a 64-request ring, 64 documents,
+16 MiB request / 256 MiB response frames, 4096-byte labels, 2 MiB per input,
+2 seconds, and 24 cards per document.
+
+`hooks/post_tool_condense.py` is a source-only PostToolUse adapter. It is
+policy-gated by `policy/io.json` (enforcement ships locked), cache-first via
+the HMAC-authenticated iocache (INV-6), and derives through `ptoon condense`.
+It is not in the packaging manifest or any harness registration.
+
+## C4 boundary
+
+C4 (TIN-2790) keeps provider transport out of Chapel. C4a establishes the
+resident transform service; the provider gateway
+owns HTTP, auth/header forwarding, errors, and SSE; `ptoon serve` owns a fixed
+pool of bounded transform workers over private framed pipes. Only typed,
+provenance-bearing context is eligible for transformation. Authority-bearing
+request bytes, including instructions, approval state, tool schemas, and
+provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
 
 ## Gates
 
 - `just check` — compile/secrets/tests + Bazel graph and test (includes the
   packaging-manifest drift gate).
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
-  redact-batch, stream + condense-run vs goldens, analyze vs the committed
-  pinned baseline (`tests/goldens/analyze/`), hook canary. Runs at release
-  time via the `just release` preflight.
+  redact-batch, stream + condense-run vs goldens, resident multiplex parity,
+  64-stream RSS capacity, analyze vs the committed pinned baseline
+  (`tests/goldens/analyze/`), hook canary. Runs at release time via the
+  `just release` preflight.
 
 ## Releases & packaging
 

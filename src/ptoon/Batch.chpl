@@ -79,13 +79,25 @@ module Batch {
     return value;
   }
 
-  /* Parse the framed batch into N document strings (decoded UTF-8). */
-  proc parseBatch(const ref raw: bytes): [] string throws {
+  /* Parse the framed batch into N document strings (decoded UTF-8).
+   * Optional resident-service limits are enforced before their corresponding
+   * allocations; zero preserves the one-shot command's unlimited behavior. */
+  proc parseBatch(const ref raw: bytes, maxDocs: int = 0,
+                  maxTotalBytes: int = 0): [] string throws {
+    if maxDocs < 0 || maxTotalBytes < 0 then
+      throw new Error("redact-batch: parser limits must be nonnegative");
+    const total = raw.size;
+    if maxTotalBytes > 0 && total > maxTotalBytes then
+      throw new Error("redact-batch: input bytes " + total: string +
+                      " exceed maxTotalBytes " + maxTotalBytes: string);
+
     var arr = toArr(raw);   // var, not const: c_ptrTo below needs a ref actual
-    const total = arr.size;
     var pos = 0;
     const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("redact-batch: negative document count");
+    if maxDocs > 0 && n > maxDocs then
+      throw new Error("redact-batch: document count " + n: string +
+                      " exceeds maxDocs " + maxDocs: string);
     // Each declared document needs at least a length line ("0\n"), even when
     // its body is empty. Bound allocation by the maximum number of documents
     // the remaining frame could possibly encode, not just by raw bytes.

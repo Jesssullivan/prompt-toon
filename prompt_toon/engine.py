@@ -2,9 +2,9 @@
 
 ARCHITECTURE PIVOT: the Chapel engine is no longer a ctypes-loaded shared
 library. It is a standalone `ptoon` binary invoked as a subprocess, one
-call per text-transform. This mirrors the actual user flow -- Claude Code
-PostToolBatch hooks, an MCP gateway, or `ptoon --stream` -- all of which
-are subprocess-or-stream shapes over one process, never in-process FFI.
+call per one-shot transform. C4a adds a separate long-lived `ptoon serve`
+client in `prompt_toon.resident`; both boundaries keep Chapel runtime ownership
+inside the child process rather than re-entering it through foreign threads.
 It also sidesteps a Chapel foreign-thread runtime-reentry wall the ctypes
 path hit: repeated exported-proc calls into a `--library` build segfaulted
 on buffer free (init/caps/normalize succeeded; free crashed).
@@ -24,6 +24,8 @@ of stdin as raw bytes:
   batch events out (C2d streaming source cards).
 - ``ptoon condense`` -> condense-batch plus a caller-supplied run header;
   adds one summary event and one manifest event (C2e run-level artifacts).
+- ``ptoon serve``    -> resident v1 request/response framing; owned by
+  ``ResidentEngine`` rather than this one-shot wrapper.
 - ``ptoon caps``      -> writes the engine-caps JSON to stdout, exit 0.
 - unknown subcommand  -> stderr message, exit 2.
 

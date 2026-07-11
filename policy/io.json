@@ -17,6 +17,16 @@
     "owner_linear_issue": "TIN-2700"
   },
   "schema_version": 1,
+  "service_limits": {
+    "max_cards_per_document": 24,
+    "max_concurrent_streams": 64,
+    "max_documents_per_request": 64,
+    "max_label_bytes": 4096,
+    "max_request_bytes": 16777216,
+    "max_response_bytes": 268435456,
+    "pending_queue_depth": 64,
+    "transform_workers": 16
+  },
   "surfaces": [
     {
       "enabled": false,
@@ -27,6 +37,11 @@
       "enabled": false,
       "id": "mcp",
       "purpose": "MCP tool results condensed by the TIN-2524 gateway condenser stage (TIN-2702). Harness-agnostic; MCP-sourced output only."
+    },
+    {
+      "enabled": false,
+      "id": "model_gateway",
+      "purpose": "Typed tool/subagent context transformed on an opt-in local harness-to-provider request path (TIN-2790); authority-bearing request fields pass byte-for-byte."
     },
     {
       "enabled": false,
@@ -53,6 +68,10 @@
   "trust_tiers": [
     {
       "source": "Task",
+      "tier": "subagent_return"
+    },
+    {
+      "source": "Agent",
       "tier": "subagent_return"
     },
     {

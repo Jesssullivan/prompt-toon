@@ -9,7 +9,9 @@ secret redaction, and markdown/URI defanging, all byte-parity-gated
 against the `prompt_toon/cli.py` Python oracle. As of C2b it also exposes
 the `redact-batch` coforall fan-in entrypoint: N documents are redacted
 concurrently inside one Chapel process while preserving byte-identical
-per-document semantics.
+per-document semantics. C2d/e add `condense-batch` and `condense`, which emit
+typed JSONL events for one framed invocation and then exit. None of these
+commands is a resident service.
 
 ## Architecture pivot: subprocess binary, not a C-ABI library
 
@@ -21,13 +23,18 @@ foreign-thread runtime re-entry is fragile, and `chpl_library_init` +
 allocator-consistency (`allocate`/`deallocate`) did not clear it.
 
 The engine is therefore a **standalone `ptoon` binary invoked as a
-subprocess**, one call per text-transform. This both sidesteps the
-runtime-reentry wall and matches the real deployment surfaces (Claude
-Code `PostToolBatch` hooks, an MCP gateway, `ptoon --stream`), which are
-all subprocess-or-stream shapes over one process, never in-process FFI.
-It also lets the C2 `coforall` batch entrypoint own concurrency *inside*
-the Chapel runtime (no N host-thread re-entries). See the memory note
-`chapel-engine-boundary` and design §8.
+subprocess**, one call per text-transform or framed batch. This sidesteps the
+runtime-reentry wall and lets C2 `coforall` own concurrency *inside* the
+Chapel runtime (no N host-thread re-entries). The current PostToolUse adapter
+uses this one-shot boundary. PostToolBatch can add `additionalContext`, but
+cannot `updatedToolOutput`-rewrite a completed batch; per-tool replacement
+remains PostToolUse.
+
+C4a (TIN-2792) targets a separate resident `ptoon serve` mode over private
+framed pipes with fixed transform workers and explicit capacity limits. It is
+implemented in this source tree and remains disabled in fleet policy. The
+provider gateway, not Chapel, owns HTTP, auth, SSE, and provider adaptation;
+only typed context enters the transform pipe and authority bytes are preserved.
 
 ## Binary protocol (fixed contract)
 
@@ -40,6 +47,14 @@ bytes:
   names or empty>\n`, then the redacted text verbatim, exit 0.
 - `ptoon redact-batch` → length-prefixed N-document stdin; length-prefixed
   per-document JSON+body results in input order, exit 0.
+- `ptoon condense-batch` → length-prefixed source/tier/body triplets; typed
+  JSONL document/card/end/batch events in input order, exit 0.
+- `ptoon condense` → `condense-batch` plus a framed run header and trailing
+  summary/manifest events, exit 0.
+- `ptoon serve` → resident v1 request/response frames over private pipes;
+  responses may complete out of order and are keyed by visible-ASCII request
+  and stream IDs. Fixed launch ceilings bound workers, queue slots, documents,
+  request/response bytes, labels, per-document bytes, budget, and card count.
 - `ptoon caps`      → engine-caps JSON to stdout, exit 0.
 - unknown subcommand → stderr message, exit 2.
 
@@ -58,13 +73,19 @@ trailing bytes make the process exit nonzero rather than guessing.
 ## Layout
 
 - `Main.chpl` — `proc main(args)`: the binary entry. Dispatches `argv[1]`
-  (normalize/redact/defang/redact-batch/caps) over the fixed protocol above;
+  (normalize/redact/defang/redact-batch/condense-batch/condense/serve/caps) over the
+  fixed protocols above;
   reads stdin with `stdin.readAll(bytes)`, writes stdout. `use Normalize,
-  Redact, Defang, Batch`.
+  Redact, Defang, Batch, Stream, Serve`.
 - `Batch.chpl` — `redactBatch`: parses the C2b length-prefixed batch,
   runs one `coforall` task per document, each task calling the full sequential
   `redactText`, then emits input-ordered length-prefixed results. A per-doc
   redaction exception withholds that document with zero body bytes.
+- `Stream.chpl` — parses framed source/tier/body documents and emits the
+  one-shot condensation event stream used by `condense-batch` and `condense`.
+- `Serve.chpl` — incrementally reads resident v1 frames, applies launch
+  ceilings before transform allocation, drains a bounded sync-slot ring with a
+  fixed worker set, and emits one indivisible response frame per request.
 - `Normalize.chpl` — `normalizeText` (NFKC via utf8proc + strip/fold),
   plus `isWordCp`/`unicodeVersion`. FFI to the vendored C shim via
   `require "../../c_src/normalize_ffi.h", ...` (file-relative, repo-root
@@ -76,11 +97,11 @@ trailing bytes make the process exit nonzero rather than guessing.
   to module-level `const` so C2b batch tasks share them read-only.
 - `Defang.chpl` — `defangText`: markdown image/link + dangerous-URI
   neutralization in cli.py's exact sub/replace order.
-- `Toon.chpl` — `toonEscape`/`encodeRows`. **Not** compiled into the C1
+- `Toon.chpl` — `toonEscape`/`encodeRows`. **Not** compiled into the current
   binary (deliberately excluded from `Main.chpl`). Property-test source
   exists under `test/ptoon/PropertyTests.chpl`, but it is advisory until
-  quickchpl is repo-pinned and wired into a remote-only gate. TOON is never
-  called through the binary protocol until C2.
+  quickchpl is repo-pinned and wired into a remote-only gate. No current
+  binary protocol command calls TOON.
 - Vendored C dependencies live at repo-root `c_src/` (utf8proc v2.9.0 +
   the `pt_nfkc`/`pt_free`/`pt_is_word`/`pt_unicode_version` FFI shim); the
   modules reach it via `require "../../c_src/..."`. (The spike keeps its
@@ -111,11 +132,11 @@ just build-ptoon      # or: make build-ptoon   — nix remote builder (cache-fir
 just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-backed)
 ```
 
-- **nix remote builder** (today's default C1 substrate):
+- **nix remote builder** (current release substrate):
   `nix build .#packages.x86_64-linux.ptoon` compiles `Main.chpl` with
   `chpl --fast -M src/ptoon -o ptoon` on the x86_64-linux builder and
   smoke-tests `echo hi | ./ptoon normalize`.
-- **Bazel on GF REAPI** (the C2/endgame execution plane, pulled forward):
+- **Bazel on GF REAPI** (executor-backed graph and cache plane):
   `//src/ptoon:ptoon` (the `chapel_binary` walking-skeleton rule in
   `//tools/bazel/chapel:defs.bzl`) runs the identical compile on the
   GloriousFlywheel REAPI executor. The target is
@@ -124,7 +145,7 @@ just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-
   (`--remote_local_fallback=false`) if `BAZEL_REMOTE_EXECUTOR` is not
   armed. nix owns the chpl version; Bazel owns the graph/cache/execution.
 
-## Primary references checked 2026-07-09
+## Primary references checked 2026-07-11
 
 Keep this lane grounded in current upstream docs when touching Chapel/Bazel
 plumbing:
@@ -135,8 +156,9 @@ plumbing:
   status.
 - Chapel 2.9 IO docs:
   https://chapel-lang.org/docs/modules/standard/IO.html. `stdin` is a
-  predefined `fileReader`; `fileReader.readAll(type t = bytes)` reads the
-  remaining stream as `bytes` or `string`.
+  predefined `fileReader`; one-shot commands use `readAll(bytes)`, while
+  `serve` uses bounded `readLine`/`readBinary` reads and the standard locking
+  writer.
 - Chapel 2.9 `chpl` man page:
   https://chapel-lang.org/docs/usingchapel/man.html. This is the source for
   `--fast`, `-M/--module-dir`, and `-o` in the exact C1 compile command.
@@ -172,7 +194,7 @@ plumbing:
 
 ## Parity gate
 
-`nix build .#packages.x86_64-linux.ptoon-parity` is the C1 correctness
+`nix build .#packages.x86_64-linux.ptoon-parity` is the release correctness
 gate: it regenerates the shared fixture corpus (`tools/gen_fixtures.py` +
 `tools/gen_golden.py`), then diffs the `ptoon` binary against the Python
 oracle both per-function (`tools/parity_runner.py --functions`) and
@@ -181,11 +203,12 @@ the build on any byte divergence. The engine unittest
 (`tests/test_engine.py`) also runs there with the binary present so the
 otherwise-skipped chapel-dependent assertions execute.
 
-## What's next (C2 and beyond)
+## What's next
 
-- C2c `condense --stream`: wall-clock budget + straggler abort; budget
-  breaches withhold fail-closed, never pass raw.
+- C4b (TIN-2793): put the Claude Messages adapter in shadow mode around the
+  resident service without changing authority-bearing request bytes.
 - Compile `Toon.chpl` into the binary with typed-row handling (JSON
   scalar → TOON cell) so TOON can be driven through the protocol.
 - Repo-pin quickchpl and wire the property tests into a remote-only gate.
-- Promote the Bazel REAPI compile lane once the GF executor is armed.
+- Promote the Bazel REAPI compile lane after the repo-scoped ARC runner anchor
+  lands (TIN-2704); the repo/executor switches are already armed.
