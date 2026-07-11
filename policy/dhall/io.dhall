@@ -30,6 +30,16 @@ in    { `$comment` =
           , max_input_bytes = 2000000
           , wall_clock_budget_ms = 2000
           }
+      , service_limits =
+          { max_concurrent_streams = 64
+          , transform_workers = 16
+          , pending_queue_depth = 64
+          , max_documents_per_request = 64
+          , max_request_bytes = 16777216
+          , max_response_bytes = 268435456
+          , max_label_bytes = 4096
+          , max_cards_per_document = 24
+          }
       , surfaces =
           [ { id = "subagent"
             , enabled = False
@@ -40,6 +50,11 @@ in    { `$comment` =
             , enabled = False
             , purpose =
                 "MCP tool results condensed by the TIN-2524 gateway condenser stage (TIN-2702). Harness-agnostic; MCP-sourced output only."
+            }
+          , { id = "model_gateway"
+            , enabled = False
+            , purpose =
+                "Typed tool/subagent context transformed on an opt-in local harness-to-provider request path (TIN-2790); authority-bearing request fields pass byte-for-byte."
             }
           , { id = "bash"
             , enabled = False
@@ -57,6 +72,7 @@ in    { `$comment` =
           ]
       , trust_tiers =
           [ { source = "Task", tier = "subagent_return" }
+          , { source = "Agent", tier = "subagent_return" }
           , { source = "Bash", tier = "untrusted_tool_output" }
           , { source = "Read", tier = "repo_source" }
           , { source = "WebFetch", tier = "untrusted_web" }

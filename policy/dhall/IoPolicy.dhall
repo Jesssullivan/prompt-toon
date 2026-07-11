@@ -23,6 +23,17 @@ let Thresholds =
       , wall_clock_budget_ms : Natural
       }
 
+let ServiceLimits =
+      { max_concurrent_streams : Natural
+      , transform_workers : Natural
+      , pending_queue_depth : Natural
+      , max_documents_per_request : Natural
+      , max_request_bytes : Natural
+      , max_response_bytes : Natural
+      , max_label_bytes : Natural
+      , max_cards_per_document : Natural
+      }
+
 let Surface =
       { id : Text
       , enabled : Bool
@@ -45,6 +56,7 @@ let Policy =
       , metadata : Metadata
       , enforcement_gate : Gate
       , thresholds : Thresholds
+      , service_limits : ServiceLimits
       , surfaces : List Surface
       , trust_tiers : List TrustTier
       , failure_modes : FailureModes
@@ -53,6 +65,7 @@ let Policy =
 in  { Metadata
     , Gate
     , Thresholds
+    , ServiceLimits
     , Surface
     , TrustTier
     , FailureModes

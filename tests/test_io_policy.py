@@ -50,6 +50,28 @@ class IoPolicyTests(unittest.TestCase):
         self.assertGreater(thresholds["min_savings"], 0.0)
         self.assertLess(thresholds["min_savings"], 1.0)
 
+    def test_resident_service_limits_are_bounded(self):
+        limits = self.policy["service_limits"]
+        for name, value in limits.items():
+            self.assertIsInstance(value, int, name)
+            self.assertGreater(value, 0, name)
+        self.assertLessEqual(
+            limits["transform_workers"], limits["max_concurrent_streams"]
+        )
+        self.assertLessEqual(
+            limits["max_documents_per_request"], limits["max_concurrent_streams"]
+        )
+        self.assertGreaterEqual(
+            limits["pending_queue_depth"], limits["transform_workers"]
+        )
+        self.assertGreaterEqual(
+            limits["max_request_bytes"], self.policy["thresholds"]["max_input_bytes"]
+        )
+        self.assertGreaterEqual(
+            limits["max_response_bytes"], limits["max_request_bytes"]
+        )
+        self.assertEqual(limits["max_cards_per_document"], 24)
+
     def test_every_surface_has_purpose(self):
         for surface in self.policy["surfaces"]:
             self.assertTrue(surface["purpose"].strip(), surface["id"])
@@ -57,14 +79,17 @@ class IoPolicyTests(unittest.TestCase):
     def test_surface_ids_unique_and_expected(self):
         ids = [s["id"] for s in self.policy["surfaces"]]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(set(ids), {"subagent", "mcp", "bash", "read", "webfetch"})
+        self.assertEqual(
+            set(ids), {"subagent", "mcp", "model_gateway", "bash", "read", "webfetch"}
+        )
 
     def test_trust_tiers_cover_core_sources(self):
         sources = {t["source"]: t["tier"] for t in self.policy["trust_tiers"]}
-        for required in ("Task", "Bash", "Read", "WebFetch"):
+        for required in ("Task", "Agent", "Bash", "Read", "WebFetch"):
             self.assertIn(required, sources)
             self.assertTrue(sources[required].strip())
         self.assertNotEqual(sources["WebFetch"], "repo_source")
+        self.assertEqual(sources["Task"], sources["Agent"])
 
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")

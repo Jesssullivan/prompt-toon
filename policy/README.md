@@ -16,17 +16,13 @@ Vision: `docs/mythos-vision.md`; architecture: `docs/mythos-delivery-design.md`.
   (every surface disabled) until TIN-2695 and TIN-2699 close and INV-1..6
   hold; `tests/test_io_policy.py` fails closed on violations.
 
-## Degraded mode
+## Regeneration
 
-Dhall CLI tools are not yet in the dev shell. Per the lab `test/dhall`
-convention, that is a normal degraded mode, not a blocker: `delegation.json`
-is hand-synced with the Dhall source, and `tests/test_delegation_policy.py`
-enforces the structural invariants on every `just check`.
-
-Target state once dhall lands in the flake dev shell:
+Dhall and `dhall-json` are in the Nix dev shell. Regenerate both validated
+transition artifacts through the repo recipe:
 
 ```sh
-dhall-to-json --file policy/dhall/delegation.dhall > policy/delegation.json
+just gen-policy
 ```
 
 ## Invariants (fail closed)

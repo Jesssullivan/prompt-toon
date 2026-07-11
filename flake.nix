@@ -102,14 +102,12 @@
         # foreign-thread runtime-reentry wall (init/caps/normalize succeed,
         # the free crashes) — exactly the fragility the C1 research warned
         # about. The C0 spike (spikes/tin-2707/ptoon_spike.chpl) is a
-        # standalone `proc main` binary reading stdin / writing stdout and it
-        # ran clean with byte-parity, and the real user flow (PostToolBatch
-        # hook, MCP gateway, `ptoon --stream`) is subprocess-or-stream shaped
-        # over one process, never in-process FFI. So C1 now compiles
-        # src/ptoon/Main.chpl (the standalone binary entry point wired to the
-        # existing Normalize/Redact/Defang modules, unchanged from the
-        # library-era build) straight to an executable with plain `chpl
-        # --fast`, and the check phase runs the fixed binary protocol's
+        # standalone `proc main` binary reading stdin / writing stdout and ran
+        # clean with byte-parity. Both the one-shot transforms and C4's private
+        # resident child keep runtime ownership inside a process, never an
+        # in-process FFI re-entry. This derivation compiles src/ptoon/Main.chpl
+        # plus the transform/stream/service modules with plain `chpl --fast`,
+        # and the check phase runs the fixed binary protocol's
         # smoke test directly rather than grepping a dynamic symbol table.
         #
         # Defined for every `eachDefaultSystem` system (linux + darwin) so
@@ -126,9 +124,9 @@
             # Compile from repo root so the modules' file-relative
             # `require "../../c_src/..."` paths resolve. Main.chpl is the
             # standalone binary entry; -M finds the sibling
-            # Normalize/Redact/Defang modules it uses. Toon.chpl is
-            # intentionally excluded in C1 (TOON is Chapel-property-tested,
-            # not called through the binary protocol until C2).
+            # sibling modules it uses. Toon.chpl remains intentionally
+            # excluded: TOON is Chapel-property-tested but no binary protocol
+            # command calls it.
             chpl --fast src/ptoon/Main.chpl -M src/ptoon -o ptoon
             runHook postBuild
           '';
@@ -218,6 +216,10 @@
             export CHPL_RT_NUM_THREADS_PER_LOCALE=2
             export QT_NUM_SHEPHERDS=1
             export QT_NUM_WORKERS_PER_SHEPHERD=2
+            # Nix sandboxes do not provide /usr/bin/env. The resident unit
+            # fake is an executable Python child, so give its shebang the
+            # interpreter from nativeBuildInputs before the full suite.
+            patchShebangs tests/fake_ptoon_serve.py
             echo "== generating fixture corpus (inputs) =="
             python3 tools/gen_fixtures.py
             echo "== generating golden corpus (python oracle) =="
@@ -230,6 +232,10 @@
             python3 tools/batch_parity.py | tee parity-batch.md
             echo "== stream parity (condense-batch cards == python oracle cards) =="
             python3 tools/stream_parity.py | tee parity-stream.md
+            echo "== resident service parity (multiplexed serve == one-shot condense) =="
+            python3 tools/service_parity.py | tee parity-service.md
+            echo "== resident service capacity (64 streams, bounded RSS) =="
+            python3 tools/service_capacity.py | tee capacity-service.md
             echo "== hook canary (PostToolUse adapter end-to-end vs the real binary) =="
             python3 tools/hook_canary.py | tee hook-canary.md
             echo "== analyze regression (python oracle vs COMMITTED pinned baseline) =="
@@ -243,7 +249,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };

@@ -33,6 +33,15 @@ Issues:
 - `TIN-2709` C2 ptoon streaming: `coforall` batch entrypoint, cache parity, full Bazel executor lane.
 - `TIN-2710` C3 flip to ptoon + rules_chapel extraction/registry publication + brew/rpm lanes.
 
+C4 online IO gateway:
+
+- `TIN-2790` Parent: online prompt-toon IO gateway between local harnesses and model providers.
+- `TIN-2792` C4a: bounded resident `ptoon serve` protocol, Python client, and
+  64-stream parity/RSS capacity gate.
+- `TIN-2793` C4b: Claude Messages shadow gateway with typed-context transforms.
+- `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile.
+- `TIN-2791` C4d: multi-platform binaries and Home Manager gateway rollout.
+
 Related prior work:
 
 - `TIN-2494` Skill/harness pare-down and token-IO ADR.

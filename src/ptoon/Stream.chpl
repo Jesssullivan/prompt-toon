@@ -3,8 +3,10 @@
  * THE USER FLOW: a wide research spool returns N subagent outputs at once;
  * every one must pass fail-closed redaction AND become provenance-bearing
  * source cards before the mythos/fable synthesis seat sees any. This is the
- * long-lived-process shape (MCP gateway / Claude Code PostToolBatch): one
- * process, one framed batch in, one JSONL event stream out.
+ * one-shot fan-in shape: one process, one framed batch in, one JSONL event
+ * stream out. C4a's resident `serve` command reuses the same document/run
+ * transform functions across many requests; provider transport stays outside
+ * Chapel.
  *
  * INPUT (length-prefixed TRIPLET framing — same philosophy as redact-batch:
  * length prefixes carry arbitrary bytes with zero escaping, and no JSON
@@ -64,12 +66,23 @@ module Stream {
    * are labels; a malformed label is a malformed frame => process abort);
    * the BODY stays bytes — it decodes inside the per-doc task so a bad body
    * withholds that doc instead of killing the batch. */
-  proc parseStreamBatch(const ref raw: bytes): [] StreamDoc throws {
+  proc parseStreamBatch(const ref raw: bytes, maxDocs: int = 0,
+                        maxTotalBytes: int = 0,
+                        maxLabelBytes: int = 0): [] StreamDoc throws {
+    if maxDocs < 0 || maxTotalBytes < 0 || maxLabelBytes < 0 then
+      throw new Error("condense-batch: parser limits must be nonnegative");
+    const total = raw.size;
+    if maxTotalBytes > 0 && total > maxTotalBytes then
+      throw new Error("condense-batch: input bytes " + total: string +
+                      " exceed maxTotalBytes " + maxTotalBytes: string);
+
     var arr = toArr(raw);   // var, not const: c_ptrTo below needs a ref actual
-    const total = arr.size;
     var pos = 0;
     const n = readIntLine(arr, pos, total);
     if n < 0 then throw new Error("condense-batch: negative document count");
+    if maxDocs > 0 && n > maxDocs then
+      throw new Error("condense-batch: document count " + n: string +
+                      " exceeds maxDocs " + maxDocs: string);
     // Minimum frame per doc is three "0\n" fields (source, tier, body).
     // Bound allocation by the maximum number of triplets the remaining frame
     // could possibly encode, not by raw bytes.
@@ -77,8 +90,13 @@ module Stream {
       throw new Error("condense-batch: document count exceeds possible frame size before allocation");
     var docs: [0..<n] StreamDoc;
 
-    proc readField(ref pos: int, what: string, docIdx: int): bytes throws {
+    proc readField(ref pos: int, what: string, docIdx: int,
+                   maxFieldBytes: int = 0): bytes throws {
       const len = readIntLine(arr, pos, total - pos);
+      if maxFieldBytes > 0 && len > maxFieldBytes then
+        throw new Error("condense-batch: doc " + docIdx: string + " " + what +
+                        " length " + len: string + " exceeds maxLabelBytes " +
+                        maxFieldBytes: string);
       if pos + len > total then
         throw new Error("condense-batch: doc " + docIdx: string + " " + what +
                         " length " + len: string + " overruns input");
@@ -92,8 +110,8 @@ module Stream {
     }
 
     for i in 0..<n {
-      const src = readField(pos, "source", i);
-      const tier = readField(pos, "trust_tier", i);
+      const src = readField(pos, "source", i, maxLabelBytes);
+      const tier = readField(pos, "trust_tier", i, maxLabelBytes);
       const body = readField(pos, "body", i);
       docs[i] = new StreamDoc(src.decode(), tier.decode(), body);
     }
@@ -310,13 +328,25 @@ module Stream {
   }
 
   proc parseCondenseRun(const ref raw: bytes, ref header: CondenseRunHeader,
-                        ref docs: list(StreamDoc)) throws {
+                        ref docs: list(StreamDoc), maxDocs: int = 0,
+                        maxTotalBytes: int = 0,
+                        maxLabelBytes: int = 0) throws {
+    if maxDocs < 0 || maxTotalBytes < 0 || maxLabelBytes < 0 then
+      throw new Error("condense: parser limits must be nonnegative");
+    const total = raw.size;
+    if maxTotalBytes > 0 && total > maxTotalBytes then
+      throw new Error("condense: input bytes " + total: string +
+                      " exceed maxTotalBytes " + maxTotalBytes: string);
+
     var arr = toArr(raw);   // var, not const: c_ptrTo below needs a ref actual
-    const total = arr.size;
     var pos = 0;
 
-    proc readField(ref pos: int, what: string): bytes throws {
+    proc readField(ref pos: int, what: string,
+                   maxFieldBytes: int = 0): bytes throws {
       const len = readIntLine(arr, pos, total - pos);
+      if maxFieldBytes > 0 && len > maxFieldBytes then
+        throw new Error("condense: " + what + " length " + len: string +
+                        " exceeds maxLabelBytes " + maxFieldBytes: string);
       if pos + len > total then
         throw new Error("condense: " + what + " length " + len: string +
                         " overruns input");
@@ -329,11 +359,11 @@ module Stream {
       return field;
     }
 
-    header.runId = readField(pos, "runId").decode();
-    header.generatedAt = readField(pos, "generatedAt").decode();
-    header.minToonSavings = readField(pos, "minToonSavings").decode();
-    header.defaultTier = readField(pos, "defaultTier").decode();
-    header.tierOverridesJson = readField(pos, "tierOverridesJson").decode();
+    header.runId = readField(pos, "runId", maxLabelBytes).decode();
+    header.generatedAt = readField(pos, "generatedAt", maxLabelBytes).decode();
+    header.minToonSavings = readField(pos, "minToonSavings", maxLabelBytes).decode();
+    header.defaultTier = readField(pos, "defaultTier", maxLabelBytes).decode();
+    header.tierOverridesJson = readField(pos, "tierOverridesJson", maxLabelBytes).decode();
     checkNoControlChars(header.minToonSavings, "minToonSavings");
     checkJsonNumber(header.minToonSavings);
     checkNoControlChars(header.tierOverridesJson, "tierOverridesJson");
@@ -343,17 +373,80 @@ module Stream {
 
     const n = readIntLine(arr, pos, total - pos);
     if n < 0 then throw new Error("condense: negative document count");
+    if maxDocs > 0 && n > maxDocs then
+      throw new Error("condense: document count " + n: string +
+                      " exceeds maxDocs " + maxDocs: string);
     // Minimum frame per doc is three "0\n" fields (source, tier, body).
     if n > (total - pos) / 6 then
       throw new Error("condense: document count exceeds possible frame size before allocation");
     for i in 0..<n {
-      const src = readField(pos, "doc " + i: string + " source");
-      const tier = readField(pos, "doc " + i: string + " trust_tier");
+      const src = readField(pos, "doc " + i: string + " source", maxLabelBytes);
+      const tier = readField(pos, "doc " + i: string + " trust_tier", maxLabelBytes);
       const body = readField(pos, "doc " + i: string + " body");
       docs.pushBack(new StreamDoc(src.decode(), tier.decode(), body));
     }
     if pos != total then
       throw new Error("condense: trailing bytes after document " + n: string);
+  }
+
+  record CondenseRunAggregate {
+    var allCards: list(Card);
+    var jsonlText: string;
+    var inputs: list(ManifestInput);
+    var mixed: bool;
+    var totalCards: int;
+    var withheld: int;
+  }
+
+  /* Build the run-level inputs after all per-document outcomes are complete.
+   * Both the streaming and atomic response paths render their tail events from
+   * this aggregate, preserving card/input order and tally semantics. */
+  private proc aggregateCondenseRun(const ref docs: [] StreamDoc,
+                                    const ref outcomes: [] DocOutcome): CondenseRunAggregate {
+    var aggregate: CondenseRunAggregate;
+    var tiersSeen = new set(string);
+    for i in 0..<docs.size {
+      aggregate.inputs.pushBack(new ManifestInput(docs[i].source, docs[i].tier,
+                                                  outcomes[i].digest,
+                                                  docs[i].body.size));
+      tiersSeen.add(docs[i].tier);
+      if outcomes[i].withheld {
+        aggregate.withheld += 1;
+      } else {
+        for c in outcomes[i].cards {
+          aggregate.allCards.pushBack(c);
+          aggregate.jsonlText += cardJson(c) + "\n";
+          aggregate.totalCards += 1;
+        }
+      }
+    }
+    aggregate.mixed = tiersSeen.size > 1;
+    return aggregate;
+  }
+
+  private proc runSummaryEventJson(n: int, const ref header: CondenseRunHeader,
+                                   const ref aggregate: CondenseRunAggregate): string throws {
+    const summaryText = renderSummary(header.runId, header.generatedAt, n,
+                                      aggregate.mixed, aggregate.allCards);
+    return '{"event":"summary","text":"' + escapeJson(summaryText) + '"}\n';
+  }
+
+  private proc runManifestEventJson(const ref header: CondenseRunHeader,
+                                    maxCards: int,
+                                    const ref aggregate: CondenseRunAggregate): string {
+    const manifest = manifestJson(header.runId, header.generatedAt,
+                                  aggregate.inputs, aggregate.mixed, maxCards,
+                                  header.minToonSavings, header.defaultTier,
+                                  header.tierOverridesJson,
+                                  roughTokenCount(aggregate.jsonlText));
+    return '{"event":"manifest","manifest":' + manifest + "}\n";
+  }
+
+  private proc runBatchEventJson(n: int,
+                                 const ref aggregate: CondenseRunAggregate): string {
+    return '{"event":"batch","docs":' + n: string +
+           ',"cards":' + aggregate.totalCards: string +
+           ',"withheld":' + aggregate.withheld: string + "}\n";
   }
 
   /* C2e: condense-batch plus the run-level artifacts — after every doc's
@@ -388,43 +481,39 @@ module Stream {
       }
     }
 
-    // Run-level aggregation: the cobegin join is the barrier, so outcomes[]
-    // reads below are race-free. Card order is input order (Python extends
-    // the global card list input-by-input).
-    var allCards = new list(Card);
-    var jsonlText: string;
-    var inputs = new list(ManifestInput);
-    var tiersSeen = new set(string);
-    var totalCards = 0;
-    var withheld = 0;
-    for i in 0..<n {
-      inputs.pushBack(new ManifestInput(docsArr[i].source, docsArr[i].tier,
-                                        outcomes[i].digest,
-                                        docsArr[i].body.size));
-      tiersSeen.add(docsArr[i].tier);
-      if outcomes[i].withheld {
-        withheld += 1;
-      } else {
-        for c in outcomes[i].cards {
-          allCards.pushBack(c);
-          jsonlText += cardJson(c) + "\n";
-          totalCards += 1;
-        }
-      }
-    }
-    const mixed = tiersSeen.size > 1;
+    // The cobegin join is the barrier, so outcomes[] reads are race-free.
+    const aggregate = aggregateCondenseRun(docsArr, outcomes);
+    stdout.write(runSummaryEventJson(n, header, aggregate));
+    stdout.write(runManifestEventJson(header, maxCards, aggregate));
+    stdout.write(runBatchEventJson(n, aggregate));
+  }
 
-    const summaryText = renderSummary(header.runId, header.generatedAt, n,
-                                      mixed, allCards);
-    stdout.write('{"event":"summary","text":"' + escapeJson(summaryText) +
-                 '"}\n');
-    const manifest = manifestJson(header.runId, header.generatedAt, inputs,
-                                  mixed, maxCards, header.minToonSavings,
-                                  header.defaultTier, header.tierOverridesJson,
-                                  roughTokenCount(jsonlText));
-    stdout.write('{"event":"manifest","manifest":' + manifest + "}\n");
-    stdout.write('{"event":"batch","docs":' + n: string +
-                 ',"cards":' + totalCards: string +
-                 ',"withheld":' + withheld: string + "}\n");
+  /* Resident-service form of condenseRun: compute the same ordered document
+   * blocks and run-level events without writing stdout, so the caller can wrap
+   * one complete JSONL result in an indivisible response frame. */
+  proc condenseRunBlock(const ref docs: list(StreamDoc),
+                        const ref header: CondenseRunHeader,
+                        maxInputBytes: int, budgetMs: int,
+                        maxCards: int): string throws {
+    const n = docs.size;
+    var docsArr: [0..<n] StreamDoc;
+    for i in 0..<n do docsArr[i] = docs[i];
+
+    var outcomes: [0..<n] DocOutcome;
+    var sw: stopwatch;
+    sw.start();
+
+    coforall i in 0..<n do
+      outcomes[i] = processDoc(i, docsArr[i], maxInputBytes, budgetMs,
+                               maxCards, sw);
+
+    var acc: string;
+    for i in 0..<n do acc += outcomes[i].block;
+
+    const aggregate = aggregateCondenseRun(docsArr, outcomes);
+    acc += runSummaryEventJson(n, header, aggregate);
+    acc += runManifestEventJson(header, maxCards, aggregate);
+    acc += runBatchEventJson(n, aggregate);
+    return acc;
   }
 }
