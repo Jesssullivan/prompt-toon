@@ -14,6 +14,18 @@ prompt-toon *args:
 doctor:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon doctor
 
+# TIN-2793 C4b: opt-in loopback Anthropic Messages shadow gateway. The
+# gateway never reads ANTHROPIC_BASE_URL as its upstream, so the harness can
+# safely point that variable at localhost without creating a proxy loop.
+gateway *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon gateway {{args}}
+
+# Explicitly billed and disabled by default. Requires a running gateway with
+# its resident ptoon engine available plus PROMPT_TOON_LIVE_CANARY=1,
+# ANTHROPIC_API_KEY, and ANTHROPIC_CANARY_MODEL.
+gateway-canary *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/anthropic_gateway_canary.py {{args}}
+
 compile-check:
     cd {{root}} && python3 -m compileall -q prompt_toon tests
 
