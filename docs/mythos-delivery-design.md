@@ -575,3 +575,15 @@ framing terminates the service because it cannot be safely resynchronized.
 - **C4b TIN-2793:** Claude Messages shadow gateway with typed-context transforms.
 - **C4c TIN-2794:** Codex Responses adapter and user-level provider profile.
 - **C4d TIN-2791:** multi-platform binaries and Home Manager gateway rollout.
+
+### C4b source contract
+
+`prompt_toon/gateway.py` is a loopback-only, shadow-only Anthropic Messages
+reverse proxy. It forwards original request entity bytes before parsing a
+separate in-memory view, preserves provider responses and SSE opaquely, and
+submits only policy-known, `tool_use_id`-correlated textual `tool_result`
+segments to `ResidentEngine`. Aggregate metrics expose requested/returned
+models, provider usage, transform savings, withholding, and quality outcomes;
+they never retain credentials or body text. The exact operator flow,
+direct-versus-gateway proof contract, current platform limitation, and
+official protocol references are in `docs/anthropic-shadow-gateway.md`.
