@@ -87,6 +87,9 @@ release version:
     ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1 || { echo "$tag already exists on origin" >&2; exit 1; }
     ! gh release view "$tag" >/dev/null 2>&1 || { echo "GitHub release $tag already exists" >&2; exit 1; }
     python3 tools/packaging/gen_manifest.py --check
+    # A release may never claim gates it did not run: realize the full
+    # parity + hook-canary derivation at this rev before anything is tagged.
+    nix build .#packages.x86_64-linux.ptoon-parity --print-build-logs
     nix build .#packages.x86_64-linux.ptoon --print-build-logs
     rev="$(git rev-parse HEAD)"
     stage="$(mktemp -d)"

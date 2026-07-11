@@ -36,3 +36,7 @@ jobs:
         run: |
           export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
           nix develop --command just check
+      - name: Package smoke (nix build .#prompt-toon)
+        run: |
+          nix build .#prompt-toon
+          ./result/bin/prompt-toon --version
