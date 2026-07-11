@@ -1,6 +1,6 @@
 # Toon of Mythos — Delivery Design
 
-Date: 2026-07-09
+Date: 2026-07-09; C4 amendment accepted 2026-07-11 (TIN-2790)
 Status: synthesized from the 2026-07-09 delivery spool (8 lanes: 6 recon on
 sonnet/opus + 2 opus adversarial critics; ~626k research tokens; fable
 synthesis seat). Owner tickets: TIN-2698 (SSOT), TIN-2696 (HM delivery),
@@ -23,7 +23,10 @@ shape architecture and perf decisions.
 2. **Claude Code is the only harness that can rewrite tool output today.**
    PostToolUse `hookSpecificOutput.updatedToolOutput` replaces the tool
    result the model sees — including `tool_name == "Task"`, i.e. subagent
-   fan-out returns. Codex CLI parses but does not support
+   fan-out returns. `PostToolBatch` does not widen that replacement surface:
+   its current hook output can add `additionalContext`, but cannot replace the
+   completed batch. Per-tool replacement remains a PostToolUse operation.
+   Codex CLI parses but does not support
    `updatedMCPToolOutput` (hooks fire reliably for Bash only); OpenCode's
    `tool.execute.after` output mutation is silently dropped upstream
    (anomalyco/opencode#13574). Any roadmap promising uniform cross-harness
@@ -137,17 +140,17 @@ sha256+evidence.
 
 | # | Story | Today | Endgame | Smallest slice |
 |---|-------|-------|---------|----------------|
-| 1 | Operator pair-engineering (Fable↔SWE interview) | 7 manual steps; routing advisory-only; raw returns flood the synthesis seat; hand-written session notes; captured-but-unread budget_tokens | 1 command: policy-resolved fan-out, pre-condensed returns, auto-attributed note, budget readout | the PostToolUse:Task spike |
-| 2 | Fleet onboarding | PR #761 in review; ~2 commands (auth + switch); mythos-delegation skill missing; OpenCode unserved | `home-manager switch` delivers CLI + both skills to every live harness, parity-audited | add mythos-delegation to promptToonSkillFiles + test assertion |
+| 1 | Operator pair-engineering (Fable↔SWE interview) | v0.2.0 is installed but advisory; IO policy is locked; raw returns still reach the model; the PostToolUse adapter is source-only, unpackaged, and unregistered | opt-in gateway condenses typed context before fable synthesis while preserving authority bytes | C4b Claude shadow gateway (TIN-2793) |
+| 2 | Fleet onboarding | Home Manager delivers v0.2.0 plus both skills; no gateway/service profile is active | one reviewed unit delivers service, profile, policy, and platform binary, parity-audited | C4d HM shadow rollout (TIN-2791) |
 | 3 | External researcher | blocked (private repo); wheel-ready pyproject | one credential-free command (pipx/public flake) + de-tinylanded policy template | `pip wheel .` proof; defer until visibility decision |
-| 4 | Subagent self-serve (501 dir) | binary absent from subagent PATH on this very machine; no threshold contract | return path auto-condenses above threshold | `prompt-toon doctor` from inside an ephemeral subagent shell |
-| 5 | Managed rules update | hand-sync Dhall→JSON; no content-level drift check; zero lab propagation wiring | one command: regenerate, test, version-bump, propagate, parity-confirm | dhall-json in devshell + structural equality test (INV-8) |
+| 4 | Subagent self-serve (501 dir) | one-shot framed `ptoon condense`/`condense-batch` exists; there is no durable transform service or registered hook | bounded resident transforms behind provider-owned transport | C4a `ptoon serve` (TIN-2792) |
+| 5 | Managed rules update | Dhall→JSON structural tests and manifest drift gate landed; regeneration still degrades to hand-sync when Dhall tooling is absent | one command: regenerate, test, version-bump, propagate, parity-confirm | keep reviewed HM version/policy bumps |
 | 6 | Queue/spool consumer | queue/stage are pure file-writers; no runner by design | gated runner with human authorization (INV-9) | `run --dry-run` printing the would-be command |
 
-Cross-cutting risk: stories 1/4/6 assumed an interception point that only
-the spike can prove; story 6's endgame needs an explicit operator decision
-on the deterministic/no-network boundary (recommended: the runner lives in
-an orchestrator-side wrapper, not in this CLI).
+Stories 1/4 now split at the C4 boundary: the provider gateway identifies
+typed transformable context and preserves authority-bearing bytes; the
+resident `ptoon` child performs bounded transforms. Story 6 still needs an
+explicit operator decision on the deterministic/no-network boundary.
 
 ## 5. Fleet propagation (managed rules channel)
 
@@ -246,23 +249,18 @@ mythos/fable synthesis seat sees any of them.
   (`--library --dynamic --no-builtin-runtime`) is the future lever for this
   init cost, but it remains an upstream "initial support" feature and stays
   post-C2 research, not the C1 boundary.
-- **MCP gateway stage (surface C, TIN-2524) / `ptoon --stream`:** one
-  long-lived process reads a JSONL batch of N documents. Here `coforall`
-  batch-across-documents earns its full keep (init paid once) — this is the
-  fan-in shape Chapel is uniquely good at.
+- **MCP gateway stage (surface C, TIN-2524):** the gateway owns transport and
+  submits typed MCP return segments for transformation. Today's
+  `condense-batch` command handles one framed batch and exits. C4a's planned
+  resident `ptoon serve` process amortizes initialization across requests.
 - **Claude Code `PostToolBatch` (surface B-batch, harness delta July 2026):**
   the current hooks reference documents `PostToolBatch` — fires once after a
   batch of tool calls completes, before the next model turn, no matcher
-  (always fires). This collapses the per-return `PostToolUse:Task|Agent`
-  fan-out into a SINGLE hook invocation over the whole spool, i.e. it makes
-  the "one process, N documents" shape available on Claude Code directly
-  (not only via the MCP gateway). `PostToolBatch` → a `ptoon` batch/stream
-  invocation (coforall, one process, N docs) is the end-to-end fan-in path
-  and the strongest argument for building the batch entrypoint. Also confirmed:
-  `updatedToolOutput` generalized from MCP-only to ALL tools as of Claude
-  Code v2.1.121 (2026-04-28); the `Task` vs `Agent` subagent matcher name is
-  unresolved between sources — re-check empirically against the installed
-  version before the C2 hook adapter (TIN-2699-style probe).
+  (always fires). Its hook output can add `additionalContext` for the next
+  model turn; it cannot use `updatedToolOutput` to replace the completed
+  batch. It is therefore an advisory context surface, not a batch enforcement
+  path. Replacement remains per-tool PostToolUse; the `Task` versus `Agent`
+  matcher name still requires a live installed-version probe.
 
 ### Build for C2/C3 (earn their complexity)
 
@@ -491,13 +489,15 @@ cleared it.
 
 **Resolution — pivot the engine boundary to a standalone `ptoon` binary
 invoked as a subprocess.** The C0 spike proved this model runs clean
-(`proc main`, stdin→stdout, byte-parity, no segfaults). It also *matches the
-deployment surface*: PostToolBatch / MCP gateway / `ptoon --stream` are all
-one-process, batch-or-stream shapes, never in-process FFI. And it lets the
-C2 `coforall` batch entrypoint own its concurrency **inside** the Chapel
-runtime (the purple-team's decisive move) instead of exposing N host-thread
-re-entries. The Chapel modules (Normalize/Redact/Defang) are unchanged; only
-the Abi/ctypes layer is dropped in favor of a `proc main` dispatcher.
+(`proc main`, stdin→stdout, byte-parity, no segfaults). Today's
+`condense-batch` and `condense` commands each consume one framed invocation
+and exit; they are not a resident service, and PostToolBatch cannot rewrite
+their completed tool batch. The subprocess boundary still lets the C2
+`coforall` entrypoint own concurrency **inside** the Chapel runtime instead
+of exposing N host-thread re-entries. C4a extends that boundary with a
+resident framed-pipe protocol and fixed workers. The Chapel modules
+(Normalize/Redact/Defang) are unchanged; only the Abi/ctypes layer is dropped
+in favor of a `proc main` dispatcher.
 `prompt_toon/engine.py` shells out via `subprocess`; `--engine=chapel` runs
 the binary, `auto` falls open to Python when the binary is absent.
 
@@ -516,11 +516,12 @@ the binary, `auto` falls open to Python when the binary is absent.
   `ptoon-parity` derivation is that gate. Do not layer task-parallelism onto
   an engine with any live divergence.
 
-### Chapel/Bazel source grounding (checked 2026-07-09)
+### Chapel/Bazel source grounding (checked 2026-07-11)
 
 - Chapel 2.9 `proc main(args: [] string)` and integer exit status:
   https://chapel-lang.org/docs/technotes/main.html.
-- Chapel 2.9 `stdin` / `fileReader.readAll(bytes|string)`:
+- Chapel 2.9 `stdin`, `fileReader.readAll`, incremental `readLine`/`readBinary`,
+  and locking standard writers:
   https://chapel-lang.org/docs/modules/standard/IO.html.
 - Chapel 2.9 `chpl --fast`, `-M`, and `-o` compiler options:
   https://chapel-lang.org/docs/usingchapel/man.html.
@@ -539,3 +540,38 @@ the binary, `auto` falls open to Python when the binary is absent.
   `--remote_download_minimal` performance guidance:
   https://bazel.build/docs/user-manual, https://bazel.build/remote/rbe, and
   https://bazel.build/advanced/performance/build-performance-breakdown.
+
+## 9. C4 online IO gateway (accepted 2026-07-11)
+
+**Current baseline:** v0.2.0 is installed and advisory. Enforcement policy
+ships locked. The PostToolUse adapter exists in source but is not packaged or
+registered with a harness. C4a now adds the source-level resident transform
+service; it is not yet in a release or fleet profile.
+
+**Target boundary:** the provider gateway owns HTTP, auth/header forwarding,
+provider request/response adaptation, errors, and SSE. A private long-lived
+`ptoon serve` child owns only bounded transforms over framed stdin/stdout,
+with a fixed worker pool and explicit document, request/response byte,
+active-stream, and queue limits. Only typed, provenance-bearing context
+segments are transformable.
+System/developer/user instructions, approval state, tool schemas, provider
+controls, and other authority-bearing request bytes remain unchanged.
+
+Shadow mode precedes enforcement. Optional condensation fails open;
+`must_transform` segments fail closed. Claude Messages is first, Codex
+Responses second. The capacity gate targets 64 concurrent streams with
+bounded RSS/queue depth and deterministic overload behavior. This is distinct
+from the MCP-only TIN-2702 stage and the queue-execution decision in TIN-2701.
+
+**C4a fixed defaults:** 64 active streams, 16 transform workers, a 64-slot
+request ring, 64 documents/request, 16 MiB request frames, 256 MiB response
+frames, 4096-byte labels, 2 MiB/document, a 2-second transform budget, and 24
+cards/document. Request policy values may tighten but never expand the launch
+ceilings. Well-framed policy violations are request-scoped; malformed outer
+framing terminates the service because it cannot be safely resynchronized.
+
+- **Parent TIN-2790:** C4 online prompt-toon IO gateway.
+- **C4a TIN-2792:** bounded resident `ptoon serve` protocol and capacity gate.
+- **C4b TIN-2793:** Claude Messages shadow gateway with typed-context transforms.
+- **C4c TIN-2794:** Codex Responses adapter and user-level provider profile.
+- **C4d TIN-2791:** multi-platform binaries and Home Manager gateway rollout.

@@ -87,9 +87,12 @@ def parse_batch(data: bytes) -> list[tuple[dict, bytes]]:
 
 def assert_malformed_rejected(binary: str) -> None:
     cases = {
+        "empty-frame": b"",
+        "count-missing-newline": b"1",
         "huge-count-before-allocation": b"999999999999999999999\n",
         "count-exceeds-minimum-frame-size": b"3\n0\n0\n",
         "overrun-body": b"1\n10\nabc",
+        "second-document-overrun": b"2\n0\n4\nabc",
         "trailing-bytes": b"0\ntrailing",
         "non-digit-length": b"1\nx\n",
     }
@@ -99,6 +102,35 @@ def assert_malformed_rejected(binary: str) -> None:
             raise AssertionError(f"{name}: malformed frame unexpectedly succeeded")
         if proc.stdout:
             raise AssertionError(f"{name}: malformed frame wrote stdout")
+
+
+def assert_default_parse_limits_unlimited(binary: str) -> None:
+    """The one-shot command must keep using the parsers' zero-limit defaults."""
+    docs = [b""] * 65
+    proc = subprocess.run(
+        [binary, "redact-batch"],
+        input=frame_batch(docs),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "default-parser-limits: valid 65-doc frame failed "
+            f"{proc.returncode}: {proc.stderr.decode(errors='replace')}"
+        )
+    if proc.stderr:
+        raise AssertionError(
+            f"default-parser-limits: valid frame wrote stderr {proc.stderr!r}"
+        )
+    results = parse_batch(proc.stdout)
+    if len(results) != len(docs):
+        raise AssertionError(
+            f"default-parser-limits: got {len(results)} docs, expected {len(docs)}"
+        )
+    for i, (meta, blob) in enumerate(results):
+        if meta != {"i": i, "withheld": False, "findings": []} or blob:
+            raise AssertionError(
+                f"default-parser-limits: unexpected result {i}: {meta}, {blob!r}"
+            )
 
 
 def assert_policy_args_rejected(binary: str) -> None:
@@ -124,6 +156,7 @@ def assert_policy_args_rejected(binary: str) -> None:
 def main() -> None:
     binary = _binary()
     assert_malformed_rejected(binary)
+    assert_default_parse_limits_unlimited(binary)
     assert_policy_args_rejected(binary)
     files = sorted(p for p in INPUTS.iterdir() if p.is_file())
     if not files:

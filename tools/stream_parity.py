@@ -83,9 +83,13 @@ def frame(docs: list[tuple[str, str, bytes]]) -> bytes:
 
 def assert_malformed_rejected(binary: str) -> None:
     cases = {
+        "empty-frame": b"",
+        "count-missing-newline": b"1",
         "huge-count-before-allocation": b"999999999999999999999\n",
         "count-exceeds-minimum-triplet-frame-size": b"2\n0\n0\n0\n",
         "overrun-source": b"1\n10\nabc",
+        "overrun-trust-tier": b"1\n1\ns10\nabc",
+        "overrun-body": b"1\n1\ns1\nt10\nabc",
         "missing-fields": b"1\n1\ns\n",
         "trailing-bytes": b"0\ntrailing",
         "non-digit-length": b"1\nx\n",
@@ -97,6 +101,69 @@ def assert_malformed_rejected(binary: str) -> None:
             raise AssertionError(f"{name}: malformed frame unexpectedly succeeded")
         if proc.stdout:
             raise AssertionError(f"{name}: malformed frame wrote stdout")
+
+
+def assert_default_parse_limits_unlimited(binary: str) -> None:
+    """One-shot commands retain zero-limit parsing for docs and labels."""
+    long_source = "s" * 4097
+    long_tier = "t" * 4097
+    docs = [(long_source, long_tier, b"")]
+    docs += [(f"empty-{i}", TRUST_TIER, b"") for i in range(64)]
+    proc = subprocess.run(
+        [binary, "condense-batch"],
+        input=frame(docs),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "default-parser-limits: valid 65-doc frame failed "
+            f"{proc.returncode}: {proc.stderr.decode(errors='replace')}"
+        )
+    if proc.stderr:
+        raise AssertionError(
+            f"default-parser-limits: valid frame wrote stderr {proc.stderr!r}"
+        )
+    events = [json.loads(line) for line in proc.stdout.splitlines()]
+    doc_events = [event for event in events if event.get("event") == "doc"]
+    if len(doc_events) != len(docs):
+        raise AssertionError(
+            f"default-parser-limits: got {len(doc_events)} docs, expected {len(docs)}"
+        )
+    if (
+        doc_events[0].get("source") != long_source
+        or doc_events[0].get("trust_tier") != long_tier
+    ):
+        raise AssertionError("default-parser-limits: long labels did not round-trip")
+    if events[-1] != {"event": "batch", "docs": len(docs), "cards": 0, "withheld": 0}:
+        raise AssertionError(
+            f"default-parser-limits: unexpected batch event {events[-1]}"
+        )
+
+    long_header = [
+        b"r" * 4097,
+        b"g" * 4097,
+        b"1" * 4097,
+        b"t" * 4097,
+        b'{"key":"' + b"v" * 4097 + b'"}',
+    ]
+    proc = subprocess.run(
+        [binary, "condense"],
+        input=frame_condense_run(long_header, []),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            "default-parser-limits: valid long run headers failed "
+            f"{proc.returncode}: {proc.stderr.decode(errors='replace')}"
+        )
+    if proc.stderr:
+        raise AssertionError(
+            f"default-parser-limits: long run headers wrote stderr {proc.stderr!r}"
+        )
+    if not proc.stdout.endswith(
+        b'{"event":"batch","docs":0,"cards":0,"withheld":0}\n'
+    ):
+        raise AssertionError("default-parser-limits: long run headers produced bad JSONL")
 
 
 def assert_policy_args_rejected(binary: str) -> None:
@@ -220,12 +287,15 @@ def chapel_raw_card_json(binary: str, docs: list[tuple[str, str, bytes]]) -> lis
     return cards_by_doc
 
 
-def frame_condense_run(header_fields: list[bytes], docs: list[tuple[str, str, bytes]]) -> bytes:
+def frame_fields(fields: list[bytes]) -> bytes:
     parts: list[bytes] = []
-    for field in header_fields:
+    for field in fields:
         parts += [str(len(field)).encode(), b"\n", field]
-    parts += [frame(docs)]
     return b"".join(parts)
+
+
+def frame_condense_run(header_fields: list[bytes], docs: list[tuple[str, str, bytes]]) -> bytes:
+    return frame_fields(header_fields) + frame(docs)
 
 
 def assert_condense_header_rejected(binary: str) -> None:
@@ -257,6 +327,25 @@ def assert_condense_header_rejected(binary: str) -> None:
     proc = subprocess.run([binary, "condense"], input=truncated, capture_output=True)
     if proc.returncode == 0 or proc.stdout:
         raise AssertionError("truncated-header: malformed run header not rejected cleanly")
+
+
+def assert_condense_frame_rejected(binary: str) -> None:
+    """Malformed document framing after a valid run header fails pre-output."""
+    prefix = frame_fields([b"fixed-run-id", b"GENERATED_AT", b"0.2", b"tier", b"{}"])
+    cases = {
+        "run-huge-count-before-list-growth": prefix + b"999999999999999999999\n",
+        "run-count-exceeds-minimum-triplet-frame-size": prefix + b"2\n0\n0\n0\n",
+        "run-overrun-source": prefix + b"1\n10\nabc",
+        "run-overrun-trust-tier": prefix + b"1\n1\ns10\nabc",
+        "run-overrun-body": prefix + b"1\n1\ns1\nt10\nabc",
+        "run-trailing-bytes": prefix + b"0\ntrailing",
+    }
+    for name, payload in cases.items():
+        proc = subprocess.run([binary, "condense"], input=payload, capture_output=True)
+        if proc.returncode == 0:
+            raise AssertionError(f"{name}: malformed run frame unexpectedly succeeded")
+        if proc.stdout:
+            raise AssertionError(f"{name}: malformed run frame wrote stdout")
 
 
 def run_case_docs(case) -> list[dict[str, str]]:
@@ -335,9 +424,11 @@ def condense_run_parity(engine: ChapelEngine) -> tuple[list[str], int]:
 def main() -> None:
     binary = _binary()
     assert_malformed_rejected(binary)
+    assert_default_parse_limits_unlimited(binary)
     assert_policy_args_rejected(binary)
     assert_bad_body_utf8_withheld(binary)
     assert_condense_header_rejected(binary)
+    assert_condense_frame_rejected(binary)
 
     files = sorted(p for p in INPUTS.iterdir() if p.is_file())
     if not files:

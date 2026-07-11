@@ -15,10 +15,10 @@
  *   runs CLEAN with byte-parity: a standalone `proc main` that reads stdin,
  *   writes stdout, and exits. Chapel owns its runtime start-to-finish; there
  *   is no foreign-thread re-entry and no manual buffer free to mispair with
- *   jemalloc. The real user flow is subprocess/stream shaped anyway — Claude
- *   Code PostToolBatch (one hook over a subagent-return batch), the MCP
- *   gateway, and `ptoon --stream` — never in-process FFI. So the engine ships
- *   as this binary; engine.py invokes it as a subprocess.
+ *   jemalloc. The real user flow is subprocess/stream shaped anyway: one-shot
+ *   hook transforms and the C4 provider gateway's private resident child,
+ *   never in-process FFI. So the engine ships as this binary; engine.py invokes
+ *   one-shot commands and resident.py owns `ptoon serve`.
  *
  * FIXED BINARY PROTOCOL (argv[1] is the subcommand; ALL of stdin is read as
  * raw bytes):
@@ -27,6 +27,7 @@
  *   redact    -> EXACTLY one line "findings:<comma-joined names or empty>\n"
  *                then the redacted text verbatim (identical framing to the C0
  *                spike), exit 0.
+ *   serve     -> resident v1 framed requests/responses until stdin EOF.
  *   caps      -> engine-caps JSON to stdout, exit 0.
  *   unknown   -> message on stderr, exit 2.
  *
@@ -46,14 +47,13 @@
  *
  * C2b adds `redact-batch`: a length-prefixed N-document framing over one
  * process with an internal `coforall` fan-out that owns its own concurrency.
- * C2c adds fail-closed input cap + wall-clock budget policy to
- * `redact-batch`. The `condense --stream` cards/manifest surface follows on
- * this same dispatch point without changing the per-document transform
- * modules.
+ * C2c-e add fail-closed policy, card streams, and run artifacts. C4a adds a
+ * fixed worker set and bounded request ring without changing the existing
+ * one-shot contracts or the per-document transform modules.
  */
 module Main {
   use IO, List;
-  use Normalize, Redact, Defang, Batch, Stream;
+  use Normalize, Redact, Defang, Batch, Stream, Serve;
 
   /* Chapel passes the command line via the optional `[] string` formal:
    * args[0] is the executable name and args[1..] are the arguments (0-indexed,
@@ -61,7 +61,7 @@ module Main {
    * process exit status. */
   proc main(args: [] string): int throws {
     if args.size < 2 {
-      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|redact-batch|condense-batch|condense|caps)");
+      stderr.writeln("ptoon: missing subcommand (want normalize|defang|redact|redact-batch|condense-batch|condense|serve|caps)");
       return 2;
     }
     const sub = args[1];
@@ -97,7 +97,7 @@ module Main {
         // Same JSON shape Abi.ptoon_engine_caps emitted, same version source.
         const caps = '{"engine":"chapel","utf8proc":true,"unicode_version":"' +
                      unicodeVersion() +
-                     '","patterns":9,"features":["normalize","redact","defang","redact-batch","condense-batch","condense"]}';
+                     '","patterns":9,"serve_protocol":1,"features":["normalize","redact","defang","redact-batch","condense-batch","condense","serve"]}';
         stdout.write(caps);
         return 0;
       }
@@ -222,11 +222,58 @@ module Main {
         condenseRun(docs, header, maxInputBytes, budgetMs, maxCards);
         return 0;
       }
-      // C2 remainder: iocache HMAC parity + the hook canary ride on this
-      // same dispatch point in later slices.
+      when "serve" {
+        // C4a resident transform service. Provider transport remains outside
+        // Chapel; this process owns a fixed worker set and bounded request ring.
+        if args.size > 11 {
+          stderr.writeln("ptoon serve: too many args (want workers queueDepth maxDocs maxRequestBytes maxLabelBytes maxInputBytes maxBudgetMs maxCards maxResponseBytes)");
+          return 2;
+        }
+        var workers = 16;
+        var queueDepth = 64;
+        var maxDocs = 64;
+        var maxRequestBytes = 16 * 1024 * 1024;
+        var maxLabelBytes = 4096;
+        var maxInputBytes = 2_000_000;
+        var maxBudgetMs = 2000;
+        var maxCards = 24;
+        var maxResponseBytes = 256 * 1024 * 1024;
+        try {
+          if args.size >= 3 then workers = args[2]: int;
+          if args.size >= 4 then queueDepth = args[3]: int;
+          if args.size >= 5 then maxDocs = args[4]: int;
+          if args.size >= 6 then maxRequestBytes = args[5]: int;
+          if args.size >= 7 then maxLabelBytes = args[6]: int;
+          if args.size >= 8 then maxInputBytes = args[7]: int;
+          if args.size >= 9 then maxBudgetMs = args[8]: int;
+          if args.size >= 10 then maxCards = args[9]: int;
+          if args.size >= 11 then maxResponseBytes = args[10]: int;
+        } catch e {
+          stderr.writeln("ptoon serve: args must be decimal integers");
+          return 2;
+        }
+        if workers <= 0 || queueDepth <= 0 || maxDocs <= 0 ||
+           maxRequestBytes <= 0 || maxLabelBytes <= 0 ||
+           maxInputBytes <= 0 || maxBudgetMs <= 0 || maxCards <= 0 ||
+           maxResponseBytes <= 0 {
+          stderr.writeln("ptoon serve: every limit must be positive");
+          return 2;
+        }
+        if maxInputBytes > maxRequestBytes {
+          stderr.writeln("ptoon serve: maxInputBytes cannot exceed maxRequestBytes");
+          return 2;
+        }
+        if maxResponseBytes < maxRequestBytes {
+          stderr.writeln("ptoon serve: maxResponseBytes cannot be smaller than maxRequestBytes");
+          return 2;
+        }
+        return serveLoop(workers, queueDepth, maxDocs, maxRequestBytes,
+                         maxLabelBytes, maxInputBytes, maxBudgetMs, maxCards,
+                         maxResponseBytes);
+      }
       otherwise {
         stderr.writeln("ptoon: unknown subcommand '", sub,
-                       "' (want normalize|defang|redact|redact-batch|condense-batch|condense|caps)");
+                       "' (want normalize|defang|redact|redact-batch|condense-batch|condense|serve|caps)");
         return 2;
       }
     }

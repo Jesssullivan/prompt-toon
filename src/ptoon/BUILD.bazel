@@ -26,9 +26,10 @@ chapel_binary(
         "Cards.chpl",   # C2d source-card extraction (Python-byte-exact)
         "Stream.chpl",  # C2d condense-batch JSONL surface (Main uses Stream)
         "Summary.chpl", # C2e run-level summary.md/manifest rendering
-        # Toon.chpl is intentionally excluded from the C1 binary (TOON is
-        # Chapel-property-tested, not exposed through the binary protocol
-        # until C2). Kept out of srcs so the compile graph matches the flake.
+        "Serve.chpl",   # C4a bounded resident transform service
+        # Toon.chpl remains intentionally excluded: TOON is property-tested,
+        # but no binary protocol command calls it. Kept out of srcs so the
+        # compile graph matches the flake.
         "//c_src:normalize_ffi_srcs",
         "//c_src:sha256_srcs",
     ],
