@@ -706,6 +706,11 @@ class ResidentEngine:
     def returncode(self) -> int | None:
         return self._process.poll()
 
+    @property
+    def pid(self) -> int:
+        """Resident child PID for local capacity/health instrumentation."""
+        return self._process.pid
+
     def close(self) -> None:
         """Fail outstanding calls and stop the child process. Idempotent."""
         with self._close_lock:
