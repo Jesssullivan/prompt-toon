@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "hooks" / "post_tool_condense.py"
+
+# The hook stamps summaries with now_utc() (seconds precision). Any canary
+# leg that compares a RE-DERIVED output against an earlier one must mask the
+# timestamp first, or the leg flakes whenever the two derivations straddle a
+# second boundary (observed at f832364: "tamper: re-derived output differs").
+# Cache-hit comparisons stay byte-exact — cached bytes never re-stamp.
+TIMESTAMP_RE = re.compile(rb"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b")
+
+
+def mask_ts(raw: bytes) -> bytes:
+    return TIMESTAMP_RE.sub(b"GENERATED_AT", raw)
 
 SECRET = "ghp_abcdefghijklmnopqrstuvwxyz123456"
 
@@ -185,8 +197,8 @@ def main() -> None:
             rc3, out3, _ = run_hook(payload, env)
             if b"POISONED" in out3:
                 failures.append("tamper: poisoned cache content was served (INV-6 broken)")
-            if out3 != out:
-                failures.append("tamper: re-derived output differs from original")
+            if mask_ts(out3) != mask_ts(out):
+                failures.append("tamper: re-derived output differs from original (beyond timestamp)")
             quarantined = [p for p in cache_dir.iterdir() if "quarantined" in p.name]
             if not quarantined:
                 failures.append("tamper: no quarantine directory after tampering")
