@@ -280,18 +280,19 @@ class GatewayProtocolTests(unittest.TestCase):
         headers: dict[str, str],
         *,
         chunked: bool = False,
+        path: str = "/v1/messages",
     ) -> tuple[int, list[tuple[str, str]], bytes]:
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         if chunked:
             connection.request(
                 "POST",
-                "/v1/messages",
+                path,
                 body=[body[:13], body[13:]],
                 headers=headers,
                 encode_chunked=True,
             )
         else:
-            connection.request("POST", "/v1/messages", body=body, headers=headers)
+            connection.request("POST", path, body=body, headers=headers)
         response = connection.getresponse()
         result = response.status, response.getheaders(), response.read()
         connection.close()
@@ -348,6 +349,18 @@ class GatewayProtocolTests(unittest.TestCase):
         )
         self.assertEqual(response[0], 200)
         self.assertEqual(self.upstream_state.requests[-1]["body"], body)
+
+    def test_claude_code_beta_query_is_preserved(self) -> None:
+        response = self._send(
+            self.gateway.server_port,
+            request_body(),
+            self._headers("sse"),
+            path="/v1/messages?beta=true",
+        )
+        self.assertEqual(response[0], 200)
+        self.assertEqual(
+            self.upstream_state.requests[-1]["path"], "/v1/messages?beta=true"
+        )
 
     def test_non_2xx_status_body_request_id_and_unknown_headers_are_exact(self) -> None:
         response = self._send(
@@ -438,6 +451,43 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertEqual(metrics["models"]["requested"], {"claude-requested": 1})
         self.assertEqual(metrics["models"]["returned"], {"claude-returned": 1})
         self.assertEqual(metrics["counters"]["provider_input_tokens"], 21)
+
+    def test_readiness_and_connectivity_probe_track_local_and_upstream_state(self) -> None:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.gateway.server_port, timeout=5
+        )
+        connection.request("HEAD", "/")
+        head = connection.getresponse()
+        self.assertEqual(head.status, 204)
+        self.assertEqual(head.read(), b"")
+        connection.close()
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.gateway.server_port, timeout=5
+        )
+        connection.request("GET", "/__prompt_toon/ready")
+        ready = connection.getresponse()
+        before = json.loads(ready.read())
+        connection.close()
+        self.assertEqual(ready.status, 200)
+        self.assertEqual(before["status"], "ready")
+        self.assertTrue(before["accepting"])
+        self.assertTrue(before["engine_available"])
+        self.assertEqual(before["upstream"], "unknown")
+
+        response = self._send(
+            self.gateway.server_port, request_body(), self._headers("sse")
+        )
+        self.assertEqual(response[0], 200)
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.gateway.server_port, timeout=5
+        )
+        connection.request("GET", "/__prompt_toon/ready")
+        observed = connection.getresponse()
+        after = json.loads(observed.read())
+        connection.close()
+        self.assertEqual(observed.status, 200)
+        self.assertEqual(after["upstream"], "reachable")
 
 
 class GatewayBoundaryTests(unittest.TestCase):
@@ -538,6 +588,97 @@ class GatewayBoundaryTests(unittest.TestCase):
         server.server_close()
         self.assertEqual(server.server_address[0], "127.0.0.1")
 
+    def test_gateway_can_restart_on_the_same_loopback_port(self) -> None:
+        def create(port: int) -> tuple[Any, threading.Thread]:
+            metrics = GatewayMetrics()
+            analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+            server = create_gateway_server(
+                GatewayConfig(
+                    "127.0.0.1",
+                    port,
+                    "https://api.anthropic.com",
+                    self.policy.max_request_bytes,
+                    1,
+                ),
+                analyzer,
+                metrics,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            return server, thread
+
+        first, first_thread = create(0)
+        port = first.server_port
+        first.shutdown()
+        first_thread.join(timeout=5)
+        first.server_close()
+        self.assertFalse(first_thread.is_alive())
+
+        second, second_thread = create(port)
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            connection.request("GET", "/__prompt_toon/ready")
+            response = connection.getresponse()
+            payload = json.loads(response.read())
+            connection.close()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(payload["status"], "ready")
+        finally:
+            second.shutdown()
+            second_thread.join(timeout=5)
+            second.server_close()
+
+    def test_readiness_reports_transport_failure_without_conflating_local_state(self) -> None:
+        unused = socket.socket()
+        unused.bind(("127.0.0.1", 0))
+        upstream_port = unused.getsockname()[1]
+        unused.close()
+
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+        server = create_gateway_server(
+            GatewayConfig(
+                "127.0.0.1",
+                0,
+                f"http://127.0.0.1:{upstream_port}",
+                self.policy.max_request_bytes,
+                1,
+            ),
+            analyzer,
+            metrics,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=5
+            )
+            connection.request(
+                "POST",
+                "/v1/messages",
+                body=request_body(),
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            self.assertEqual(response.status, 502)
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=5
+            )
+            connection.request("GET", "/__prompt_toon/ready")
+            readiness_response = connection.getresponse()
+            readiness = json.loads(readiness_response.read())
+            connection.close()
+            self.assertEqual(readiness_response.status, 200)
+            self.assertEqual(readiness["status"], "ready")
+            self.assertEqual(readiness["upstream"], "failed")
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
     def test_sse_multiline_event_observation_is_bounded(self) -> None:
         metrics = GatewayMetrics()
         observer = ResponseObserver(
@@ -556,6 +697,22 @@ class GatewayBoundaryTests(unittest.TestCase):
         observer.feed(
             b'event: message_start\ndata: {"type":"message_start","message":'
             b'{"model":"claude-partial","usage":{"input_tokens":99}}}\n\n'
+        )
+        observer.finish()
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot["models"]["returned"], {})
+        self.assertEqual(snapshot["counters"]["provider_input_tokens"], 0)
+        self.assertEqual(snapshot["counters"]["response_telemetry_unavailable"], 1)
+
+    def test_sse_unterminated_message_stop_is_discarded_at_eof(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'event: message_start\ndata: {"type":"message_start","message":'
+            b'{"model":"claude-partial","usage":{"input_tokens":99}}}\n\n'
+            b'event: message_stop\ndata: {"type":"message_stop"}'
         )
         observer.finish()
         snapshot = metrics.snapshot()
@@ -658,6 +815,18 @@ class GatewayFailureIsolationTests(unittest.TestCase):
         self.assertEqual(self.upstream_state.requests[-1]["body"], request_body())
         counters = metrics.snapshot()["counters"]
         self.assertEqual(counters["shadow_skipped_engine_unavailable"], 1)
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", server.server_port, timeout=5
+        )
+        connection.request("GET", "/__prompt_toon/ready")
+        response = connection.getresponse()
+        readiness = json.loads(response.read())
+        connection.close()
+        self.assertEqual(response.status, 503)
+        self.assertEqual(readiness["status"], "not_ready")
+        self.assertFalse(readiness["engine_available"])
+        self.assertEqual(readiness["upstream"], "reachable")
 
     def test_oversize_request_is_rejected_before_upstream(self) -> None:
         metrics = GatewayMetrics()

@@ -32,6 +32,7 @@ from prompt_toon.resident import ResidentEngine
 
 
 HEALTH_PATH = "/__prompt_toon/health"
+READINESS_PATH = "/__prompt_toon/ready"
 METRICS_PATH = "/__prompt_toon/metrics"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
@@ -687,12 +688,12 @@ class ResponseObserver:
     def finish(self) -> None:
         if self._enabled:
             if self._sse:
-                if self._line_buffer:
-                    line = bytes(self._line_buffer)
-                    if line.endswith(b"\r"):
-                        line = line[:-1]
-                    self._consume_sse_line(line)
-                self._dispatch_sse_event()
+                # An SSE event is dispatched only by its terminating blank
+                # line. EOF with a partial line or unterminated event must not
+                # promote partial model/usage data to complete telemetry.
+                self._line_buffer.clear()
+                self._event_data.clear()
+                self._event_bytes = 0
             elif self._json_body:
                 try:
                     value = json.loads(
@@ -790,6 +791,7 @@ class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
         )
         self._active_condition = threading.Condition()
         self._active_connections: set[socket.socket] = set()
+        self._upstream_state = "unknown"
         self._closing = False
         self._closed = False
         super().__init__(server_address, AnthropicGatewayHandler)
@@ -835,6 +837,26 @@ class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
     def active_connection_count(self) -> int:
         with self._active_condition:
             return len(self._active_connections)
+
+    @property
+    def accepting(self) -> bool:
+        with self._active_condition:
+            return not self._closing and not self._closed
+
+    @property
+    def upstream_state(self) -> str:
+        with self._active_condition:
+            return self._upstream_state
+
+    def record_upstream_state(self, state: str) -> None:
+        if state not in ("reachable", "failed"):
+            raise ValueError(f"invalid upstream state {state!r}")
+        with self._active_condition:
+            self._upstream_state = state
+
+    def begin_shutdown(self) -> None:
+        with self._active_condition:
+            self._closing = True
 
     @staticmethod
     def _reject_connection(request: socket.socket) -> None:
@@ -941,9 +963,26 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "mode": "shadow",
+                    "accepting": self.server.accepting,
                     "engine_available": self.server.analyzer.engine_available,
                     "pending_transforms": self.server.analyzer.pending_jobs,
                     "pending_transform_bytes": self.server.analyzer.pending_bytes,
+                    "upstream": self.server.upstream_state,
+                },
+            )
+            return
+        if path == READINESS_PATH:
+            accepting = self.server.accepting
+            engine_available = self.server.analyzer.engine_available
+            ready = accepting and engine_available
+            self._send_json(
+                200 if ready else 503,
+                {
+                    "status": "ready" if ready else "not_ready",
+                    "mode": "shadow",
+                    "accepting": accepting,
+                    "engine_available": engine_available,
+                    "upstream": self.server.upstream_state,
                 },
             )
             return
@@ -951,6 +990,17 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, self.server.metrics.snapshot())
             return
         self._send_local_error(404, "not_found_error", "local endpoint not found")
+
+    def do_HEAD(self) -> None:
+        self.close_connection = True
+        if urlsplit(self.path).path != "/":
+            self.send_response_only(404)
+        else:
+            self.send_response_only(204 if self.server.accepting else 503)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
 
     def do_POST(self) -> None:
         if urlsplit(self.path).path != MESSAGES_PATH:
@@ -1160,6 +1210,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                 # Shadow observation is never allowed to change provider IO.
                 self.server.metrics.record_shadow_error()
             response = connection.getresponse()
+            self.server.record_upstream_state("reachable")
             self._forward_response(response)
         except _UnsupportedUpstreamResponse:
             self.server.metrics.increment("upstream_framing_rejected")
@@ -1170,6 +1221,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
         except (OSError, http.client.HTTPException):
             self.server.metrics.increment("upstream_transport_failures")
             if response is None and not self.wfile.closed:
+                self.server.record_upstream_state("failed")
                 self.close_connection = True
                 self._send_local_error(
                     502, "api_error", "upstream transport failed"
@@ -1346,6 +1398,7 @@ def run_gateway(args: Any) -> int:
 
     def request_shutdown(signum: int, _frame: Any) -> None:
         metrics.increment("shutdown_signals")
+        server.begin_shutdown()
         thread = threading.Thread(
             target=server.shutdown,
             name=f"prompt-toon-shutdown-{signum}",

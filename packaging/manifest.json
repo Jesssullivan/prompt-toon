@@ -19,7 +19,7 @@
     },
     "gh_release": {
       "enabled": true,
-      "note": "operated via `just release <version>` (remote-builder ptoon build + stamped manifest + gh release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
+      "note": "operated via `just release <version>` (remote-builder ptoon, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
     },
     "home_manager": {
       "enabled": true
@@ -61,6 +61,9 @@
   "targets": [
     {
       "artifact": "ptoon",
+      "capabilities": {
+        "serve_protocol": 1
+      },
       "kind": "static-binary",
       "platform": "x86_64-linux",
       "sha256": null,
@@ -68,11 +71,15 @@
     },
     {
       "artifact": "prompt_toon",
-      "kind": "python-package",
+      "capabilities": {
+        "anthropic_shadow_gateway": 1
+      },
+      "filename": null,
+      "kind": "python-wheel",
       "platform": "any",
       "sha256": null,
       "size": null
     }
   ],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }
