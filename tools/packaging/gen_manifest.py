@@ -108,6 +108,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
         "platform": "x86_64-linux",
         "kind": "static-binary",
         "artifact": "ptoon",
+        "capabilities": {"serve_protocol": 1},
         "sha256": None,
         "size": None,
     }
@@ -115,6 +116,21 @@ def build_manifest(args: argparse.Namespace) -> dict:
         binary = Path(args.with_binary)
         ptoon_target["sha256"] = file_digest(binary)
         ptoon_target["size"] = binary.stat().st_size
+
+    python_target: dict = {
+        "platform": "any",
+        "kind": "python-wheel",
+        "artifact": "prompt_toon",
+        "capabilities": {"anthropic_shadow_gateway": 1},
+        "filename": None,
+        "sha256": None,
+        "size": None,
+    }
+    if args.with_wheel:
+        wheel = Path(args.with_wheel)
+        python_target["filename"] = wheel.name
+        python_target["sha256"] = file_digest(wheel)
+        python_target["size"] = wheel.stat().st_size
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -137,13 +153,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
         },
         "targets": [
             ptoon_target,
-            {
-                "platform": "any",
-                "kind": "python-package",
-                "artifact": "prompt_toon",
-                "sha256": None,
-                "size": None,
-            },
+            python_target,
         ],
         "skills": skills,
         "policy": policy,
@@ -157,7 +167,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             },
             "gh_release": {
                 "enabled": True,
-                "note": "operated via `just release <version>` (remote-builder ptoon build + stamped manifest + gh release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
+                "note": "operated via `just release <version>` (remote-builder ptoon, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
             },
             "brew": {"enabled": False, "note": "C3 phase gate"},
             "rpm_deb": {"enabled": False, "note": "C3 phase gate (nfpm)"},
@@ -179,9 +189,13 @@ def main() -> int:
     parser.add_argument("--ci-run", default=None)
     parser.add_argument("--with-binary", default=None,
                         help="inject sha256/size of a built ptoon binary (release lane)")
+    parser.add_argument("--with-wheel", default=None,
+                        help="inject filename/sha256/size of the built Python wheel")
     args = parser.parse_args()
 
-    stamped = bool(args.git_rev or args.tag or args.ci_run or args.with_binary)
+    stamped = bool(
+        args.git_rev or args.tag or args.ci_run or args.with_binary or args.with_wheel
+    )
     rendered = render(build_manifest(args))
 
     if args.check:

@@ -727,6 +727,22 @@ def command_gateway(args: argparse.Namespace) -> int:
     return run_gateway(args)
 
 
+def command_claude_profile(args: argparse.Namespace) -> int:
+    from .claude_harness import claude_profile
+
+    try:
+        profile = claude_profile(args.mode, args.gateway)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    conflicts = profile.get("conflicts", [])
+    if conflicts:
+        raise SystemExit(
+            "conflicting Claude provider routing is active: " + ", ".join(conflicts)
+        )
+    write_json_to_stdout(profile)
+    return 0
+
+
 def default_io_policy_path() -> str:
     configured = os.environ.get("PROMPT_TOON_IO_POLICY")
     if configured:
@@ -836,6 +852,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail startup instead of forwarding with shadow analysis unavailable.",
     )
     gateway.set_defaults(func=command_gateway)
+
+    claude_profile = sub.add_parser(
+        "claude-profile",
+        help="Inspect process-scoped gateway or direct-provider routing state.",
+    )
+    claude_profile.add_argument("mode", choices=["shadow", "direct"])
+    claude_profile.add_argument(
+        "--gateway",
+        default=os.environ.get(
+            "PROMPT_TOON_GATEWAY_URL", "http://127.0.0.1:8787"
+        ),
+    )
+    claude_profile.set_defaults(func=command_claude_profile)
 
     return parser
 

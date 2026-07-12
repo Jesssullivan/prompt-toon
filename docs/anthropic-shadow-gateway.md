@@ -1,8 +1,8 @@
 # Anthropic Messages shadow gateway
 
 TIN-2793 adds the first provider-facing adoption path. It is an opt-in,
-loopback-only HTTP/1.1 gateway for `POST /v1/messages`; it is not an
-enforcement proxy.
+loopback-only HTTP/1.1 gateway for `POST /v1/messages` (including Claude
+Code's `?beta=true` query); it is not an enforcement proxy.
 
 ## Boundary
 
@@ -38,44 +38,94 @@ affects aggregate metrics only. The provider exchange continues unchanged.
 The gateway keeps only bounded counters, model labels, usage totals, and
 quality outcomes in memory. It has no request-body, credential, cache, log,
 or artifact writer. Model label cardinality is capped. `GET
-/__prompt_toon/health` and `GET /__prompt_toon/metrics` are available only on
-the loopback listener.
+/__prompt_toon/health`, `GET /__prompt_toon/ready`, and `GET
+/__prompt_toon/metrics` are available only on the loopback listener. Readiness
+means the process is accepting requests and the resident engine is available;
+the separate `upstream` field is `unknown`, `reachable`, or `failed` based on
+the latest observed provider exchange. `HEAD /` is a local connectivity probe.
 
 ## Operator flow
 
-On a host that can execute the current `x86_64-linux` ptoon release asset:
+The v0.2.0 release asset predates `ptoon serve` and cannot back this gateway.
+Until v0.3.0 is tagged, build the current x86_64-linux source revision on the
+configured remote builder:
 
 ```sh
-PROMPT_TOON_PTOON=/absolute/path/to/ptoon \
+nix build .#packages.x86_64-linux.ptoon
+PROMPT_TOON_PTOON="$(nix path-info .#packages.x86_64-linux.ptoon)/bin/ptoon" \
   just gateway --require-ptoon
 ```
 
-Point an opted-in Claude Code or Anthropic SDK process at the gateway:
+Check local readiness. `just claude-profile shadow` prints structured routing
+state and fails closed when another Claude provider mode is active. Start one
+opted-in process with provider-specific routes explicitly removed:
 
 ```sh
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-claude
+curl --fail --silent http://127.0.0.1:8787/__prompt_toon/ready
+just claude-profile shadow
+env \
+  -u CLAUDE_CODE_USE_BEDROCK -u ANTHROPIC_BEDROCK_BASE_URL \
+  -u CLAUDE_CODE_USE_VERTEX -u ANTHROPIC_VERTEX_BASE_URL \
+  -u CLAUDE_CODE_USE_FOUNDRY -u ANTHROPIC_FOUNDRY_BASE_URL \
+  -u CLAUDE_CODE_USE_MANTLE -u ANTHROPIC_AWS_BASE_URL \
+  ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
+  PROMPT_TOON_GATEWAY_URL=http://127.0.0.1:8787 \
+  claude
+```
+
+Because activation is process-scoped, the parent shell is unchanged. A direct
+rollback process removes only prompt-toon routing and leaves credentials,
+model choice, and any original provider mode untouched:
+
+```sh
+just claude-profile direct
+env -u ANTHROPIC_BASE_URL -u PROMPT_TOON_GATEWAY_URL claude
 ```
 
 The gateway deliberately ignores `ANTHROPIC_BASE_URL` when selecting its own
 upstream. It defaults to `https://api.anthropic.com`; use
 `PROMPT_TOON_ANTHROPIC_UPSTREAM` or `--upstream` for a reviewed alternative.
 Credentials remain owned by the harness and travel only in the forwarded
-request.
+request. The current source does not export `ANTHROPIC_BASE_URL` globally and
+does not install a managed service.
 
-The explicitly billed live probe is disabled unless every gate is present:
-export `ANTHROPIC_API_KEY` from the operator's credential manager first, then
-run:
+Before authorizing provider spend, run the deterministic harness proof:
+
+```sh
+just gateway-harness-probe
+```
+
+It launches the real Claude Code binary under `--bare` with an ephemeral config
+and no session persistence. Claude Code sends a streaming `Read` tool round
+trip through the real gateway to a scripted loopback upstream; the probe checks
+the `?beta=true` path, header values and stable session ID, correlated tool
+result, shadow completion, readiness transition, same-port rebind, and direct
+profile rendering. Its transform engine is an in-memory protocol fixture, not
+the Chapel binary. The API key is local fixture data and no external provider
+is contacted.
+
+The live probe starts its own zero-traffic gateway and real `ResidentEngine`,
+then uses the same Claude Code path against the configured provider. It is
+disabled unless every gate is present: export `ANTHROPIC_API_KEY` from the
+operator's credential manager, set `PROMPT_TOON_PTOON` (or pass `--ptoon`),
+choose an explicit model, and set a dollar ceiling:
 
 ```sh
 PROMPT_TOON_LIVE_CANARY=1 \
 ANTHROPIC_CANARY_MODEL=... \
+ANTHROPIC_CANARY_MAX_BUDGET_USD=... \
   just gateway-canary
 ```
 
-It sends one small Messages request containing a synthetic `Task` result,
-then reports only request ID, requested/returned model, provider usage, and
-aggregate shadow outcome. It never prints the credential or request body.
+It gives Claude Code permission to read exactly one ephemeral fixture, uses a
+minimal child environment and ephemeral home, and accepts no concurrent
+traffic. `PASS` requires exactly two requests, no retries, transport/SSE errors,
+unavailable telemetry, withholding, or non-eligible transform. It reports only
+the exact-marker harness check plus requested/returned models, provider usage,
+transform quality, and estimated transform token savings. The estimate is not
+provider-billed savings because shadow mode does not rewrite requests. It is
+also not a claim of SWE-quality preservation. The canary never prints the
+credential, request body, tool result, model answer, or session ID.
 
 ## Adoption truth
 
@@ -83,9 +133,10 @@ aggregate shadow outcome. It never prints the credential or request body.
   concurrency. C4b puts a transparent provider transport in front of it.
 - Python owns HTTP, TLS, provider protocol evolution, and in-memory telemetry.
   Chapel owns parallel normalization/redaction/defanging/card generation.
-- C4b source and fixtures do not make this a fleet default. The current Chapel
-  release asset is `x86_64-linux`; Darwin and managed Home Manager profiles
-  remain C4d (TIN-2791).
+- C4b source and fixtures do not make this a fleet default. v0.2.0 predates C4;
+  v0.3.0 is prepared as the first C4-capable release line but is not a release
+  until its tag and stamped manifest exist. Darwin and managed Home Manager
+  profiles remain C4d (TIN-2791).
 - `model_gateway.enabled` and the global enforcement gate remain false. No
   request is rewritten. Promotion requires measured canaries, a reviewed
   replacement grammar, and the existing policy gates.
@@ -107,5 +158,9 @@ The implementation follows the current provider contract:
   authentication and version headers are end-to-end.
 - [Claude Code LLM gateway configuration](https://docs.anthropic.com/en/docs/claude-code/llm-gateway):
   `ANTHROPIC_BASE_URL` is the supported local-gateway control.
+- [Claude Code gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol):
+  inference uses `/v1/messages?beta=true`, responses must stream, headers and
+  body fields are open lists, `HEAD /` is best-effort startup traffic, and the
+  token-count endpoint is optional.
 - [API errors](https://platform.claude.com/docs/en/api/errors): status, JSON
   error body, `request-id`, and post-200 stream errors are preserved.

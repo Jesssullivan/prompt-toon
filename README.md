@@ -12,10 +12,10 @@ batch fan-in, and the full condense rendering — proven byte-identical to the
 Python oracle by the parity gates. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
-The installed v0.2.0 fleet surface remains advisory. IO enforcement ships
-locked, and the PostToolUse adapter is neither packaged nor registered with a
-harness. C4a adds the resident transform boundary in source; no provider
-gateway or fleet service profile is enabled yet.
+The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
+and the provider gateway. Current v0.3.0 source contains the C4a resident
+transform boundary and C4b Anthropic shadow gateway, but no v0.3.0 release or
+fleet service profile exists yet. IO enforcement remains locked.
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -74,17 +74,21 @@ It is not in the packaging manifest or any harness registration.
 ## C4 boundary
 
 C4 (TIN-2790) keeps provider transport out of Chapel. C4a establishes the
-resident transform service; the provider gateway
-owns HTTP, auth/header forwarding, errors, and SSE; `ptoon serve` owns a fixed
-pool of bounded transform workers over private framed pipes. Only typed,
-provenance-bearing context is eligible for transformation. Authority-bearing
-request bytes, including instructions, approval state, tool schemas, and
-provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
+resident transform service; C4b adds the opt-in Anthropic Messages shadow
+gateway. Python owns HTTP, auth/header forwarding, errors, and SSE; `ptoon
+serve` owns a fixed pool of bounded transform workers over private framed
+pipes. Only typed, provenance-bearing context is eligible for transformation.
+Authority-bearing request bytes, including instructions, approval state, tool
+schemas, and provider controls, remain unchanged. See `docs/linear.md` for
+C4a-d.
 
 ## Gates
 
 - `just check` — compile/secrets/tests + Bazel graph and test (includes the
   packaging-manifest drift gate).
+- `just gateway-harness-probe` — unbilled real-Claude-Code/SSE gateway proof
+  plus local readiness, same-port rebind, and profile-rendering checks against
+  a scripted loopback upstream.
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
   redact-batch, stream + condense-run vs goldens, resident multiplex parity,
   64-stream RSS capacity, analyze vs the committed pinned baseline
@@ -100,6 +104,13 @@ regenerates via `just manifest`, merges, then `just release X.Y.Z` — parity
 preflight, remote binary build, stamped manifest (provenance + binary
 sha256), tag, GitHub Release. Fleet install rides the lab home-manager module
 (rev-pinned per INV-7; `bump-prompt-toon` recipe there).
+
+The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
+C4 gateway. v0.3.0 is the first release line whose manifest declares
+per-target `serve_protocol = 1` and `anthropic_shadow_gateway = 1`
+capabilities. The release lane builds, installs, hashes, and publishes both the
+binary and universal wheel. Source version preparation is not a release claim
+until the tag and stamped manifest exist.
 
 ## Project Surfaces
 

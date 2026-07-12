@@ -20,14 +20,23 @@ doctor:
 gateway *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon gateway {{args}}
 
-# Explicitly billed and disabled by default. Requires a running gateway with
-# its resident ptoon engine available plus PROMPT_TOON_LIVE_CANARY=1,
-# ANTHROPIC_API_KEY, and ANTHROPIC_CANARY_MODEL.
+# Unbilled protocol proof: real Claude Code CLI, real gateway, scripted
+# loopback SSE upstream, and an in-memory transform engine.
+gateway-harness-probe *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/anthropic_gateway_harness_probe.py {{args}}
+
+# Inspect process-scoped routing and fail closed on conflicting provider modes.
+claude-profile *args:
+    @cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon claude-profile {{args}}
+
+# Explicitly billed and disabled by default. Starts a dedicated gateway and
+# resident ptoon engine; requires PROMPT_TOON_LIVE_CANARY=1,
+# ANTHROPIC_API_KEY, ANTHROPIC_CANARY_MODEL, and an explicit dollar ceiling.
 gateway-canary *args:
     cd {{root}} && PYTHONPATH={{root}} python3 tools/anthropic_gateway_canary.py {{args}}
 
 compile-check:
-    cd {{root}} && python3 -m compileall -q prompt_toon tests
+    cd {{root}} && python3 -m compileall -q prompt_toon tests tools
 
 secrets-scan:
     cd {{root}} && if command -v gitleaks >/dev/null 2>&1; then gitleaks detect --source . --no-banner --redact; else echo "WARNING: gitleaks not on PATH (degraded mode) — secrets scan skipped; run inside nix develop" >&2; fi
@@ -66,9 +75,8 @@ manifest:
     cd {{root}} && python3 tools/packaging/gen_manifest.py
 
 # TIN-2706 gh_release lane: local-operated release. Builds ptoon on the
-# remote substrate (never local chpl), stamps the manifest with provenance
-# + the real binary digest, tags, and publishes a GitHub Release whose
-# assets the derived lanes (brew/nfpm/bazel-registry source.json) key off.
+# remote substrate (never local chpl), builds and installs the universal wheel,
+# stamps both asset digests, then publishes the binary, wheel, and manifest.
 # CI tag-push automation stays gated on a publicly reachable chapel cache.
 release version:
     #!/usr/bin/env bash
@@ -93,29 +101,43 @@ release version:
     }
     trap cleanup_release_failure ERR
     [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "release from main only" >&2; exit 1; }
-    git diff --quiet && git diff --cached --quiet || { echo "release requires a clean tree" >&2; exit 1; }
+    [ -z "$(git status --porcelain)" ] || { echo "release requires a clean tree including untracked files" >&2; exit 1; }
     [ "$(python3 -c 'import prompt_toon; print(prompt_toon.__version__)')" = "{{version}}" ] || { echo "SSOT version != {{version}}; bump prompt_toon/__init__.py first" >&2; exit 1; }
+    rev="$(git rev-parse HEAD)"
+    remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+    [ -n "$remote_main" ] && [ "$rev" = "$remote_main" ] || { echo "release HEAD must equal origin/main" >&2; exit 1; }
     ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag already exists locally" >&2; exit 1; }
     ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1 || { echo "$tag already exists on origin" >&2; exit 1; }
     ! gh release view "$tag" >/dev/null 2>&1 || { echo "GitHub release $tag already exists" >&2; exit 1; }
     python3 tools/packaging/gen_manifest.py --check
+    just check
+    just gateway-harness-probe
     # A release may never claim gates it did not run: realize the full
     # parity + hook-canary derivation at this rev before anything is tagged.
-    nix build .#packages.x86_64-linux.ptoon-parity --print-build-logs
-    nix build .#packages.x86_64-linux.ptoon --print-build-logs
-    rev="$(git rev-parse HEAD)"
+    nix build .#packages.x86_64-linux.ptoon-parity --no-link --print-build-logs
+    ptoon_store="$(nix build .#packages.x86_64-linux.ptoon --no-link --print-out-paths --print-build-logs)"
+    nix build .#packages.x86_64-linux.prompt-toon --no-link --print-build-logs
     stage="$(mktemp -d)"
-    cp -L result/bin/ptoon "$stage/ptoon-x86_64-linux"
+    cp -L "$ptoon_store/bin/ptoon" "$stage/ptoon-x86_64-linux"
     chmod +w "$stage/ptoon-x86_64-linux" >/dev/null 2>&1 || true
-    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" --with-binary "$stage/ptoon-x86_64-linux" > "$stage/manifest-$tag.json"
+    mkdir "$stage/source"
+    git archive "$rev" | tar -x -C "$stage/source"
+    (cd "$stage/source" && UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage")
+    wheels=("$stage"/prompt_toon-{{version}}-*.whl)
+    [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "release expected exactly one prompt-toon wheel" >&2; exit 1; }
+    wheel="${wheels[0]}"
+    UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
+    UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
+    (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" claude-profile direct > profile.json)
+    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" --with-binary "$stage/ptoon-x86_64-linux" --with-wheel "$wheel" > "$stage/manifest-$tag.json"
     git tag -a "$tag" -m "prompt-toon $tag" "$rev"
     local_tag_created=1
     git push origin "$tag"
     remote_tag_pushed=1
-    gh release create "$tag" "$stage/ptoon-x86_64-linux" "$stage/manifest-$tag.json" \
+    gh release create "$tag" "$stage/ptoon-x86_64-linux" "$wheel" "$stage/manifest-$tag.json" \
       --verify-tag \
       --title "prompt-toon v{{version}}" \
-      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon asset. Built on the remote x86_64-linux substrate; parity + hook canary gates green at $rev."
+      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon and wheel assets. Built on the remote x86_64-linux substrate; parity, hook canary, real-CLI harness probe, package install, and repository gates green at $rev."
     trap - ERR
     rm -rf "$stage"
     echo "released $tag at $rev"
