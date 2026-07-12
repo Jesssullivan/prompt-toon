@@ -38,7 +38,8 @@ C4 online IO gateway:
 - `TIN-2790` Parent: online prompt-toon IO gateway between local harnesses and model providers.
 - `TIN-2792` C4a: bounded resident `ptoon serve` protocol, Python client, and
   64-stream parity/RSS capacity gate.
-- `TIN-2793` C4b: Claude Messages shadow gateway with typed-context transforms.
+- `TIN-2793` C4b: Claude Messages shadow gateway with typed-context transforms;
+  C4b.1 adds real-CLI/SSE proof, readiness, rollback, and the v0.3.0 release line.
 - `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile.
 - `TIN-2791` C4d: multi-platform binaries and Home Manager gateway rollout.
 

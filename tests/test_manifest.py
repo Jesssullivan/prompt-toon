@@ -57,6 +57,16 @@ class ManifestTests(unittest.TestCase):
                 digest, sha256((ROOT / rel).read_bytes()).hexdigest(), rel
             )
 
+    def test_c4_artifacts_declare_their_runtime_protocols(self):
+        targets = {target["artifact"]: target for target in self.manifest["targets"]}
+        self.assertEqual(
+            targets["ptoon"]["capabilities"], {"serve_protocol": 1}
+        )
+        self.assertEqual(
+            targets["prompt_toon"]["capabilities"],
+            {"anthropic_shadow_gateway": 1},
+        )
+
     def test_committed_manifest_is_unstamped_and_binaryless(self):
         # The committed form is a pure function of repo content: a committed
         # self-referential git rev or binary hash would be stale by
@@ -80,7 +90,7 @@ class ManifestTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     gen_manifest.validate_package_component("skill", name)
 
-    def test_stamped_emission_injects_binary_digest(self):
+    def test_stamped_emission_authenticates_binary_and_wheel(self):
         # The fake binary lives in a tempdir, never the source tree — the
         # bazel test sandbox (correctly) forbids writes to input paths.
         import tempfile
@@ -88,10 +98,12 @@ class ManifestTests(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="ptoon-manifest-test-")
         fake = Path(tmp) / "ptoon"
         fake.write_bytes(b"not a real elf")
+        wheel = Path(tmp) / "prompt_toon-0.3.0-py3-none-any.whl"
+        wheel.write_bytes(b"not a real wheel")
         try:
             proc = subprocess.run(
                 [sys.executable, str(GEN), "--git-rev", "deadbeef",
-                 "--with-binary", str(fake)],
+                 "--with-binary", str(fake), "--with-wheel", str(wheel)],
                 capture_output=True, cwd=ROOT,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -100,13 +112,36 @@ class ManifestTests(unittest.TestCase):
             ptoon = next(t for t in stamped["targets"] if t["artifact"] == "ptoon")
             self.assertEqual(ptoon["sha256"], sha256(b"not a real elf").hexdigest())
             self.assertEqual(ptoon["size"], len(b"not a real elf"))
+            prompt_toon = next(
+                t for t in stamped["targets"] if t["artifact"] == "prompt_toon"
+            )
+            self.assertEqual(prompt_toon["filename"], wheel.name)
+            self.assertEqual(
+                prompt_toon["sha256"], sha256(b"not a real wheel").hexdigest()
+            )
+            self.assertEqual(prompt_toon["size"], len(b"not a real wheel"))
             # A stamped emission must never overwrite the committed SSOT.
             self.assertEqual(
                 json.loads(MANIFEST.read_text(encoding="utf-8")), self.manifest
             )
         finally:
             fake.unlink(missing_ok=True)
+            wheel.unlink(missing_ok=True)
             Path(tmp).rmdir()
+
+    def test_release_lane_requires_and_publishes_c4_proof_artifacts(self):
+        justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+        for required in (
+            "git status --porcelain",
+            "git ls-remote origin refs/heads/main",
+            "just check",
+            "just gateway-harness-probe",
+            "uv build --wheel",
+            '--with-wheel "$wheel"',
+            '"$wheel" "$stage/manifest-$tag.json"',
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, justfile)
 
 
 if __name__ == "__main__":

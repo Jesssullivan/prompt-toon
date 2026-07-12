@@ -301,6 +301,7 @@
             jq
             just
             python3
+            uv
           ];
           shellHook = ''
             echo "prompt-toon dev shell"

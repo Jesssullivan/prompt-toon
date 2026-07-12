@@ -543,10 +543,11 @@ the binary, `auto` falls open to Python when the binary is absent.
 
 ## 9. C4 online IO gateway (accepted 2026-07-11)
 
-**Current baseline:** v0.2.0 is installed and advisory. Enforcement policy
-ships locked. The PostToolUse adapter exists in source but is not packaged or
-registered with a harness. C4a now adds the source-level resident transform
-service; it is not yet in a release or fleet profile.
+**Current baseline:** v0.2.0 is installed and advisory, and its binary predates
+`ptoon serve`. Current v0.3.0 source contains the C4a resident transform service
+and C4b Anthropic shadow gateway, including the unbilled real-Claude-Code
+harness probe. It is not yet tagged, released, or installed through a fleet
+profile. Enforcement policy ships locked.
 
 **Target boundary:** the provider gateway owns HTTP, auth/header forwarding,
 provider request/response adaptation, errors, and SSE. A private long-lived
@@ -587,3 +588,11 @@ models, provider usage, transform savings, withholding, and quality outcomes;
 they never retain credentials or body text. The exact operator flow,
 direct-versus-gateway proof contract, current platform limitation, and
 official protocol references are in `docs/anthropic-shadow-gateway.md`.
+
+C4b.1 separates protocol proof from spend: an unbilled probe runs the actual
+Claude Code CLI against a scripted loopback SSE upstream, while the live
+provider canary remains hard-gated by credential, model, and dollar ceiling.
+Local readiness proves process admission plus resident-engine availability;
+observed upstream reachability is reported separately. The live canary owns a
+dedicated zero-traffic gateway and real resident engine. Process-scoped
+activation and rollback leave the caller's credentials and model choice alone.

@@ -1,8 +1,11 @@
+import io
 import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from prompt_toon.cli import (
     encode_rows_to_toon,
@@ -14,6 +17,22 @@ from prompt_toon.cli import (
 
 
 class PromptToonTests(unittest.TestCase):
+    def test_claude_profile_is_structured_and_fails_closed_on_provider_conflict(self):
+        output = io.StringIO()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with redirect_stdout(output):
+                code = main(["claude-profile", "shadow"])
+        self.assertEqual(code, 0)
+        profile = json.loads(output.getvalue())
+        self.assertEqual(profile["mode"], "shadow")
+        self.assertEqual(profile["gateway"], "http://127.0.0.1:8787")
+        self.assertEqual(profile["conflicts"], [])
+        with mock.patch.dict(
+            os.environ, {"CLAUDE_CODE_USE_BEDROCK": "1"}, clear=True
+        ):
+            with self.assertRaisesRegex(SystemExit, "CLAUDE_CODE_USE_BEDROCK"):
+                main(["claude-profile", "shadow"])
+
     def test_redacts_secret_like_values(self):
         text, findings = redact_text("token=ghp_abcdefghijklmnopqrstuvwxyz user a@example.com")
         self.assertIn("[REDACTED]", text)
