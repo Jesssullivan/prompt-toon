@@ -197,6 +197,13 @@ module Redact {
     for (off, len) in ranges {
       acc += text.this((pos: byteIndex)..<(off: byteIndex));
       acc += REDACTED;
+      /* Preserve Python splitlines() separators from the matched span so
+       * source-card ranges after a multiline secret still address raw lines. */
+      const matched = text.this((off: byteIndex)..<((off + len): byteIndex));
+      for (cp, item) in zip(matched.codepoints(), matched.items()) {
+        if cp == 0x0A || cp == 0x85 || cp == 0x2028 || cp == 0x2029 then
+          acc += item;
+      }
       pos = off + len;
     }
     acc += text.this((pos: byteIndex)..);

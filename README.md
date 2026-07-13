@@ -69,6 +69,17 @@ The report requires 20 unique spools within a 50-ledger cap for its
 corpus-count gate, separates execution cohorts, and remains non-promotable
 until deterministic quality fixtures pass. See `docs/dogfood-efficiency.md`.
 
+Run the provider-free synthetic quality gate separately:
+
+```sh
+just quality-fixtures
+```
+
+It requires all constraint-recall, open-question, redaction, clean-retention,
+untrusted-authority exclusion, and exact claim-provenance checks to pass without
+averaging. The report is implementation-fixture evidence only; it does not
+attest arbitrary ledgers or model-visible quality.
+
 ## The `ptoon` binary (Chapel engine)
 
 Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).
@@ -127,6 +138,8 @@ resident 64-stream production path, which remains covered by
 - `just dogfood <files-or-directories...>` — provider-free spool replay with
   output hashes, local byte/token estimates, TOON selection evidence, engine
   identity, and caller-observed Mythos/model labels.
+- `just quality-fixtures` — deterministic Python-oracle synthetic quality
+  gate; remote parity repeats the same cases through Chapel.
 - `just gateway-harness-probe` — unbilled real-Claude-Code/SSE gateway proof
   plus local readiness, same-port rebind, and profile-rendering checks against
   a scripted loopback upstream.
@@ -141,8 +154,8 @@ resident 64-stream production path, which remains covered by
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
   redact-batch, stream + condense-run vs goldens, resident multiplex parity,
   64-stream RSS capacity, analyze vs the committed pinned baseline
-  (`tests/goldens/analyze/`), hook canary. Runs at release time via the
-  `just release` preflight.
+  (`tests/goldens/analyze/`), Python/Chapel offline quality fixtures, hook
+  canary. Runs at release time via the `just release` preflight.
 
 ## Releases & packaging
 

@@ -132,14 +132,50 @@ estimates, and savings are reported separately.
 The report keeps TOON eligibility/selection separate from whole-handoff pass
 rate, records zero provider requests, and contains no implicit timestamp or
 filesystem path, making the JSON deterministic for the same ledger set. Its
-promotion gate is always `blocked` / `not-evaluated` in C4f.1. C4f.2 must add
-deterministic constraint, open-question, redaction, and provenance quality
-fixtures before any size result can become promotion evidence. Until then,
-ledger metrics are internally checked but self-attested rather than
-cryptographically bound to an execution, and timing is not a cross-host
-benchmark because host metadata is not recorded. A passing corpus-count gate
-does not activate either shadow gateway, alter provider-bound request bytes, or
-prove model-visible context reduction.
+promotion gate remains `blocked` / `not-evaluated`: ledger metrics are
+internally checked but self-attested rather than cryptographically bound to an
+execution, and timing is not a cross-host benchmark because host metadata is
+not recorded. A passing corpus-count gate does not activate either shadow
+gateway, alter provider-bound request bytes, or prove model-visible context
+reduction.
+
+## Offline Quality Fixtures
+
+C4f.2 adds a separate synthetic artifact-quality gate:
+
+```sh
+just quality-fixtures
+```
+
+`tools/gen_fixtures.py` writes a deterministic, gitignored schema-v1 fixture
+manifest beside the existing generated corpus. Four bounded cases cover
+critical constraints/open questions, secret-class redaction, a clean control,
+and mixed trust-tier provenance. `tools/quality_runner.py` executes each case
+through an explicit engine and evaluates the emitted summary, authoritative
+JSONL, optional TOON view, and manifest against the original synthetic bytes.
+
+Every dimension is all-or-nothing: all required constraints and questions must
+appear in both the cards and their summary section; forbidden untrusted claims
+must stay out of `Critical Constraints`; every required redacted claim must
+retain its redaction flag; and no forbidden input fragment may appear in any
+model-facing artifact. Clean controls must retain every expected claim without
+acquiring redaction. Every positive claim is bound to its exact source and
+expected card range, while each card/manifest source, SHA-256, trust tier, and
+range is validated. Multiline redaction preserves Python `splitlines()`
+separators so later ranges remain aligned with raw source lines. Source reopen
+guidance is mandatory. No weighted score can hide a failure.
+
+The canonical report contains fixture/case IDs, counts, engine identity, and
+failure codes only. It has no timestamp, absolute path, raw fixture content,
+provider request, or timing. Local `just check` runs the Python oracle. The
+remote Linux parity derivation runs both Python and Chapel, while native remote
+Darwin repeats the Chapel gate without local `chpl` iteration.
+
+An `offline-fixture-pass` proves this fixed transform regression suite only. It
+does not attest arbitrary self-reported corpus ledgers, prove SWE task quality,
+or unlock the corpus reporter's promotion field. Adoption still needs a
+reviewed binding between an implementation/fixture revision and representative
+corpus evidence, followed by separately authorized provider evidence.
 
 ## Token Claim Boundary
 
@@ -154,6 +190,16 @@ files, images, and model-specific behavior also affect the count. Exact GPT
 experiments therefore use the
 [OpenAI token counting endpoint](https://developers.openai.com/api/docs/guides/token-counting)
 only under an explicit authorization and budget; `dogfood` never invokes it.
+
+GPT-5.6 also reports prompt-cache reads as `cached_tokens` and writes as
+`cache_write_tokens`; cache writes and reads have different economics. Exact
+prefix reuse depends on preserving stable prompt order and cache controls.
+Future authorized imports must therefore bind all three counts to the complete
+request artifact and keep stable authority-bearing prefixes before variable
+condensed context. Fewer lexical pieces or request bytes alone is not a net
+provider-cost proof. See the current
+[GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+and [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching).
 
 The optional `--mythos-route` and `--model-label` fields are caller-observed
 session labels. They are not proof that a provider routed a request to that
