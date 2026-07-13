@@ -31,6 +31,13 @@ PROXY_ENV = (
 )
 LOOPBACK_NO_PROXY_VALUES = ("127.0.0.1", "localhost", "::1")
 PROXY_BYPASS_CONFLICT = "proxy_without_loopback_bypass"
+_CODEX_USAGE_FIELDS = (
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "cache_write_tokens",
+)
 
 _CHILD_ENV_ALLOWLIST = (
     "ALL_PROXY",
@@ -266,8 +273,29 @@ def build_codex_command(
     return command
 
 
+def _parse_codex_usage(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise ValueError("Codex completed turn usage must be an object")
+    usage: dict[str, int] = {}
+    for field in _CODEX_USAGE_FIELDS:
+        if field not in value:
+            continue
+        amount = value[field]
+        if (
+            not isinstance(amount, int)
+            or isinstance(amount, bool)
+            or amount < 0
+        ):
+            raise ValueError(
+                f"Codex completed turn usage {field} must be a nonnegative integer"
+            )
+        usage[field] = amount
+    return usage
+
+
 def parse_codex_stream(stdout: str) -> dict[str, Any]:
     final_message: str | None = None
+    completed_turn_usage: dict[str, int] | None = None
     stream_lines = 0
     completed_turns = 0
     errors = 0
@@ -284,6 +312,11 @@ def parse_codex_stream(stdout: str) -> dict[str, Any]:
         event_type = value.get("type")
         if event_type == "turn.completed":
             completed_turns += 1
+            completed_turn_usage = (
+                _parse_codex_usage(value["usage"])
+                if "usage" in value
+                else None
+            )
         elif event_type in ("error", "turn.failed"):
             errors += 1
         elif event_type == "item.completed":
@@ -301,6 +334,7 @@ def parse_codex_stream(stdout: str) -> dict[str, Any]:
         "stream_lines": stream_lines,
         "completed_turns": completed_turns,
         "errors": errors,
+        "usage": completed_turn_usage,
     }
 
 
