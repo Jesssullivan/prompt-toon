@@ -16,6 +16,11 @@ prompt-toon *args:
 dogfood *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon dogfood {{args}}
 
+# TIN-2820 C4f: deterministic ledger-only aggregation. This reads only the
+# explicitly named efficiency.json files and performs no provider IO.
+dogfood-corpus *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon corpus-report {{args}}
+
 doctor:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon doctor
 
@@ -161,7 +166,7 @@ release version:
     wheel="${wheels[0]}"
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
-    (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
+    (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" corpus-report --help >/dev/null && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
     python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" \
       --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
       --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \

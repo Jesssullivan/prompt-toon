@@ -92,6 +92,55 @@ size, so fail-closed omission can never masquerade as an efficiency gain. The
 ledger retains only the withheld source label and reason, never body-derived
 content.
 
+## Corpus Reports
+
+Schema-v2 ledgers add an artifact-derived emitted-card count plus two path-free
+input identities over SHA-256, trust tier, and byte count: an order-sensitive
+key binds the actual handoff order, while an order-insensitive multiset key
+measures spool diversity. Regenerate schema-v1 runs with the current `dogfood`
+command before aggregation.
+
+Pass explicit ledger files to the checked reporter:
+
+```sh
+just dogfood-corpus \
+  path/to/run-01/efficiency.json \
+  path/to/run-02/efficiency.json
+```
+
+The reporter opens only the named regular JSON files; it does not discover run
+directories or read summaries, cards, manifests, or raw sources. Inputs are
+capped at 50 one-megabyte ledgers, final symlinks and duplicate JSON keys fail
+closed, and recomputed identities prevent replaying or permuting one spool to
+inflate a cohort. The same spool may appear once in each execution/policy
+cohort for an apples-to-apples Python/Chapel comparison, but counts only once
+toward diversity. One to 19 unique spools produce an `insufficient-corpus`
+diagnostic; 20 or more unique spools within the 50-ledger cap satisfy the
+sample-count gate.
+
+Estimator ID, pattern, and unit must match exactly. Engine, one-shot shape,
+budget enforcement, card cap, Chapel budget, and both savings thresholds form
+the execution cohort, so Python-oracle, Chapel one-shot, and policy variants
+never share percentiles. Resident gateway evidence is rejected and remains in
+`just gateway-capacity`. Each cohort reports nearest-rank p50/p90 only at five
+or more runs; smaller cohorts retain sorted values with an
+`insufficient-cohort` status. Withheld and zero-token-baseline runs remain in
+operational and gate-rate denominators but are excluded explicitly from
+economics distributions and weighted aggregates. Output byte counts, lexical
+estimates, and savings are reported separately.
+
+The report keeps TOON eligibility/selection separate from whole-handoff pass
+rate, records zero provider requests, and contains no implicit timestamp or
+filesystem path, making the JSON deterministic for the same ledger set. Its
+promotion gate is always `blocked` / `not-evaluated` in C4f.1. C4f.2 must add
+deterministic constraint, open-question, redaction, and provenance quality
+fixtures before any size result can become promotion evidence. Until then,
+ledger metrics are internally checked but self-attested rather than
+cryptographically bound to an execution, and timing is not a cross-host
+benchmark because host metadata is not recorded. A passing corpus-count gate
+does not activate either shadow gateway, alter provider-bound request bytes, or
+prove model-visible context reduction.
+
 ## Token Claim Boundary
 
 The local estimator counts ASCII word runs and individual non-whitespace

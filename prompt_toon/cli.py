@@ -21,6 +21,7 @@ from types import SimpleNamespace
 from typing import Any, Iterable, Iterator
 
 from . import __version__
+from .corpus import CorpusLedgerError, build_corpus_report
 from .dogfood import (
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_CARDS_PER_DOCUMENT,
@@ -1038,6 +1039,27 @@ def _run_dogfood_to_directory(
         manifest["outputs"]["toon_note"] = (
             "TOON view omits sha256 and evidence; JSONL is the provenance-bearing artifact."
         )
+    input_metadata = [
+        {
+            "bytes": len(item["bytes"]),
+            "sha256": hashlib.sha256(item["bytes"]).hexdigest(),
+            "trust_tier": tier_overrides.get(item["source"], args.trust_tier),
+        }
+        for item in items
+    ]
+    manifest_input_metadata = [
+        {
+            "bytes": item.get("bytes"),
+            "sha256": item.get("sha256"),
+            "trust_tier": item.get("trust_tier"),
+        }
+        for item in manifest.get("inputs", [])
+        if isinstance(item, dict)
+    ]
+    if manifest_input_metadata != input_metadata:
+        raise SystemExit(
+            "dogfood manifest input metadata does not match the bytes supplied"
+        )
     engine_finished = time.perf_counter()
     _write_condense_artifacts(out_dir, cards, summary, manifest, toon_text)
     run_finished = time.perf_counter()
@@ -1047,6 +1069,7 @@ def _run_dogfood_to_directory(
         generated_at=generated_at,
         output_dir=out_dir,
         documents=len(items),
+        input_metadata=input_metadata,
         max_cards_per_document=args.max_cards,
         input_bytes=sum(len(item["bytes"]) for item in items),
         input_tokens_estimate=sum(rough_token_count(item["text"]) for item in items),
@@ -1136,6 +1159,15 @@ def command_dogfood(args: argparse.Namespace) -> int:
             "recommended_handoff": ledger["handoff_decision"]["recommended_handoff"],
         }
     )
+    return 0
+
+
+def command_corpus_report(args: argparse.Namespace) -> int:
+    try:
+        report = build_corpus_report(args.ledgers)
+    except CorpusLedgerError as exc:
+        raise SystemExit(str(exc)) from exc
+    write_json_to_stdout(report)
     return 0
 
 
@@ -1372,6 +1404,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     dogfood.set_defaults(func=command_dogfood)
+
+    corpus_report = sub.add_parser(
+        "corpus-report",
+        help="Aggregate explicit dogfood efficiency ledgers without reading sources.",
+    )
+    corpus_report.add_argument(
+        "ledgers",
+        nargs="+",
+        help="Explicit schema-v2 efficiency.json files (1-50; 20 required to pass).",
+    )
+    corpus_report.set_defaults(func=command_corpus_report)
 
     analyze = sub.add_parser(
         "analyze", help="Analyze JSON/JSONL for compact JSON vs TOON row encoding."
