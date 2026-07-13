@@ -36,7 +36,10 @@ def expand_spool_inputs(
         identity = path.resolve(strict=True)
         if identity in expanded:
             return
-        expanded[identity] = str(path)
+        # Record the canonical path that supplies the bytes. Final symlinks and
+        # symlinks discovered inside a walked root are rejected; resolving
+        # ancestor aliases keeps provenance tied to the location opened later.
+        expanded[identity] = str(identity)
         if len(expanded) > max_documents:
             raise ValueError(
                 f"dogfood spool has more than {max_documents} documents; "
@@ -184,6 +187,7 @@ def build_efficiency_ledger(
     )
     if withheld_documents:
         eligible_handoffs = []
+        best_measured = None
         recommended_handoff = None
         handoff_gate = "withheld"
     else:
@@ -245,8 +249,16 @@ def build_efficiency_ledger(
             "engine_resolved": engine_resolved,
             "shape": execution_shape,
             "engine_wall_ms": round(engine_wall_ms, 3),
+            "engine_wall_scope": (
+                "in-memory condensation through optional TOON format selection"
+            ),
             "run_wall_ms": round(run_wall_ms, 3),
             "postprocessing": "python-ledger-and-optional-toon-view",
+            "budget_enforcement": (
+                "chapel-wall-clock-withholding"
+                if engine_resolved == "chapel"
+                else "bounded-input-only-python-oracle"
+            ),
         },
         "estimator": {
             "id": LEXICAL_ESTIMATOR_ID,
