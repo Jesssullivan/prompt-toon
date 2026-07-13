@@ -16,7 +16,7 @@ class IoPolicyTests(unittest.TestCase):
         cls.policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
 
     def test_schema_version(self):
-        self.assertEqual(self.policy["schema_version"], 1)
+        self.assertEqual(self.policy["schema_version"], 2)
 
     def test_owner_linear_issue_shape(self):
         self.assertRegex(self.policy["metadata"]["owner_linear_issue"], r"^[A-Z]+-\d+$")
@@ -66,6 +66,12 @@ class IoPolicyTests(unittest.TestCase):
         )
         self.assertGreaterEqual(
             limits["max_request_bytes"], self.policy["thresholds"]["max_input_bytes"]
+        )
+        self.assertGreaterEqual(
+            limits["max_inflight_request_bytes"], limits["max_request_bytes"]
+        )
+        self.assertLessEqual(
+            limits["max_inflight_request_bytes"], limits["max_response_bytes"]
         )
         self.assertGreaterEqual(
             limits["max_response_bytes"], limits["max_request_bytes"]

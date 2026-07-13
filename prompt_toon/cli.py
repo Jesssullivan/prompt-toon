@@ -116,6 +116,14 @@ def stable_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def normalize_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = unicodedata.normalize("NFKC", text)
@@ -464,21 +472,51 @@ def engine_status() -> dict[str, Any]:
         if not chapel.available():
             status["chapel"] = {"available": False}
         else:
+            binary = engine_module.resolve_binary_path()
+            if binary is None:
+                raise RuntimeError("available Chapel engine has no binary path")
             entry: dict[str, Any] = {
                 "available": True,
-                "binary": str(engine_module.resolve_binary_path()),
+                "binary": str(binary),
+                "sha256": file_sha256(binary),
             }
             try:
                 entry["caps"] = chapel.engine_caps()
             except Exception as exc:  # noqa: BLE001 - report, never fail doctor
-                entry["caps_error"] = f"{type(exc).__name__}: {exc}"
+                entry["caps_error"] = type(exc).__name__
             status["chapel"] = entry
     except Exception as exc:  # noqa: BLE001 - report, never fail doctor
-        status["chapel"] = {"available": False, "error": f"{type(exc).__name__}: {exc}"}
+        status["chapel"] = {"available": False, "error": type(exc).__name__}
     return status
 
 
-def command_doctor(_: argparse.Namespace) -> int:
+def command_doctor(args: argparse.Namespace) -> int:
+    from .adoption import adoption_doctor_status
+
+    engines = engine_status()
+    adoption = adoption_doctor_status(
+        policy_path=args.policy,
+        anthropic_gateway=args.anthropic_gateway,
+        openai_gateway=args.openai_gateway,
+        anthropic_client_token_file=args.anthropic_client_token_file,
+        openai_client_token_file=args.openai_client_token_file,
+        codex_profile_file=args.codex_profile_file,
+        timeout=args.timeout,
+    )
+    local_policy_sha256 = adoption["policy"].get("sha256")
+    local_binary_sha256 = engines.get("chapel", {}).get("sha256")
+    for gateway in adoption["gateways"].values():
+        ownership = gateway.get("ownership", {})
+        payload = ownership.get("payload")
+        if ownership.get("authenticated") is True and isinstance(payload, dict):
+            ownership["policy_matches_doctor"] = (
+                isinstance(local_policy_sha256, str)
+                and payload.get("policy_sha256") == local_policy_sha256
+            )
+            ownership["resident_matches_doctor_engine"] = (
+                isinstance(local_binary_sha256, str)
+                and payload.get("resident_binary_sha256") == local_binary_sha256
+            )
     info = {
         "prompt_toon_version": __version__,
         "state_root": str(state_root()),
@@ -486,7 +524,8 @@ def command_doctor(_: argparse.Namespace) -> int:
         "git": shutil.which("git"),
         "codex": shutil.which("codex"),
         "claude": shutil.which("claude"),
-        "engines": engine_status(),
+        "engines": engines,
+        "adoption": adoption,
     }
     write_json_to_stdout(info)
     return 0
@@ -785,6 +824,26 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     doctor = sub.add_parser("doctor", help="Print local tool status.")
+    doctor.add_argument("--policy", default=default_io_policy_path())
+    doctor.add_argument(
+        "--anthropic-gateway",
+        default="http://127.0.0.1:8787",
+        help="Managed Anthropic loopback gateway URL.",
+    )
+    doctor.add_argument(
+        "--openai-gateway",
+        default="http://127.0.0.1:8788",
+        help="Managed OpenAI loopback gateway URL.",
+    )
+    doctor.add_argument("--anthropic-client-token-file")
+    doctor.add_argument("--openai-client-token-file")
+    doctor.add_argument("--codex-profile-file")
+    doctor.add_argument(
+        "--timeout",
+        type=float,
+        default=0.5,
+        help="Per-endpoint loopback probe timeout in seconds (maximum 30).",
+    )
     doctor.set_defaults(func=command_doctor)
 
     queue = sub.add_parser("queue", help="Write a durable job file.")
@@ -869,6 +928,19 @@ def build_parser() -> argparse.ArgumentParser:
     gateway.add_argument("--policy", default=default_io_policy_path())
     gateway.add_argument("--ptoon")
     gateway.add_argument(
+        "--client-token-file",
+        help="Owner-only local client token file; requires --upstream-token-file.",
+    )
+    gateway.add_argument(
+        "--upstream-token-file",
+        help="Owner-only provider token file; requires --client-token-file.",
+    )
+    gateway.add_argument(
+        "--require-split-auth",
+        action="store_true",
+        help="Fail startup unless both managed credential files are present.",
+    )
+    gateway.add_argument(
         "--require-ptoon",
         action="store_true",
         help="Fail startup instead of forwarding with shadow analysis unavailable.",
@@ -892,6 +964,19 @@ def build_parser() -> argparse.ArgumentParser:
     responses_gateway.add_argument("--shutdown-grace", type=float, default=10.0)
     responses_gateway.add_argument("--policy", default=default_io_policy_path())
     responses_gateway.add_argument("--ptoon")
+    responses_gateway.add_argument(
+        "--client-token-file",
+        help="Owner-only local client token file; requires --upstream-token-file.",
+    )
+    responses_gateway.add_argument(
+        "--upstream-token-file",
+        help="Owner-only provider token file; requires --client-token-file.",
+    )
+    responses_gateway.add_argument(
+        "--require-split-auth",
+        action="store_true",
+        help="Fail startup unless both managed credential files are present.",
+    )
     responses_gateway.add_argument(
         "--require-ptoon",
         action="store_true",

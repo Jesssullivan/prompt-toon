@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 from concurrent.futures import Future
@@ -11,6 +12,13 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from prompt_toon.engine import ChapelEngine, EngineError, resolve_binary_path
+
+
+BOUNDED_CHAPEL_RUNTIME_ENV = {
+    "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+    "QT_NUM_SHEPHERDS": "1",
+    "QT_NUM_WORKERS_PER_SHEPHERD": "2",
+}
 
 
 DEFAULT_MAX_STREAMS = 64
@@ -109,12 +117,15 @@ class ResidentEngine:
                 "ptoon binary is not available: set PROMPT_TOON_PTOON or build "
                 "build/ptoon relative to the repo root"
             )
+        runtime_env = dict(os.environ)
+        runtime_env.update(BOUNDED_CHAPEL_RUNTIME_ENV)
         try:
             caps_proc = subprocess.run(
                 [str(resolved), "caps"],
                 capture_output=True,
                 timeout=_CAPS_TIMEOUT_SECONDS,
                 check=False,
+                env=runtime_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise EngineError(f"ptoon serve caps preflight failed: {exc}") from exc
@@ -137,6 +148,7 @@ class ResidentEngine:
         ):
             raise EngineError("ptoon binary does not advertise serve protocol v1")
 
+        self.binary_path = resolved.expanduser().resolve()
         self.max_streams = max_streams
         self.workers = workers
         self.queue_depth = queue_depth
@@ -148,7 +160,7 @@ class ResidentEngine:
         self.budget_ms = budget_ms
         self.max_cards = max_cards
         self.argv = (
-            str(resolved),
+            str(self.binary_path),
             "serve",
             str(workers),
             str(queue_depth),
@@ -176,6 +188,7 @@ class ResidentEngine:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=runtime_env,
             )
         except OSError as exc:
             raise EngineError(f"ptoon serve could not be started: {exc}") from exc
@@ -700,7 +713,9 @@ class ResidentEngine:
     @property
     def closed(self) -> bool:
         with self._state_lock:
-            return self._closed or self._terminal_error is not None
+            if self._closed or self._terminal_error is not None:
+                return True
+        return self._process.poll() is not None
 
     @property
     def returncode(self) -> int | None:

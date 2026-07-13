@@ -50,9 +50,10 @@ just codex-profile shadow --auth api-key --format toml
 The profile selects a custom provider at
 `http://127.0.0.1:8788/v1`, fixes `wire_api = "responses"`, disables
 WebSockets and retries, and deliberately contains no `model` key. The
-`api-key` form reads `PROMPT_TOON_CODEX_GATEWAY_TOKEN`; the credential remains
-process-owned and reaches the provider only through the forwarded
-`Authorization` header. The profile limits shell subprocess inheritance to
+`api-key` form reads `PROMPT_TOON_CODEX_GATEWAY_TOKEN`. In managed C4d mode
+this is a distinct local relay token: the gateway terminates it and injects
+the separately custodied provider token. It must never contain the provider
+API key in a persistent profile. The profile limits shell subprocess inheritance to
 Codex's `core` environment and explicitly excludes that gateway-token variable.
 
 The alternative `--auth openai` form uses `requires_openai_auth = true` and
@@ -69,7 +70,8 @@ just codex-profile shadow --auth api-key --format toml \
   > "${CODEX_HOME:-$HOME/.codex}/prompt-toon-shadow.config.toml"
 ```
 
-Start the current source gateway with the remotely built Linux binary:
+For a developer-only passthrough probe, start the current source gateway with
+the remotely built Linux binary:
 
 ```sh
 nix build .#packages.x86_64-linux.ptoon
@@ -77,10 +79,29 @@ PROMPT_TOON_PTOON="$(nix path-info .#packages.x86_64-linux.ptoon)/bin/ptoon" \
   just responses-gateway --require-ptoon
 ```
 
+The managed source contract fails closed unless both owner-only credential
+files exist:
+
+```sh
+just responses-gateway --require-ptoon --require-split-auth \
+  --client-token-file /run/user/$UID/prompt-toon/openai-client \
+  --upstream-token-file /run/user/$UID/prompt-toon/openai-upstream
+```
+
+Before selecting the profile, `doctor` proves listener ownership with a
+nonce/HMAC challenge that does not transmit the local token and verifies the
+MAC over the actual listener endpoint plus the running instance's upstream,
+policy digest, resident-binary digest, and readiness fields:
+
+```sh
+just prompt-toon doctor \
+  --openai-client-token-file /run/user/$UID/prompt-toon/openai-client
+```
+
 Then opt one Codex process into the profile without changing its model:
 
 ```sh
-PROMPT_TOON_CODEX_GATEWAY_TOKEN="$OPENAI_API_KEY" \
+PROMPT_TOON_CODEX_GATEWAY_TOKEN="$(cat /run/user/$UID/prompt-toon/openai-client)" \
   codex --profile prompt-toon-shadow
 ```
 
@@ -89,6 +110,11 @@ PROMPT_TOON_CODEX_GATEWAY_TOKEN="$OPENAI_API_KEY" \
 names. The gateway deliberately ignores those variables when choosing its own
 upstream; use `PROMPT_TOON_OPENAI_UPSTREAM` or `--upstream` for an explicit,
 reviewed route.
+
+Ingress remains independent of connection count: each request is capped at
+16 MiB and all concurrently retained request bodies share a 128 MiB byte
+budget. The remote 64-stream gate drives that ledger to its configured test cap
+and proves the next request is rejected before it reaches the upstream.
 
 Rollback is selecting no prompt-toon profile. The profile file is inert when
 not selected, and the base user configuration, authentication, and model
@@ -138,7 +164,8 @@ probe, which is mandatory in the release preflight.
 - Shadow token reduction is an estimate because the request is not rewritten.
   Promotion still requires provider-backed transform, token, and SWE-quality
   evidence from a purpose-built tool sandbox.
-- Multi-platform binaries and Home Manager delivery remain C4d (TIN-2791).
+- C4d publishes a disabled, drift-gated multi-platform/Home Manager source
+  contract. The consuming lab unit and host rollout remain separate work.
 
 ## Protocol grounding
 

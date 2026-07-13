@@ -81,7 +81,7 @@ class ClaudeHarnessTests(unittest.TestCase):
         )
         self.assertEqual(env["PATH"], "/bin")
         self.assertEqual(env["ANTHROPIC_API_KEY"], "unit-test-key")
-        self.assertEqual(env["ANTHROPIC_BASE_URL"], "http://localhost:8787")
+        self.assertEqual(env["ANTHROPIC_BASE_URL"], "http://127.0.0.1:8787")
         expected_config = str(Path("/tmp/unit-claude").resolve())
         self.assertEqual(env["CLAUDE_CONFIG_DIR"], expected_config)
         self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)

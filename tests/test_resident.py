@@ -7,9 +7,11 @@ import shutil
 import unittest
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 from prompt_toon.engine import EngineError
 from prompt_toon.resident import (
+    BOUNDED_CHAPEL_RUNTIME_ENV,
     DEFAULT_BUDGET_MS,
     DEFAULT_MAX_CARDS,
     DEFAULT_MAX_DOCS,
@@ -156,6 +158,12 @@ class ResidentEngineTests(unittest.TestCase):
         )
         self.assertFalse(engine.closed)
 
+    def test_closed_observes_child_exit_before_reader_records_terminal_error(self):
+        engine = self.make_engine()
+        self.assertIsNone(engine._terminal_error)
+        with mock.patch.object(engine._process, "poll", return_value=17):
+            self.assertTrue(engine.closed)
+
     def test_error_diagnostics_escape_control_characters(self):
         engine = self.make_engine()
         failed = self.submit(engine, "error-control")
@@ -203,6 +211,14 @@ class ResidentEngineTests(unittest.TestCase):
         self.assertEqual(DEFAULT_MAX_INPUT_BYTES, thresholds["max_input_bytes"])
         self.assertEqual(DEFAULT_BUDGET_MS, thresholds["wall_clock_budget_ms"])
         self.assertEqual(DEFAULT_MAX_CARDS, limits["max_cards_per_document"])
+        self.assertEqual(
+            BOUNDED_CHAPEL_RUNTIME_ENV,
+            {
+                "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+                "QT_NUM_SHEPHERDS": "1",
+                "QT_NUM_WORKERS_PER_SHEPHERD": "2",
+            },
+        )
         self.assertEqual(
             engine.argv[1:],
             (

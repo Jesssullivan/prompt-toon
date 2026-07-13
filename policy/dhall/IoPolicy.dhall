@@ -29,6 +29,7 @@ let ServiceLimits =
       , pending_queue_depth : Natural
       , max_documents_per_request : Natural
       , max_request_bytes : Natural
+      , max_inflight_request_bytes : Natural
       , max_response_bytes : Natural
       , max_label_bytes : Natural
       , max_cards_per_document : Natural

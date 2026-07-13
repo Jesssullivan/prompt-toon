@@ -9,18 +9,25 @@
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["gen_manifest.py"])
+exports_files([
+    "gen_home_manager_contract.py",
+    "gen_manifest.py",
+])
 
 sh_binary(
     name = "gen_manifest",
     srcs = ["gen_manifest_runner.sh"],
-    data = ["gen_manifest.py"],
+    data = [
+        "gen_home_manager_contract.py",
+        "gen_manifest.py",
+    ],
 )
 
 sh_test(
     name = "manifest_drift_test",
     srcs = ["manifest_drift_test.sh"],
     data = [
+        "gen_home_manager_contract.py",
         "gen_manifest.py",
         "//:manifest_srcs",
     ],

@@ -6,8 +6,8 @@ Code's `?beta=true` query); it is not an enforcement proxy.
 
 ## Boundary
 
-The gateway forwards the original request entity bytes and all end-to-end
-headers, including `x-api-key`/`Authorization`, `anthropic-version`,
+In explicit passthrough mode, the gateway forwards the original request entity
+bytes and all end-to-end headers, including `x-api-key`/`Authorization`, `anthropic-version`,
 `anthropic-beta`, and unknown feature headers. It never serializes the parsed
 request back onto the provider path. Status, response bytes, request IDs,
 unknown headers, and SSE events are forwarded opaquely. Hop-by-hop HTTP
@@ -15,6 +15,13 @@ framing is necessarily terminated and rebuilt. The supported upstream
 transfer framing is fixed-length, close-delimited, or a single `chunked`
 coding without trailers; other coding chains are rejected rather than
 silently corrupted.
+
+Managed C4d mode is different only at the credential boundary: it requires two
+owner-only, non-symlink files, authenticates the local client token, strips
+both auth header forms, and injects the separately custodied upstream token.
+`--require-split-auth` prevents a missing-template regression from silently
+starting passthrough mode. Request entity bytes and every non-auth end-to-end
+header retain the same transparency contract.
 
 In parallel, an in-memory parser correlates assistant `tool_use` blocks with
 user `tool_result` blocks by `tool_use_id`. Only text from tools declared in
@@ -27,7 +34,10 @@ telemetry.
 
 Shadow analysis is bounded by the same policy ceilings as C4a: 64 concurrent
 provider requests/transforms, 16 Chapel workers, a 64-slot queue, 64 documents
-and 16 MiB per request, and a 256 MiB aggregate pending-shadow byte ceiling.
+and 16 MiB per request, a 128 MiB aggregate in-flight HTTP-body ceiling, and a
+256 MiB aggregate pending-shadow byte ceiling. The resident child runs with two
+Chapel runtime worker threads; the gateway never re-enters Chapel from host
+threads.
 Two additional listener slots keep loopback health/metrics reachable under
 ordinary provider saturation. Header and body deadlines are 10 and 30 seconds;
 stuck resident futures quarantine the engine after a bounded wait. SIGINT and
@@ -47,8 +57,9 @@ the latest observed provider exchange. `HEAD /` is a local connectivity probe.
 ## Operator flow
 
 The v0.2.0 release asset predates `ptoon serve` and cannot back this gateway.
-Until v0.3.0 is tagged, build the current x86_64-linux source revision on the
-configured remote builder:
+Until v0.3.0 is tagged, the following is an explicit developer passthrough
+probe, not a persistent service recipe. Build the current x86_64-linux source
+revision on the configured remote builder:
 
 ```sh
 nix build .#packages.x86_64-linux.ptoon
@@ -56,21 +67,53 @@ PROMPT_TOON_PTOON="$(nix path-info .#packages.x86_64-linux.ptoon)/bin/ptoon" \
   just gateway --require-ptoon
 ```
 
+The managed source contract instead requires distinct local and provider
+credentials and fails startup if either disappears:
+
+```sh
+just gateway --require-ptoon --require-split-auth \
+  --client-token-file /run/user/$UID/prompt-toon/anthropic-client \
+  --upstream-token-file /run/user/$UID/prompt-toon/anthropic-upstream
+```
+
+Both files must be regular, owned by the service user, mode `0600`, and not
+symlinks. The local token is a sensitive billed-relay capability even though
+it is not the provider credential. Before exposing a client route, `doctor`
+uses a nonce/HMAC ownership challenge that does not send the token to the
+listener. The MAC covers a versioned canonical attestation, including the actual
+bound endpoint, process instance, service version, reviewed upstream, policy and
+resident-binary digests, readiness inputs, and observed upstream state:
+
+```sh
+just prompt-toon doctor \
+  --anthropic-client-token-file /run/user/$UID/prompt-toon/anthropic-client
+```
+
 Check local readiness. `just claude-profile shadow` prints structured routing
-state and fails closed when another Claude provider mode is active. Start one
-opted-in process with provider-specific routes explicitly removed:
+state and fails closed when competing auth or another Claude provider mode is
+active. Managed activation also requires both `NO_PROXY` casings to contain
+`127.0.0.1,localhost,::1`; this prevents inherited proxies from intercepting the
+loopback hop. The Home Manager consumer must remove the conflict variables named
+by `packaging/home-manager.json` before exposing its local token and base URL.
+For a manual process-scoped probe, the equivalent routing shape is:
 
 ```sh
 curl --fail --silent http://127.0.0.1:8787/__prompt_toon/ready
 just claude-profile shadow
+(
+IFS= read -r ANTHROPIC_API_KEY < /run/user/$UID/prompt-toon/anthropic-client
+export ANTHROPIC_API_KEY
 env \
+  -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_CUSTOM_HEADERS -u CLAUDE_CODE_OAUTH_TOKEN \
   -u CLAUDE_CODE_USE_BEDROCK -u ANTHROPIC_BEDROCK_BASE_URL \
   -u CLAUDE_CODE_USE_VERTEX -u ANTHROPIC_VERTEX_BASE_URL \
   -u CLAUDE_CODE_USE_FOUNDRY -u ANTHROPIC_FOUNDRY_BASE_URL \
   -u CLAUDE_CODE_USE_MANTLE -u ANTHROPIC_AWS_BASE_URL \
+  NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 \
   ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
   PROMPT_TOON_GATEWAY_URL=http://127.0.0.1:8787 \
   claude
+)
 ```
 
 Because activation is process-scoped, the parent shell is unchanged. A direct
@@ -85,9 +128,10 @@ env -u ANTHROPIC_BASE_URL -u PROMPT_TOON_GATEWAY_URL claude
 The gateway deliberately ignores `ANTHROPIC_BASE_URL` when selecting its own
 upstream. It defaults to `https://api.anthropic.com`; use
 `PROMPT_TOON_ANTHROPIC_UPSTREAM` or `--upstream` for a reviewed alternative.
-Credentials remain owned by the harness and travel only in the forwarded
-request. The current source does not export `ANTHROPIC_BASE_URL` globally and
-does not install a managed service.
+Passthrough credentials remain harness-owned. Managed credentials follow the
+split-custody contract above. The current source does not export
+`ANTHROPIC_BASE_URL` globally and does not install a managed service; that
+separate lab Home Manager unit remains disabled until review.
 
 Before authorizing provider spend, run the deterministic harness proof:
 
@@ -135,8 +179,9 @@ credential, request body, tool result, model answer, or session ID.
   Chapel owns parallel normalization/redaction/defanging/card generation.
 - C4b source and fixtures do not make this a fleet default. v0.2.0 predates C4;
   v0.3.0 is prepared as the first C4-capable release line but is not a release
-  until its tag and stamped manifest exist. Darwin and managed Home Manager
-  profiles remain C4d (TIN-2791).
+  until its tag and stamped manifest exist. C4d now publishes a disabled,
+  drift-gated consumption contract; the lab service and host observations have
+  not landed.
 - `model_gateway.enabled` and the global enforcement gate remain false. No
   request is rewritten. Promotion requires measured canaries, a reviewed
   replacement grammar, and the existing policy gates.

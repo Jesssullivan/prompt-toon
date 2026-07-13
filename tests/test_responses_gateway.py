@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import http.server
+import hmac
 import json
 import threading
 import time
@@ -14,12 +15,14 @@ from typing import Any
 
 from prompt_toon.gateway import (
     OPENAI_PROTOCOL,
+    GatewayAuth,
     GatewayConfig,
     GatewayMetrics,
     GatewayPolicy,
     ResponseObserver,
     ShadowAnalyzer,
     create_gateway_server,
+    ownership_attestation_message,
     parse_response_for_shadow,
 )
 
@@ -207,8 +210,16 @@ class ResponsesParserTests(unittest.TestCase):
             (
                 "same",
                 [
-                    {"type": "function_call", "call_id": "same", "name": "shell_command"},
-                    {"type": "function_call", "call_id": "same", "name": "shell_command"},
+                    {
+                        "type": "function_call",
+                        "call_id": "same",
+                        "name": "shell_command",
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "same",
+                        "name": "shell_command",
+                    },
                 ],
             ),
             ("", [{"type": "function_call", "call_id": "", "name": "shell_command"}]),
@@ -370,6 +381,100 @@ class ResponsesGatewayTests(unittest.TestCase):
         self.assertEqual(snapshot["counters"]["provider_total_tokens"], 38)
         self.assertEqual(snapshot["counters"]["provider_cached_input_tokens"], 11)
         self.assertEqual(snapshot["counters"]["provider_reasoning_output_tokens"], 3)
+
+    def test_managed_auth_replaces_local_bearer_before_upstream(self) -> None:
+        local_token = "local-" + "r" * 40
+        upstream_token = "openai-provider-fixture"
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(
+            self.policy,
+            metrics,
+            FakeEngine(),
+            protocol=OPENAI_PROTOCOL,
+        )
+        gateway = create_gateway_server(
+            GatewayConfig(
+                listen_host="127.0.0.1",
+                listen_port=0,
+                upstream=f"http://127.0.0.1:{self.upstream.server_port}/v1",
+                max_request_bytes=self.policy.max_request_bytes,
+                max_concurrent_requests=self.policy.max_concurrent_streams,
+                protocol=OPENAI_PROTOCOL,
+                auth=GatewayAuth(local_token, upstream_token),
+            ),
+            analyzer,
+            metrics,
+        )
+        thread = threading.Thread(target=gateway.serve_forever, daemon=True)
+        thread.start()
+        try:
+
+            def send(headers: dict[str, str]) -> tuple[int, bytes]:
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", gateway.server_port, timeout=5
+                )
+                connection.request(
+                    "POST", "/v1/responses", body=responses_body(), headers=headers
+                )
+                response = connection.getresponse()
+                result = response.status, response.read()
+                connection.close()
+                return result
+
+            status, body = send({"Content-Type": "application/json"})
+            self.assertEqual(status, 401)
+            self.assertIn(b"authentication_error", body)
+            self.assertEqual(self.state.requests, [])
+
+            status, _ = send(
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {local_token}",
+                    "x-api-key": "must-not-leak",
+                    "x-future-feature": "preserved",
+                }
+            )
+            self.assertEqual(status, 200)
+            forwarded = {
+                name.lower(): value
+                for name, value in self.state.requests[-1]["headers"]
+            }
+            self.assertEqual(forwarded["authorization"], f"Bearer {upstream_token}")
+            self.assertNotIn("x-api-key", forwarded)
+            self.assertEqual(forwarded["x-future-feature"], "preserved")
+            serialized = repr(self.state.requests[-1])
+            self.assertNotIn(local_token, serialized)
+            self.assertNotIn("must-not-leak", serialized)
+
+            owner = http.client.HTTPConnection(
+                "127.0.0.1", gateway.server_port, timeout=5
+            )
+            challenge = "d" * 64
+            owner.request(
+                "GET",
+                "/__prompt_toon/ownership",
+                headers={"X-Prompt-Toon-Challenge": challenge},
+            )
+            response = owner.getresponse()
+            ownership = json.loads(response.read())
+            owner.close()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(ownership["provider"], OPENAI_PROTOCOL)
+            self.assertEqual(ownership["auth_mode"], "split")
+            attestation = dict(ownership)
+            challenge_response = attestation.pop("challenge_response")
+            self.assertEqual(
+                challenge_response,
+                hmac.new(
+                    local_token.encode(),
+                    ownership_attestation_message(challenge, attestation),
+                    "sha256",
+                ).hexdigest(),
+            )
+        finally:
+            gateway.shutdown()
+            thread.join(timeout=5)
+            gateway.server_close()
 
     def test_compaction_is_opaque_and_never_enters_transform_lane(self) -> None:
         body = b'{"model":"gpt-requested","input":[{"type":"message"}]}'
