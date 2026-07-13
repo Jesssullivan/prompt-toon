@@ -594,6 +594,10 @@ ceilings. Well-framed policy violations are request-scoped; malformed outer
 framing terminates the service because it cannot be safely resynchronized.
 The HTTP gateway adds a 128 MiB aggregate in-flight body ceiling, and every
 resident child is launched with two Chapel runtime worker threads.
+The Linux capacity proof runs scripted clients and the upstream outside the
+measured gateway process, so its 512 MiB gateway RSS ceiling covers the actual
+proxy, bounded request residency, analyzer, and resident-process controller;
+the Chapel child retains its separate 256 MiB ceiling.
 
 - **Parent TIN-2790:** C4 online prompt-toon IO gateway.
 - **C4a TIN-2792:** bounded resident `ptoon serve` protocol and capacity gate.
