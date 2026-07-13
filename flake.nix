@@ -110,15 +110,15 @@
         # and the check phase runs the fixed binary protocol's
         # smoke test directly rather than grepping a dynamic symbol table.
         #
-        # Defined for every `eachDefaultSystem` system (linux + darwin) so
-        # a darwin variant exists structurally, but only x86_64-linux is
-        # the required/CI-verified target — the pzm darwin builder is
-        # still in burn-in.
+        # Defined for every `eachDefaultSystem` system. C4d release provenance
+        # covers x86_64-linux and aarch64-darwin; each is compiled and smoke
+        # tested on its native remote builder. Full byte parity remains the
+        # x86_64-linux gate because that derivation runs the complete corpus.
         ptoonBinary = pkgs.stdenv.mkDerivation {
           pname = "ptoon";
           version = manifest.version;
           src = self;
-          nativeBuildInputs = [ chapelWrapped pkgs.binutils ];
+          nativeBuildInputs = [ chapelWrapped pkgs.binutils pkgs.python3 ];
           buildPhase = ''
             runHook preBuild
             # Compile from repo root so the modules' file-relative
@@ -163,6 +163,21 @@
               echo "ERROR: ./ptoon normalize produced no output for smoke input" >&2
               exit 1
             fi
+            echo "== capability smoke: serve protocol v1 =="
+            ./ptoon caps > caps.json
+            python3 - <<'PY'
+            import json
+            from pathlib import Path
+
+            caps = json.loads(Path("caps.json").read_text(encoding="utf-8"))
+            assert caps.get("serve_protocol") == 1
+            assert "serve" in caps.get("features", [])
+            PY
+            ${lib.optionalString pkgs.stdenv.isDarwin ''
+              echo "== native Darwin resident serve round trip =="
+              export PROMPT_TOON_PTOON="$PWD/ptoon"
+              python3 tools/service_parity.py
+            ''}
             echo "OK: ptoon binary built and passed the normalize smoke test"
             runHook postCheck
           '';
@@ -236,6 +251,8 @@
             python3 tools/service_parity.py | tee parity-service.md
             echo "== resident service capacity (64 streams, bounded RSS) =="
             python3 tools/service_capacity.py | tee capacity-service.md
+            echo "== gateway capacity (64 HTTP/SSE streams per provider, real resident child) =="
+            python3 tools/gateway_capacity.py | tee capacity-gateway.md
             echo "== hook canary (PostToolUse adapter end-to-end vs the real binary) =="
             python3 tools/hook_canary.py | tee hook-canary.md
             echo "== analyze regression (python oracle vs COMMITTED pinned baseline) =="
@@ -249,7 +266,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md capacity-gateway.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };
@@ -289,8 +306,9 @@
         packages = {
           default = promptToon;
           prompt-toon = promptToon;
-          # C1 (TIN-2708): defined on every system (see ptoonBinary comment
-          # above); x86_64-linux is the required/CI-verified target.
+          # C1 (TIN-2708): defined on every system. C4d publishes the
+          # x86_64-linux and aarch64-darwin instances after native remote
+          # smoke tests; the full parity derivation remains Linux-only.
           ptoon = ptoonBinary;
         } // lib.optionalAttrs (system == "x86_64-linux") {
           ptoon-spike-parity = ptoonSpikeParity;

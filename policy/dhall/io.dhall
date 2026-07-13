@@ -15,7 +15,7 @@ let T = ./IoPolicy.dhall
 
 in    { `$comment` =
           "Validated transition artifact. Typed source of truth: policy/dhall/io.dhall. Regenerate with: dhall-to-json --pretty --file policy/dhall/io.dhall. Invariants enforced by tests/test_io_policy.py; enforcement stays locked until the gate tickets close."
-      , schema_version = 1
+      , schema_version = 2
       , metadata =
           { name = "toon-of-mythos-io", owner_linear_issue = "TIN-2700" }
       , enforcement_gate =
@@ -36,6 +36,7 @@ in    { `$comment` =
           , pending_queue_depth = 64
           , max_documents_per_request = 64
           , max_request_bytes = 16777216
+          , max_inflight_request_bytes = 134217728
           , max_response_bytes = 268435456
           , max_label_bytes = 4096
           , max_cards_per_document = 24

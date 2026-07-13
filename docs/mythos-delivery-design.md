@@ -447,13 +447,16 @@ declaration (MODULE.bazel, cosmetic until the registry lane opens) is
 asserted equal by the generator. `policy[]` carries sha256 digests of the
 delegation/io SSOT artifacts, tying packaging integrity to INV-8.
 DETERMINISM SPLIT: the committed manifest is a pure function of repo
-content (`git_rev: UNSTAMPED`, targets[] sha256 null); the release lane
-re-runs the generator with `--git-rev/--tag/--ci-run/--with-binary` to
-stamp provenance and inject the real ptoon digest — GH-Release
-`source.json`, brew, and nfpm lanes consume the stamped emission. Lane
-flags in `derived_lanes`: nix/HM enabled; bazel-registry + GH Release
-phase gates OPEN since C2 (static binary exists) but not yet built;
-brew/rpm stay C3-gated.
+content (`git_rev: UNSTAMPED`, targets[] sha256/entrypoint_sha256 null); the
+release lane re-runs the generator with
+`--git-rev/--tag/--ci-run/--with-closure/--with-entrypoint/--with-wheel` to
+stamp provenance and inject both platform closure and entrypoint digests plus
+the wheel digest. Stamped output fails closed if any target digest or size is
+missing. Manifest schema v2 identifies targets by `(artifact, platform)` and
+names exact assets. The
+tagged flake is canonical; GH assets are complete Nix closure exports, not
+falsely portable raw executables. Nix is enabled; the Home Manager contract
+is ready but disabled until the separate lab module consumes it.
 
 ### Decline (do not re-propose without new facts)
 
@@ -466,7 +469,7 @@ brew/rpm stay C3-gated.
   **sequential per document**; parallelism is only *across* documents.
   (Regression fixture: `18-injected-literal-rescan.txt`.)
 - **Multilocale / GASNet.** Single-node, latency-bound (2 s budget), inputs
-  ≤ 2 MB, fan-in ≤ 16 — saturates one host. Multilocale also breaks the
+  ≤ 2 MB, 64 streams over 16 workers — saturates one host. Multilocale also breaks the
   single-binary distribution goal. Stay single-locale qthreads.
 - **Intra-document pipeline parallelism through redaction.** Blocked by the
   whole-buffer PEM constraint; only raw-sha256 ∥ normalize and a `forall`
@@ -525,11 +528,20 @@ the binary, `auto` falls open to Python when the binary is absent.
   https://chapel-lang.org/docs/modules/standard/IO.html.
 - Chapel 2.9 `chpl --fast`, `-M`, and `-o` compiler options:
   https://chapel-lang.org/docs/usingchapel/man.html.
+- Chapel 2.9 tasking/Qthreads controls and supported Darwin/aarch64 platform
+  variables: https://chapel-lang.org/docs/usingchapel/tasks.html,
+  https://chapel-lang.org/docs/usingchapel/executing.html,
+  https://chapel-lang.org/docs/usingchapel/chplenv.html, and
+  https://chapel-lang.org/docs/platforms/macosx.html.
 - Chapel 2.9 `require` C-resource linkage, file-relative:
   https://chapel-lang.org/docs/technotes/extern.html.
 - Chapel 2.9 library interop caveats and the 2.9 dynamic-library release
   note: https://chapel-lang.org/docs/technotes/libraries.html and
   https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
+- These are the current language references, not compiler provenance. The
+  locked `chapel-nix` input still reports Chapel 2.7.0; remote derivation names
+  and `flake.lock` are the build truth until a separately reviewed toolchain
+  upgrade lands. Do not claim a 2.9-built artifact from this revision.
 - Bazel current platform/compatibility, `manual` tag, `run_shell`, and
   remote-execution rule guidance:
   https://bazel.build/extending/platforms,
@@ -540,21 +552,30 @@ the binary, `auto` falls open to Python when the binary is absent.
   `--remote_download_minimal` performance guidance:
   https://bazel.build/docs/user-manual, https://bazel.build/remote/rbe, and
   https://bazel.build/advanced/performance/build-performance-breakdown.
+- Bazel execution/target platform and toolchain resolution remain separate;
+  the current Chapel rule is Linux-only and does not claim a Linux executor
+  can produce Darwin provenance: https://bazel.build/extending/platforms and
+  https://bazel.build/extending/toolchains.
+- As with Chapel, unversioned current docs are guidance rather than build
+  provenance. This repository is pinned to Bazel 8.2.1; Bazel 9 is the current
+  active LTS line. TIN-2710 must select and prove the rules_chapel support
+  floor before BCR publication instead of implying the pin already moved.
 
 ## 9. C4 online IO gateway (accepted 2026-07-11)
 
 **Current baseline:** v0.2.0 is installed and advisory, and its binary predates
 `ptoon serve`. Current v0.3.0 source contains the C4a resident transform service,
-the C4b Anthropic Messages gateway, and the C4c OpenAI Responses gateway and
-user-level Codex profile, including both unbilled real-CLI harness probes. It is
-not yet tagged, released, or installed through a fleet profile. Enforcement
-policy ships locked.
+the C4b Anthropic Messages gateway, the C4c OpenAI Responses gateway/profile,
+and the disabled C4d managed-consumption contract, including both unbilled
+real-CLI harness probes. It is not yet tagged, released, or installed through
+a fleet profile. Enforcement policy ships locked.
 
 **Target boundary:** the provider gateway owns HTTP, auth/header forwarding,
 provider request/response adaptation, errors, and SSE. A private long-lived
 `ptoon serve` child owns only bounded transforms over framed stdin/stdout,
 with a fixed worker pool and explicit document, request/response byte,
-active-stream, and queue limits. Only typed, provenance-bearing context
+aggregate ingress byte, active-stream, and queue limits. Only typed,
+provenance-bearing context
 segments are transformable.
 System/developer/user instructions, approval state, tool schemas, provider
 controls, and other authority-bearing request bytes remain unchanged.
@@ -571,6 +592,12 @@ frames, 4096-byte labels, 2 MiB/document, a 2-second transform budget, and 24
 cards/document. Request policy values may tighten but never expand the launch
 ceilings. Well-framed policy violations are request-scoped; malformed outer
 framing terminates the service because it cannot be safely resynchronized.
+The HTTP gateway adds a 128 MiB aggregate in-flight body ceiling, and every
+resident child is launched with two Chapel runtime worker threads.
+The Linux capacity proof runs scripted clients and the upstream outside the
+measured gateway process, so its 512 MiB gateway RSS ceiling covers the actual
+proxy, bounded request residency, analyzer, and resident-process controller;
+the Chapel child retains its separate 256 MiB ceiling.
 
 - **Parent TIN-2790:** C4 online prompt-toon IO gateway.
 - **C4a TIN-2792:** bounded resident `ptoon serve` protocol and capacity gate.
@@ -619,3 +646,30 @@ canary: current Codex still exposes host-reading built-ins when shell execution
 is disabled, and a request cap is not a spend bound. Live transform evidence
 requires a purpose-built filesystem sandbox and constrained billing project. See
 `docs/openai-responses-gateway.md` for the exact operator and protocol surface.
+
+### C4d source contract
+
+Managed gateways terminate a high-entropy local relay token and inject a
+separately custodied provider credential. Both owner-only token files are
+required at startup; `--require-split-auth` prevents accidental passthrough.
+Authenticated ownership uses a nonce/HMAC challenge, never sends the local
+token to an unverified listener, and authenticates one canonical record
+containing the actual bound endpoint, fresh instance ID, service version,
+reviewed upstream, policy/resident-binary digests, and readiness fields. The
+local token remains a sensitive billed-relay capability during normal client
+traffic, so loopback and same-user process isolation are still required.
+
+`prompt-toon doctor` reports local policy, engine, gateway, bounded shadow
+metrics, and process-visible request-path state without provider IO. It marks
+Codex profile selection by another process unknown and does not equate profile
+presence or readiness with traffic/provider reachability. The deterministic
+`packaging/home-manager.json` contract pins activation order, rollback, and
+host-ledger fields; activation is false and the IO policy remains locked.
+
+Platform delivery is native remote: x86_64-linux retains exhaustive byte
+parity and the 64-session HTTP/SSE gate; aarch64-darwin builds with local jobs
+disabled and runs native caps, normalization, and resident round-trip smoke.
+Native-surface pull requests repeat the Darwin derivation on a bounded standard
+GitHub-hosted `macos-15` arm64 runner; releases continue to use the remote Nix
+builder path. Linux Bazel/GF REAPI stays Linux-only. See
+`docs/home-manager-adoption.md`.

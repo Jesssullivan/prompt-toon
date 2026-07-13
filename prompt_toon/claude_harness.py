@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import os
 import subprocess
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+
+from .codex_harness import (
+    LOOPBACK_NO_PROXY_VALUES,
+    PROXY_ENV,
+    loopback_proxy_bypass_configured,
+    validate_loopback_gateway,
+)
 
 
-_PROVIDER_ROUTE_ENV = (
+CLAUDE_PROVIDER_ROUTE_ENV = (
     "ANTHROPIC_BEDROCK_BASE_URL",
     "ANTHROPIC_VERTEX_BASE_URL",
     "ANTHROPIC_FOUNDRY_BASE_URL",
@@ -23,6 +28,14 @@ _PROVIDER_ROUTE_ENV = (
     "CLAUDE_CODE_USE_MANTLE",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
 )
+
+CLAUDE_AUTH_CONFLICT_ENV = (
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+)
+CLAUDE_ROUTE_CONFLICT_ENV = CLAUDE_PROVIDER_ROUTE_ENV + CLAUDE_AUTH_CONFLICT_ENV
+CLAUDE_PROXY_ENV = PROXY_ENV
 
 _CHILD_ENV_ALLOWLIST = (
     "ALL_PROXY",
@@ -55,20 +68,11 @@ _CHILD_ENV_ALLOWLIST = (
 
 
 def validate_loopback_url(value: str) -> str:
-    parts = urlsplit(value)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise ValueError("gateway URL must be absolute HTTP(S)")
-    if parts.username is not None or parts.password is not None:
-        raise ValueError("gateway URL must not contain credentials")
-    if parts.query or parts.fragment:
-        raise ValueError("gateway URL must not contain a query or fragment")
-    try:
-        loopback = ipaddress.ip_address(parts.hostname).is_loopback
-    except ValueError:
-        loopback = parts.hostname == "localhost"
-    if not loopback:
-        raise ValueError("gateway URL must be loopback")
-    return value.rstrip("/")
+    return validate_loopback_gateway(value)
+
+
+def claude_route_conflicts(source: Mapping[str, str]) -> list[str]:
+    return sorted(key for key in CLAUDE_ROUTE_CONFLICT_ENV if source.get(key))
 
 
 def claude_profile(
@@ -87,7 +91,7 @@ def claude_profile(
     if mode != "shadow":
         raise ValueError(f"unknown Claude profile mode {mode!r}")
     gateway = validate_loopback_url(gateway_url)
-    conflicts = sorted(key for key in _PROVIDER_ROUTE_ENV if source.get(key))
+    conflicts = claude_route_conflicts(source)
     return {
         "mode": "shadow",
         "process_scope": True,
@@ -98,7 +102,7 @@ def claude_profile(
 
 def _with_loopback_no_proxy(env: dict[str, str], key: str) -> None:
     values = [part.strip() for part in env.get(key, "").split(",") if part.strip()]
-    for value in ("127.0.0.1", "localhost", "::1"):
+    for value in LOOPBACK_NO_PROXY_VALUES:
         if value not in values:
             values.append(value)
     env[key] = ",".join(values)

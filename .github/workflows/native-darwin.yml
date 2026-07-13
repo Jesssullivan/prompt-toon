@@ -1,0 +1,51 @@
+name: Native Darwin
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/native-darwin.yml"
+      - "c_src/**"
+      - "flake.lock"
+      - "flake.nix"
+      - "packaging/manifest.json"
+      - "prompt_toon/**"
+      - "src/ptoon/**"
+      - "tools/service_parity.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ptoon-native:
+    name: ptoon native aarch64-darwin
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require native Apple Silicon
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          sw_vers
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+      - name: Build and run native smoke gates
+        run: |
+          ptoon_store="$(nix build \
+            .#packages.aarch64-darwin.ptoon \
+            --no-link \
+            --print-out-paths \
+            --print-build-logs)"
+          test -x "$ptoon_store/bin/ptoon"
+          file "$ptoon_store/bin/ptoon" | tee "$RUNNER_TEMP/ptoon-file.txt"
+          grep -q arm64 "$RUNNER_TEMP/ptoon-file.txt"
