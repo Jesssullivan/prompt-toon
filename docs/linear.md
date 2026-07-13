@@ -51,7 +51,9 @@ C4 online IO gateway:
   synthesis crossover remain separately authorized experiments.
 - `TIN-2820` C4f: aggregate authorized C4e ledgers, tune whole-handoff
   efficiency under safety/constraint-recall gates, and keep format-local TOON
-  savings distinct from end-to-end synthesis-context savings.
+  savings distinct from end-to-end synthesis-context savings. C4f.1 adds the
+  schema-v2 corpus identity/card count and deterministic ledger-only reporter;
+  promotion stays blocked pending C4f.2 quality fixtures.
 - `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
   current 2.9 docs inform review but do not rewrite artifact provenance.
 
