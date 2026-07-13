@@ -177,6 +177,10 @@
               echo "== native Darwin resident serve round trip =="
               export PROMPT_TOON_PTOON="$PWD/ptoon"
               python3 tools/service_parity.py
+              echo "== native Darwin offline dogfood round trip =="
+              PYTHONPATH="$PWD" python3 -m unittest \
+                tests.test_dogfood.DogfoodTests.test_real_chapel_dogfood_integration \
+                -v
             ''}
             echo "OK: ptoon binary built and passed the normalize smoke test"
             runHook postCheck
