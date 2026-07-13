@@ -10,26 +10,29 @@ package, or activate a fleet service.
 Keep the source material in a durable, access-controlled path, then run:
 
 ```sh
-just dogfood path/to/spool/ \
-  --mythos-route mythos.synthesis \
-  --model-label gpt-5.6-sol
+just dogfood path/to/spool/
 ```
 
 Files and directories may be mixed. Directories expand recursively in stable
-path order. Symlinks, non-regular entries, invalid UTF-8, an empty spool, and a
-pre-existing output directory fail closed. Duplicate canonical paths are
-processed once. Each run is capped at 64 documents, 2,000,000 bytes per
-document, 16 MiB aggregate input, 24 cards per document, and a 2-second Chapel
-batch budget. Raw inputs are not copied into state.
+path order. Final input symlinks, symlinks discovered inside a directory root,
+non-regular entries, invalid UTF-8, an empty spool, and a pre-existing output
+directory fail closed. Ancestor path aliases are resolved and the canonical
+path is recorded as the source label, so provenance names the location that
+actually supplied the bytes. Duplicate canonical paths are processed once.
+Each run is capped at 64 documents, 2,000,000 bytes per document, 16 MiB
+aggregate input, 24 cards per document, and a 2-second Chapel batch budget. Raw
+inputs are not copied into state.
 
 On the supported Darwin/Linux hosts, input descriptors are opened once with
 no-follow/nonblocking flags, verified as regular files with `fstat`, and read
 through a hard byte ceiling. Source paths that could break Markdown lines and
 malformed trust-tier labels are rejected before condensation. Cooperating
-writers serialize on an owner-only lock for the run ID. Outputs are written to
-an owner-only sibling staging directory and renamed into place only after the
-complete ledger exists; failed transforms remove their staging directory and
-leave the requested run ID free.
+writers serialize on a persistent owner-only lock keyed to the output
+destination. The empty lock inode remains so unlink/recreate races cannot split
+future writers across different locks. Outputs are written to an owner-only
+sibling staging directory and renamed into place only after the complete ledger
+exists; failed transforms remove their staging directory and leave the output
+destination free.
 
 The default `--engine auto` behavior is observable:
 
@@ -40,6 +43,10 @@ The default `--engine auto` behavior is observable:
   [Chapel 2.9 task-parallel specification](https://chapel-lang.org/docs/language/spec/task-parallelism-and-synchronization.html).
 - `python`: the sequential parity oracle was used because `ptoon` was absent.
   The ledger records the fallback; it is never presented as Chapel evidence.
+  It enforces the same input ceilings but has no wall-clock withholding
+  mechanism, so its ledger says `bounded-input-only-python-oracle`. Corpus
+  timing and budget evidence must be cohort-specific rather than mixing it with
+  Chapel runs.
 
 This command measures one spool. The resident 64-stream proof remains
 `just gateway-capacity`, where one long-lived Chapel process owns fixed workers
@@ -67,10 +74,12 @@ its raw-input denominator. Negative savings are retained rather than hidden.
 Artifact hashes make later corpus aggregation auditable without storing raw
 content in the report.
 
-Runtime attribution is split: `engine_wall_ms` ends when Chapel/Python returns
-the condensation, while `run_wall_ms` also includes card/summary/manifest
-emission. The optional TOON view and the ledger are Python postprocessing even
-when Chapel owns the batch transform.
+Runtime attribution is split: `engine_wall_ms` covers in-memory condensation
+through optional TOON format selection for either resolved engine, while
+`run_wall_ms` also includes card/summary/manifest emission. The ledger itself is
+Python postprocessing even when Chapel owns the batch transform. Engine shape
+and budget-enforcement mode stay adjacent to the timing so unlike cohorts are
+not presented as a direct benchmark.
 
 The whole-handoff gate defaults to 20% estimated savings and is independent of
 the TOON-vs-JSONL selection threshold. A TOON view can be materially smaller

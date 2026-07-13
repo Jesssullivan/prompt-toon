@@ -100,6 +100,11 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(ledger["execution"]["engine_requested"], "python")
             self.assertEqual(ledger["execution"]["engine_resolved"], "python")
             self.assertEqual(ledger["execution"]["shape"], "python-sequential-oracle")
+            self.assertEqual(
+                ledger["execution"]["budget_enforcement"],
+                "bounded-input-only-python-oracle",
+            )
+            self.assertIn("format selection", ledger["execution"]["engine_wall_scope"])
             self.assertGreaterEqual(ledger["execution"]["run_wall_ms"], 0)
             self.assertGreaterEqual(
                 ledger["execution"]["run_wall_ms"],
@@ -118,13 +123,16 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(manifest["outputs"]["efficiency"], "efficiency.json")
             self.assertEqual(
                 [item["source"] for item in manifest["inputs"]],
-                [str(first), str(second)],
+                [str(first.resolve()), str(second.resolve())],
             )
             self.assertTrue(
                 all(item["trust_tier"] == "repo_source" for item in manifest["inputs"])
             )
             self.assertNotIn("ghp_", (out_dir / "source-cards.jsonl").read_text())
             self.assertFalse((out_dir / "inputs").exists())
+            lock_path = root / ".run.lock"
+            self.assertTrue(lock_path.is_file())
+            self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
 
             summary_bytes = (out_dir / "summary.md").read_bytes()
             self.assertEqual(
@@ -254,10 +262,85 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(ledger["handoff_decision"]["gate"], "withheld")
             self.assertEqual(ledger["handoff_decision"]["eligible_handoffs"], [])
             self.assertIsNone(ledger["handoff_decision"]["recommended_handoff"])
+            self.assertIsNone(ledger["handoff_decision"]["best_measured_handoff"])
             self.assertEqual(
                 ledger["spool"]["withheld"],
                 [{"source": "large.md", "reason": "budget"}],
             )
+
+    def test_chapel_withheld_result_stays_withheld_end_to_end(self):
+        class WithholdingChapel:
+            def condense_run(self, docs, run_id, generated_at, **kwargs):
+                manifest = {
+                    "id": run_id,
+                    "generated_at": generated_at,
+                    "inputs": [],
+                    "mixed_trust_tiers": False,
+                    "settings": {
+                        "format": "jsonl",
+                        "max_cards_per_input": kwargs["max_cards"],
+                        "min_toon_savings": json.loads(kwargs["min_toon_savings"]),
+                        "trust_tier": kwargs["default_trust_tier"],
+                        "input_tier_overrides": kwargs["tier_overrides"],
+                        "store_raw": False,
+                    },
+                    "outputs": {
+                        "summary": "summary.md",
+                        "source_cards_jsonl": "source-cards.jsonl",
+                        "primary_source_cards": "source-cards.jsonl",
+                        "manifest": "manifest.json",
+                    },
+                }
+                return (
+                    [
+                        {
+                            "i": 0,
+                            "source": docs[0]["source"],
+                            "trust_tier": docs[0]["trust_tier"],
+                            "bytes": len(docs[0]["body"].encode()),
+                            "sha256": hashlib.sha256(docs[0]["body"].encode()).hexdigest(),
+                            "withheld": True,
+                            "findings": [],
+                            "reason": "budget",
+                        }
+                    ],
+                    "# Withheld\n",
+                    manifest,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text("must remain private\n", encoding="utf-8")
+            out_dir = root / "out"
+            engine = SimpleNamespace(name="chapel", backend=WithholdingChapel())
+            with mock.patch("prompt_toon.cli.resolve_engine", return_value=engine):
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "dogfood",
+                                str(source),
+                                "--engine",
+                                "chapel",
+                                "--output-dir",
+                                str(out_dir),
+                            ]
+                        ),
+                        0,
+                    )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            self.assertEqual(ledger["handoff_decision"]["gate"], "withheld")
+            self.assertIsNone(ledger["handoff_decision"]["recommended_handoff"])
+            self.assertIsNone(ledger["handoff_decision"]["best_measured_handoff"])
+            self.assertEqual(ledger["spool"]["withheld_documents"], 1)
+            self.assertEqual(ledger["spool"]["withheld"][0]["reason"], "budget")
+            self.assertEqual(
+                ledger["execution"]["budget_enforcement"],
+                "chapel-wall-clock-withholding",
+            )
+            self.assertEqual((out_dir / "source-cards.jsonl").read_text(), "")
 
     def test_handoff_gate_uses_unrounded_savings(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -444,12 +527,49 @@ class DogfoodTests(unittest.TestCase):
 
             files[-1].unlink()
             expanded = expand_spool_inputs([str(spool), str(files[0])])
-            self.assertEqual(expanded, [str(path) for path in files[:-1]])
+            self.assertEqual(expanded, [str(path.resolve()) for path in files[:-1]])
 
             link = root / "linked.md"
             link.symlink_to(files[0])
             with self.assertRaisesRegex(ValueError, "must not be a symlink"):
                 expand_spool_inputs([str(link)])
+
+            real_root = root / "real-root"
+            real_root.mkdir()
+            through_alias = real_root / "through-alias.md"
+            through_alias.write_text("canonical provenance\n", encoding="utf-8")
+            alias_root = root / "alias-root"
+            alias_root.symlink_to(real_root, target_is_directory=True)
+            self.assertEqual(
+                expand_spool_inputs([str(alias_root / through_alias.name)]),
+                [str(through_alias.resolve())],
+            )
+
+    def test_default_auto_records_python_oracle_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text("bounded fallback\n", encoding="utf-8")
+            out_dir = root / "out"
+            lock_path = root / ".out.lock"
+            lock_path.write_text("", encoding="utf-8")
+            lock_path.chmod(0o666)
+            with mock.patch(
+                "prompt_toon.engine.ChapelEngine.available", return_value=False
+            ), redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(["dogfood", str(source), "--output-dir", str(out_dir)]),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            self.assertEqual(ledger["execution"]["engine_requested"], "auto")
+            self.assertEqual(ledger["execution"]["engine_resolved"], "python")
+            self.assertEqual(
+                ledger["execution"]["budget_enforcement"],
+                "bounded-input-only-python-oracle",
+            )
+            self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
 
     def test_dogfood_rejects_invalid_utf8_and_nonempty_output(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -47,9 +47,7 @@ just prompt-toon analyze path/to/results.json
 Dogfood a durable multi-document spool without contacting a provider:
 
 ```sh
-just dogfood path/to/spool/ \
-  --mythos-route mythos.synthesis \
-  --model-label gpt-5.6-sol
+just dogfood path/to/spool/
 ```
 
 The run writes `summary.md`, authoritative `source-cards.jsonl`,
@@ -58,6 +56,8 @@ state directory. Token figures are explicitly labeled lexical estimates, not
 provider usage or billing telemetry. A separate whole-handoff gate prevents a
 TOON-vs-JSONL win from being presented as an end-to-end prompt win. See
 `docs/dogfood-efficiency.md`.
+Add `--mythos-route` or `--model-label` only when the caller observed those
+values; neither option proves delegation or provider routing.
 
 ## The `ptoon` binary (Chapel engine)
 

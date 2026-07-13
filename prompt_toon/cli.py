@@ -936,6 +936,15 @@ def _dogfood_output_lock(out_dir: Path) -> Iterator[None]:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise SystemExit(f"dogfood output lock is not a regular file: {lock_path}")
+        if metadata.st_uid != os.geteuid():
+            raise SystemExit(f"dogfood output lock is not owned by this user: {lock_path}")
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            try:
+                os.fchmod(descriptor, 0o600)
+            except OSError as exc:
+                raise SystemExit(
+                    f"dogfood output lock could not be made owner-only: {lock_path}: {exc}"
+                ) from exc
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
@@ -985,7 +994,6 @@ def _run_dogfood_to_directory(
             default_trust_tier=args.trust_tier,
             tier_overrides=tier_overrides,
         )
-        engine_finished = time.perf_counter()
         cards = [
             SourceCard(**card) for result in results for card in result.get("cards", [])
         ]
@@ -1020,7 +1028,6 @@ def _run_dogfood_to_directory(
             generated_at=generated_at,
             items=items,
         )
-        engine_finished = time.perf_counter()
         format_analysis = manifest["format_analysis"]
         execution_shape = "python-sequential-oracle"
 
@@ -1031,6 +1038,7 @@ def _run_dogfood_to_directory(
         manifest["outputs"]["toon_note"] = (
             "TOON view omits sha256 and evidence; JSONL is the provenance-bearing artifact."
         )
+    engine_finished = time.perf_counter()
     _write_condense_artifacts(out_dir, cards, summary, manifest, toon_text)
     run_finished = time.perf_counter()
 
