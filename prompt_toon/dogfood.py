@@ -198,11 +198,9 @@ def build_efficiency_ledger(
         handoff_gate = "pass" if recommended_handoff is not None else "below-threshold"
 
     toon_savings = format_analysis.get("toon_savings")
-    toon_eligible = (
-        isinstance(toon_savings, (int, float))
-        and not isinstance(toon_savings, bool)
-        and toon_savings >= min_toon_savings
-    )
+    # Selection is decided from the unrounded ratio in choose_card_format.
+    # Keep the displayed ratio rounded without recomputing a contradictory gate.
+    toon_eligible = format_analysis.get("toon_eligible") is True
     toon: dict[str, Any] = {
         "eligible": toon_eligible,
         "selected": toon_selected,

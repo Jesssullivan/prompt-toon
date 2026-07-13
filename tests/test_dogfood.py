@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from prompt_toon.cli import main, rough_token_count
+from prompt_toon.cli import SourceCard, choose_card_format, main, rough_token_count
 from prompt_toon.dogfood import (
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_DOCUMENTS,
@@ -133,6 +133,10 @@ class DogfoodTests(unittest.TestCase):
             )
             self.assertEqual(
                 ledger["toon"]["selected"], (out_dir / "source-cards.toon").is_file()
+            )
+            self.assertEqual(
+                ledger["toon"]["eligible"],
+                manifest["format_analysis"].get("toon_eligible", False),
             )
             self.assertIn("summary_only", ledger["handoffs"])
             self.assertIn("summary_plus_authoritative_cards", ledger["handoffs"])
@@ -292,6 +296,29 @@ class DogfoodTests(unittest.TestCase):
             )
             self.assertEqual(ledger["handoff_decision"]["gate"], "below-threshold")
             self.assertEqual(ledger["handoff_decision"]["eligible_handoffs"], [])
+
+    def test_toon_gate_uses_unrounded_savings(self):
+        card = SourceCard(
+            id="card-0",
+            source="input.md",
+            trust_tier="repo_source",
+            sha256="0" * 64,
+            line_start=1,
+            line_end=1,
+            claim="claim",
+            evidence="evidence",
+            confidence="high",
+            flags=[],
+        )
+        with mock.patch(
+            "prompt_toon.cli.rough_token_count", side_effect=[100000, 80004]
+        ):
+            primary, toon_text, analysis = choose_card_format([card], "auto", 0.2)
+
+        self.assertEqual(primary, "source-cards.jsonl")
+        self.assertIsNone(toon_text)
+        self.assertEqual(analysis["toon_savings"], 0.2)
+        self.assertFalse(analysis["toon_eligible"])
 
     @unittest.skipUnless(
         ChapelEngine().available(), "ptoon binary unavailable for dogfood integration"

@@ -644,9 +644,16 @@ def choose_card_format(cards: list[SourceCard], fmt: str, min_savings: float) ->
     toon_tokens = rough_token_count(toon_text)
     jsonl_tokens = analysis["jsonl_tokens"]
     savings = 0 if jsonl_tokens == 0 else (jsonl_tokens - toon_tokens) / jsonl_tokens
-    analysis.update({"toon_tokens": toon_tokens, "toon_savings": round(savings, 4)})
+    toon_eligible = savings >= min_savings
+    analysis.update(
+        {
+            "toon_tokens": toon_tokens,
+            "toon_savings": round(savings, 4),
+            "toon_eligible": toon_eligible,
+        }
+    )
 
-    if fmt == "toon" or (fmt == "auto" and savings >= min_savings):
+    if fmt == "toon" or (fmt == "auto" and toon_eligible):
         # INV-1: the TOON view drops sha256 + evidence, so it is never the
         # provenance-bearing primary artifact — it ships as a compact view
         # alongside the authoritative JSONL.
