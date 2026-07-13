@@ -158,13 +158,23 @@ def defang_text(text: str) -> str:
     return text.replace("`", "'")
 
 
+def _redaction_replacement(match: re.Match[str]) -> str:
+    # Keep splitlines() topology stable so card ranges still address the raw source.
+    line_breaks = "".join(
+        char
+        for char in match.group(0)
+        if char in {"\n", "\x85", "\u2028", "\u2029"}
+    )
+    return "[REDACTED]" + line_breaks
+
+
 def redact_text(text: str) -> tuple[str, list[str]]:
     redacted = normalize_text(text)
     findings: list[str] = []
     for index, pattern in enumerate(SECRET_PATTERNS, start=1):
         if pattern.search(redacted):
             findings.append(f"pattern-{index}")
-            redacted = pattern.sub("[REDACTED]", redacted)
+            redacted = pattern.sub(_redaction_replacement, redacted)
     return redacted, findings
 
 

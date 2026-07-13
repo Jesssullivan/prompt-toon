@@ -181,6 +181,9 @@
               PYTHONPATH="$PWD" python3 -m unittest \
                 tests.test_dogfood.DogfoodTests.test_real_chapel_dogfood_integration \
                 -v
+              echo "== native Darwin offline quality fixtures =="
+              python3 tools/gen_fixtures.py
+              PYTHONPATH="$PWD" python3 tools/quality_runner.py --engine chapel
             ''}
             echo "OK: ptoon binary built and passed the normalize smoke test"
             runHook postCheck
@@ -243,6 +246,10 @@
             python3 tools/gen_fixtures.py
             echo "== generating golden corpus (python oracle) =="
             python3 tools/gen_golden.py
+            echo "== offline quality fixtures (python oracle) =="
+            python3 tools/quality_runner.py --engine python | tee quality-python.json
+            echo "== offline quality fixtures (chapel) =="
+            python3 tools/quality_runner.py --engine chapel | tee quality-chapel.json
             echo "== function-level parity (chapel vs python oracle) =="
             python3 tools/parity_runner.py --functions --require-chapel | tee parity-functions.md
             echo "== condense parity (chapel vs python goldens, byte-identical) =="
@@ -270,7 +277,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md capacity-gateway.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp quality-python.json quality-chapel.json parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md capacity-gateway.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };

@@ -77,6 +77,24 @@ class SecretCoverageTests(unittest.TestCase):
             self.assertIn("[REDACTED]", redacted, sample[:20])
             self.assertTrue(findings, sample[:20])
 
+    def test_multiline_redaction_preserves_source_line_topology(self):
+        for separator in ("\n", "\x85", "\u2028", "\u2029"):
+            with self.subTest(separator=repr(separator)):
+                source = separator.join(
+                    (
+                        "before",
+                        "-----BEGIN RSA PRIVATE KEY-----",
+                        "MIIEow",
+                        "-----END RSA PRIVATE KEY-----",
+                        "after",
+                    )
+                )
+                redacted, findings = redact_text(source)
+                self.assertEqual(findings, ["pattern-6"])
+                self.assertEqual(len(redacted.splitlines()), len(source.splitlines()))
+                self.assertEqual(redacted.splitlines()[-1], "after")
+                self.assertNotIn("MIIEow", redacted)
+
 
 class MarkdownExfilTests(unittest.TestCase):
     def test_defang_neutralizes_images_links_and_uris(self):

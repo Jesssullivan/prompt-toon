@@ -21,6 +21,11 @@ dogfood *args:
 dogfood-corpus *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon corpus-report {{args}}
 
+# C4f.2: generated synthetic fixtures evaluated against emitted artifacts.
+# Python is the local oracle; remote parity invokes this with --engine chapel.
+quality-fixtures *args:
+    cd {{root}} && python3 tools/gen_fixtures.py && PYTHONPATH={{root}} python3 tools/quality_runner.py {{args}}
+
 doctor:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon doctor
 
@@ -84,7 +89,7 @@ bazel-graph:
 bazel-test:
     cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test //...
 
-check: compile-check secrets-scan test bazel-graph bazel-test
+check: compile-check secrets-scan test quality-fixtures bazel-graph bazel-test
 
 package-smoke:
     cd {{root}} && nix build .#prompt-toon
