@@ -59,6 +59,16 @@ TOON-vs-JSONL win from being presented as an end-to-end prompt win. See
 Add `--mythos-route` or `--model-label` only when the caller observed those
 values; neither option proves delegation or provider routing.
 
+Aggregate explicit schema-v2 ledgers without reopening source material:
+
+```sh
+just dogfood-corpus path/to/run-*/efficiency.json
+```
+
+The report requires 20 unique spools within a 50-ledger cap for its
+corpus-count gate, separates execution cohorts, and remains non-promotable
+until deterministic quality fixtures pass. See `docs/dogfood-efficiency.md`.
+
 ## The `ptoon` binary (Chapel engine)
 
 Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).

@@ -300,6 +300,7 @@
           installCheckPhase = ''
             runHook preInstallCheck
             test "$("$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
+            "$out/bin/prompt-toon" corpus-report --help >/dev/null
             "$out/bin/prompt-toon" claude-profile direct >/dev/null
             "$out/bin/prompt-toon" codex-profile direct >/dev/null
             runHook postInstallCheck

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,65 @@ MAX_DOGFOOD_CARDS_PER_DOCUMENT = 24
 MAX_DOGFOOD_BUDGET_MS = 2000
 LEXICAL_ESTIMATOR_ID = "prompt-toon-rough-lexical-v1"
 LEXICAL_ESTIMATOR_PATTERN = r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]"
+DOGFOOD_LEDGER_SCHEMA_VERSION = 2
+CORPUS_KEY_SCHEME = "prompt-toon-ordered-input-metadata-v1"
+CORPUS_DIVERSITY_SCHEME = "prompt-toon-input-multiset-v1"
+
+
+def build_corpus_identity(input_metadata: list[dict[str, Any]]) -> dict[str, Any]:
+    """Hash ordered content metadata without retaining source paths."""
+    normalized = []
+    for index, item in enumerate(input_metadata):
+        byte_count = item.get("bytes")
+        digest = item.get("sha256")
+        trust_tier = item.get("trust_tier")
+        if (
+            isinstance(byte_count, bool)
+            or not isinstance(byte_count, int)
+            or byte_count < 0
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+            or not isinstance(trust_tier, str)
+            or not trust_tier
+        ):
+            raise ValueError(f"invalid corpus input metadata at index {index}")
+        normalized.append(
+            {
+                "bytes": byte_count,
+                "sha256": digest,
+                "trust_tier": trust_tier,
+            }
+        )
+    if not normalized:
+        raise ValueError("corpus input metadata must not be empty")
+    ordered_payload = json.dumps(
+        {"inputs": normalized, "scheme": CORPUS_KEY_SCHEME},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    diversity_inputs = sorted(
+        normalized,
+        key=lambda item: (item["sha256"], item["trust_tier"], item["bytes"]),
+    )
+    diversity_payload = json.dumps(
+        {"inputs": diversity_inputs, "scheme": CORPUS_DIVERSITY_SCHEME},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return {
+        "diversity_key": {
+            "scheme": CORPUS_DIVERSITY_SCHEME,
+            "sha256": hashlib.sha256(diversity_payload).hexdigest(),
+        },
+        "ordered_key": {
+            "scheme": CORPUS_KEY_SCHEME,
+            "sha256": hashlib.sha256(ordered_payload).hexdigest(),
+        },
+        "ordered_inputs": normalized,
+    }
 
 
 def expand_spool_inputs(
@@ -108,6 +168,7 @@ def build_efficiency_ledger(
     generated_at: str,
     output_dir: Path,
     documents: int,
+    input_metadata: list[dict[str, Any]],
     max_cards_per_document: int,
     input_bytes: int,
     input_tokens_estimate: int,
@@ -145,6 +206,8 @@ def build_efficiency_ledger(
             measurement["tokens_estimate"] = token_counter(
                 data.decode("utf-8", errors="strict")
             )
+        if name == "source-cards.jsonl":
+            measurement["records"] = sum(bool(line) for line in data.splitlines())
         artifacts[name] = measurement
 
     jsonl = artifacts["source-cards.jsonl"]
@@ -221,9 +284,10 @@ def build_efficiency_ledger(
         )
 
     return {
-        "schema_version": 1,
+        "schema_version": DOGFOOD_LEDGER_SCHEMA_VERSION,
         "run_id": run_id,
         "generated_at": generated_at,
+        "corpus_identity": build_corpus_identity(input_metadata),
         "claim_boundary": {
             "scope": "offline local transform only; no provider request was made",
             "provider_requests": 0,
@@ -272,6 +336,7 @@ def build_efficiency_ledger(
         },
         "spool": {
             "documents": documents,
+            "emitted_cards": artifacts["source-cards.jsonl"]["records"],
             "withheld_documents": withheld_documents,
             "withheld": withheld_details,
             "input_bytes": input_bytes,

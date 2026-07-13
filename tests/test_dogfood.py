@@ -16,8 +16,12 @@ from prompt_toon.dogfood import (
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_DOCUMENTS,
     MAX_DOGFOOD_INPUT_BYTES,
+    CORPUS_DIVERSITY_SCHEME,
+    CORPUS_KEY_SCHEME,
+    DOGFOOD_LEDGER_SCHEMA_VERSION,
     LEXICAL_ESTIMATOR_ID,
     LEXICAL_ESTIMATOR_PATTERN,
+    build_corpus_identity,
     build_efficiency_ledger,
     expand_spool_inputs,
 )
@@ -91,12 +95,32 @@ class DogfoodTests(unittest.TestCase):
 
             ledger = json.loads((out_dir / "efficiency.json").read_text())
             manifest = json.loads((out_dir / "manifest.json").read_text())
-            self.assertEqual(ledger["schema_version"], 1)
+            self.assertEqual(
+                ledger["schema_version"], DOGFOOD_LEDGER_SCHEMA_VERSION
+            )
             self.assertEqual(ledger["claim_boundary"]["provider_requests"], 0)
             self.assertFalse(ledger["claim_boundary"]["provider_token_counts"]["exact"])
             self.assertEqual(ledger["estimator"]["id"], LEXICAL_ESTIMATOR_ID)
             self.assertEqual(ledger["spool"]["documents"], 2)
+            self.assertEqual(
+                ledger["spool"]["emitted_cards"],
+                len((out_dir / "source-cards.jsonl").read_text().splitlines()),
+            )
             self.assertFalse(ledger["spool"]["raw_inputs_copied"])
+            self.assertEqual(
+                ledger["corpus_identity"]["ordered_key"]["scheme"],
+                CORPUS_KEY_SCHEME,
+            )
+            self.assertEqual(
+                ledger["corpus_identity"]["diversity_key"]["scheme"],
+                CORPUS_DIVERSITY_SCHEME,
+            )
+            self.assertEqual(
+                len(ledger["corpus_identity"]["ordered_key"]["sha256"]), 64
+            )
+            self.assertNotIn(
+                str(root), json.dumps(ledger["corpus_identity"], sort_keys=True)
+            )
             self.assertEqual(ledger["execution"]["engine_requested"], "python")
             self.assertEqual(ledger["execution"]["engine_resolved"], "python")
             self.assertEqual(ledger["execution"]["shape"], "python-sequential-oracle")
@@ -178,7 +202,17 @@ class DogfoodTests(unittest.TestCase):
                 manifest = {
                     "id": run_id,
                     "generated_at": generated_at,
-                    "inputs": [],
+                    "inputs": [
+                        {
+                            "bytes": len(doc["body"].encode()),
+                            "sha256": hashlib.sha256(
+                                doc["body"].encode()
+                            ).hexdigest(),
+                            "source": doc["source"],
+                            "trust_tier": doc["trust_tier"],
+                        }
+                        for doc in docs
+                    ],
                     "mixed_trust_tiers": False,
                     "settings": {
                         "format": "jsonl",
@@ -242,6 +276,13 @@ class DogfoodTests(unittest.TestCase):
                 generated_at="GENERATED_AT",
                 output_dir=output,
                 documents=1,
+                input_metadata=[
+                    {
+                        "bytes": 1000,
+                        "sha256": hashlib.sha256(b"withheld").hexdigest(),
+                        "trust_tier": "untrusted_tool_output",
+                    }
+                ],
                 max_cards_per_document=24,
                 input_bytes=1000,
                 input_tokens_estimate=1000,
@@ -274,7 +315,17 @@ class DogfoodTests(unittest.TestCase):
                 manifest = {
                     "id": run_id,
                     "generated_at": generated_at,
-                    "inputs": [],
+                    "inputs": [
+                        {
+                            "bytes": len(doc["body"].encode()),
+                            "sha256": hashlib.sha256(
+                                doc["body"].encode()
+                            ).hexdigest(),
+                            "source": doc["source"],
+                            "trust_tier": doc["trust_tier"],
+                        }
+                        for doc in docs
+                    ],
                     "mixed_trust_tiers": False,
                     "settings": {
                         "format": "jsonl",
@@ -354,6 +405,13 @@ class DogfoodTests(unittest.TestCase):
                 generated_at="GENERATED_AT",
                 output_dir=output,
                 documents=1,
+                input_metadata=[
+                    {
+                        "bytes": 100000,
+                        "sha256": hashlib.sha256(b"rounding").hexdigest(),
+                        "trust_tier": "untrusted_tool_output",
+                    }
+                ],
                 max_cards_per_document=24,
                 input_bytes=100000,
                 input_tokens_estimate=100000,
@@ -379,6 +437,33 @@ class DogfoodTests(unittest.TestCase):
             )
             self.assertEqual(ledger["handoff_decision"]["gate"], "below-threshold")
             self.assertEqual(ledger["handoff_decision"]["eligible_handoffs"], [])
+
+    def test_corpus_identity_is_path_independent_and_order_sensitive(self):
+        first = {
+            "bytes": 3,
+            "sha256": hashlib.sha256(b"one").hexdigest(),
+            "trust_tier": "repo_source",
+        }
+        second = {
+            "bytes": 3,
+            "sha256": hashlib.sha256(b"two").hexdigest(),
+            "trust_tier": "untrusted_tool_output",
+        }
+        identity = build_corpus_identity(
+            [{**first, "source": "/one/path"}, {**second, "source": "/two/path"}]
+        )
+        self.assertEqual(
+            identity,
+            build_corpus_identity(
+                [
+                    {**first, "source": "/different/path"},
+                    {**second, "source": "/another/path"},
+                ]
+            ),
+        )
+        reordered = build_corpus_identity([second, first])
+        self.assertNotEqual(identity["ordered_key"], reordered["ordered_key"])
+        self.assertEqual(identity["diversity_key"], reordered["diversity_key"])
 
     def test_toon_gate_uses_unrounded_savings(self):
         card = SourceCard(
@@ -412,7 +497,7 @@ class DogfoodTests(unittest.TestCase):
             first = root / "a.md"
             second = root / "b.md"
             first.write_text("- Provenance MUST remain attached.\n", encoding="utf-8")
-            second.write_text("- Open question: owner?\n", encoding="utf-8")
+            second.write_bytes("- Open question: café owner?\r\n".encode())
             out_dir = root / "out"
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(
