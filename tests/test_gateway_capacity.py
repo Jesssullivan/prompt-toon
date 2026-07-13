@@ -42,7 +42,10 @@ class GatewayCapacityTest(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            # The script runs both provider protocols in separately spawned
+            # gateway processes. Let each protocol's own bounded deadline
+            # report and clean up failures before this outer watchdog fires.
+            timeout=2 * capacity.RESULT_TIMEOUT_SECONDS + 60,
             check=False,
         )
 
