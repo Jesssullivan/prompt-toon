@@ -2,21 +2,35 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
 import re
 import secrets
 import shutil
+import stat
 import sys
 import tempfile
+import time
 import unicodedata
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from . import __version__
+from .dogfood import (
+    MAX_DOGFOOD_BUDGET_MS,
+    MAX_DOGFOOD_CARDS_PER_DOCUMENT,
+    MAX_DOGFOOD_DOCUMENTS,
+    MAX_DOGFOOD_INPUT_BYTES,
+    MAX_DOGFOOD_REQUEST_BYTES,
+    LEXICAL_ESTIMATOR_ID,
+    build_efficiency_ledger,
+    expand_spool_inputs,
+)
 
 SECRET_PATTERNS = [
     re.compile(r"\b(?:sk|ghp|gho|github_pat|xox[baprs])-[-_A-Za-z0-9]{16,}\b"),
@@ -169,7 +183,13 @@ def resolve_engine(name: str) -> SimpleNamespace:
       hasn't been built on this host.
     """
     if name == "python":
-        return SimpleNamespace(normalize_text=normalize_text, redact_text=redact_text, defang_text=defang_text)
+        return SimpleNamespace(
+            name="python",
+            backend=None,
+            normalize_text=normalize_text,
+            redact_text=redact_text,
+            defang_text=defang_text,
+        )
 
     from . import engine as engine_module
 
@@ -182,6 +202,8 @@ def resolve_engine(name: str) -> SimpleNamespace:
                 "relative to the repo root"
             )
         return SimpleNamespace(
+            name="chapel",
+            backend=chapel_engine,
             normalize_text=chapel_engine.normalize_text,
             redact_text=chapel_engine.redact_text,
             defang_text=chapel_engine.defang_text,
@@ -191,11 +213,19 @@ def resolve_engine(name: str) -> SimpleNamespace:
         chapel_engine = engine_module.ChapelEngine()
         if chapel_engine.available():
             return SimpleNamespace(
+                name="chapel",
+                backend=chapel_engine,
                 normalize_text=chapel_engine.normalize_text,
                 redact_text=chapel_engine.redact_text,
                 defang_text=chapel_engine.defang_text,
             )
-        return SimpleNamespace(normalize_text=normalize_text, redact_text=redact_text, defang_text=defang_text)
+        return SimpleNamespace(
+            name="python",
+            backend=None,
+            normalize_text=normalize_text,
+            redact_text=redact_text,
+            defang_text=defang_text,
+        )
 
     raise SystemExit(f"unknown --engine value: {name}")
 
@@ -638,13 +668,15 @@ def parse_tier_overrides(pairs: list[str]) -> dict[str, str]:
     return overrides
 
 
-def command_condense(args: argparse.Namespace) -> int:
-    engine = resolve_engine(args.engine)
-    tier_overrides = parse_tier_overrides(args.input_tier)
-    run_id = args.id or short_id("run")
-    out_dir = Path(args.output_dir).expanduser() if args.output_dir else state_root() / "runs" / run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    items = read_text_input(args.inputs)
+def _build_python_condense(
+    args: argparse.Namespace,
+    *,
+    engine: SimpleNamespace,
+    tier_overrides: dict[str, str],
+    run_id: str,
+    generated_at: str,
+    items: list[dict[str, Any]],
+) -> tuple[list[SourceCard], str, dict[str, Any], str | None]:
     cards: list[SourceCard] = []
     manifest_inputs = []
     tiers_seen: set[str] = set()
@@ -662,18 +694,23 @@ def command_condense(args: argparse.Namespace) -> int:
             }
         )
         cards.extend(
-            cards_from_text(item["source"], item["text"], digest, item_tier, max_cards_per_input, engine)
+            cards_from_text(
+                item["source"],
+                item["text"],
+                digest,
+                item_tier,
+                max_cards_per_input,
+                engine,
+            )
         )
 
-    primary_cards, toon_text, format_analysis = choose_card_format(cards, args.format, args.min_toon_savings)
-
-    write_jsonl(out_dir / "source-cards.jsonl", (card.as_dict() for card in cards))
-    if toon_text is not None:
-        (out_dir / "source-cards.toon").write_text(toon_text, encoding="utf-8")
+    primary_cards, toon_text, format_analysis = choose_card_format(
+        cards, args.format, args.min_toon_savings
+    )
 
     manifest = {
         "id": run_id,
-        "generated_at": now_utc(),
+        "generated_at": generated_at,
         "inputs": manifest_inputs,
         "mixed_trust_tiers": len(tiers_seen) > 1,
         "settings": {
@@ -697,9 +734,393 @@ def command_condense(args: argparse.Namespace) -> int:
         manifest["outputs"]["toon_note"] = (
             "TOON view omits sha256 and evidence; JSONL is the provenance-bearing artifact."
         )
-    (out_dir / "summary.md").write_text(render_summary(run_id, cards, manifest, engine), encoding="utf-8")
+    return cards, render_summary(run_id, cards, manifest, engine), manifest, toon_text
+
+
+def _write_condense_artifacts(
+    out_dir: Path,
+    cards: list[SourceCard],
+    summary: str,
+    manifest: dict[str, Any],
+    toon_text: str | None,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_jsonl(out_dir / "source-cards.jsonl", (card.as_dict() for card in cards))
+    toon_path = out_dir / "source-cards.toon"
+    if toon_text is not None:
+        toon_path.write_text(toon_text, encoding="utf-8")
+    elif toon_path.exists():
+        toon_path.unlink()
+    (out_dir / "summary.md").write_text(summary, encoding="utf-8")
     write_json(out_dir / "manifest.json", manifest)
-    write_json_to_stdout({"run_id": run_id, "out_dir": str(out_dir), "primary_source_cards": primary_cards})
+
+
+def command_condense(args: argparse.Namespace) -> int:
+    engine = resolve_engine(args.engine)
+    tier_overrides = parse_tier_overrides(args.input_tier)
+    run_id = args.id or short_id("run")
+    out_dir = (
+        Path(args.output_dir).expanduser()
+        if args.output_dir
+        else state_root() / "runs" / run_id
+    )
+    items = read_text_input(args.inputs)
+    cards, summary, manifest, toon_text = _build_python_condense(
+        args,
+        engine=engine,
+        tier_overrides=tier_overrides,
+        run_id=run_id,
+        generated_at=now_utc(),
+        items=items,
+    )
+    _write_condense_artifacts(out_dir, cards, summary, manifest, toon_text)
+    primary_cards = manifest["outputs"]["primary_source_cards"]
+    write_json_to_stdout(
+        {
+            "run_id": run_id,
+            "out_dir": str(out_dir),
+            "primary_source_cards": primary_cards,
+        }
+    )
+    return 0
+
+
+def _dogfood_tier_overrides(
+    pairs: list[str], expanded_inputs: list[str]
+) -> dict[str, str]:
+    parsed = parse_tier_overrides(pairs)
+    try:
+        inputs = {
+            Path(source).resolve(strict=True): source for source in expanded_inputs
+        }
+    except (OSError, RuntimeError) as exc:
+        raise SystemExit(
+            f"dogfood input changed while resolving trust tiers: {exc}"
+        ) from exc
+    overrides: dict[str, str] = {}
+    for raw_path, tier in parsed.items():
+        tier = _validate_dogfood_trust_tier(tier, "--input-tier")
+        path = Path(raw_path).expanduser()
+        if path.is_symlink() or not path.exists():
+            raise SystemExit(f"--input-tier path is unavailable or a symlink: {path}")
+        try:
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise SystemExit(
+                f"--input-tier path changed while resolving: {path}: {exc}"
+            ) from exc
+        if path.is_file():
+            matches = [inputs[resolved]] if resolved in inputs else []
+        elif path.is_dir():
+            matches = [
+                source
+                for identity, source in inputs.items()
+                if identity.is_relative_to(resolved)
+            ]
+        else:
+            matches = []
+        if not matches:
+            raise SystemExit(
+                f"--input-tier path does not select a dogfood input: {raw_path}"
+            )
+        for source in matches:
+            overrides[source] = tier
+    return overrides
+
+
+def _read_dogfood_inputs(paths: list[str]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    aggregate_bytes = 0
+    for raw_path in paths:
+        path = Path(raw_path)
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise SystemExit(
+                f"dogfood input could not be opened safely: {path}: {exc}"
+            ) from exc
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise SystemExit(f"dogfood input is not a regular file: {path}")
+            if metadata.st_size > MAX_DOGFOOD_INPUT_BYTES:
+                raise SystemExit(
+                    f"dogfood input is {metadata.st_size} bytes; per-document limit is "
+                    f"{MAX_DOGFOOD_INPUT_BYTES}: {path}"
+                )
+            chunks: list[bytes] = []
+            bytes_read = 0
+            read_limit = MAX_DOGFOOD_INPUT_BYTES + 1
+            while bytes_read < read_limit:
+                chunk = os.read(descriptor, min(1024 * 1024, read_limit - bytes_read))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                bytes_read += len(chunk)
+            data = b"".join(chunks)
+        finally:
+            os.close(descriptor)
+        if len(data) > MAX_DOGFOOD_INPUT_BYTES:
+            raise SystemExit(
+                f"dogfood input grew beyond the {MAX_DOGFOOD_INPUT_BYTES}-byte "
+                f"per-document limit while reading: {path}"
+            )
+        aggregate_bytes += len(data)
+        if aggregate_bytes > MAX_DOGFOOD_REQUEST_BYTES:
+            raise SystemExit(
+                f"dogfood spool exceeds the {MAX_DOGFOOD_REQUEST_BYTES}-byte "
+                "aggregate input limit"
+            )
+        try:
+            text = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise SystemExit(f"dogfood input is not valid UTF-8: {path}") from exc
+        items.append({"source": str(path), "bytes": data, "text": text})
+    return items
+
+
+def _validate_dogfood_source_label(source: str) -> None:
+    for char in source:
+        if char == "`" or unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"}:
+            raise SystemExit(
+                "dogfood input paths must not contain backticks, controls, "
+                f"formatting characters, or line separators: {source!r}"
+            )
+
+
+def _validate_dogfood_trust_tier(value: str, option: str) -> str:
+    value = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", value):
+        raise SystemExit(
+            f"{option} trust tier must be a 1-128 character visible ASCII label"
+        )
+    return value
+
+
+def _validate_dogfood_label(value: str | None, option: str) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        raise SystemExit(f"{option} must not be empty")
+    encoded = value.encode("utf-8")
+    if len(encoded) > 4096:
+        raise SystemExit(f"{option} must not exceed 4096 UTF-8 bytes")
+    if any(byte < 0x21 or byte > 0x7E for byte in encoded):
+        raise SystemExit(f"{option} must contain only visible ASCII characters")
+    return value
+
+
+@contextmanager
+def _dogfood_output_lock(out_dir: Path) -> Iterator[None]:
+    """Serialize cooperating writers for one run ID without stale lock state."""
+    lock_path = out_dir.parent / f".{out_dir.name}.lock"
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise SystemExit(
+            f"dogfood output lock could not be opened: {lock_path}: {exc}"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise SystemExit(f"dogfood output lock is not a regular file: {lock_path}")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SystemExit(
+                f"dogfood output run is already active: {out_dir}"
+            ) from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
+def _run_dogfood_to_directory(
+    args: argparse.Namespace,
+    *,
+    items: list[dict[str, Any]],
+    tier_overrides: dict[str, str],
+    generated_at: str,
+    engine: SimpleNamespace,
+    out_dir: Path,
+    mythos_route: str | None,
+    model_label: str | None,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    withheld_documents = 0
+    withheld_details: list[dict[str, str]] = []
+
+    if engine.name == "chapel":
+        docs = [
+            {
+                "source": item["source"],
+                "trust_tier": tier_overrides.get(item["source"], args.trust_tier),
+                "body": item["text"],
+            }
+            for item in items
+        ]
+        results, summary, manifest = engine.backend.condense_run(
+            docs,
+            args.id,
+            generated_at,
+            max_input_bytes=MAX_DOGFOOD_INPUT_BYTES,
+            budget_ms=MAX_DOGFOOD_BUDGET_MS,
+            max_cards=args.max_cards,
+            min_toon_savings=json.dumps(args.min_toon_savings, separators=(",", ":")),
+            default_trust_tier=args.trust_tier,
+            tier_overrides=tier_overrides,
+        )
+        engine_finished = time.perf_counter()
+        cards = [
+            SourceCard(**card) for result in results for card in result.get("cards", [])
+        ]
+        withheld_documents = sum(bool(result.get("withheld")) for result in results)
+        withheld_details = [
+            {
+                "source": result["source"],
+                "reason": result.get("reason", "unknown"),
+            }
+            for result in results
+            if result.get("withheld")
+        ]
+        primary_cards, toon_text, format_analysis = choose_card_format(
+            cards, "auto", args.min_toon_savings
+        )
+        manifest["settings"]["format"] = "auto"
+        manifest["format_analysis"] = format_analysis
+        manifest["outputs"]["primary_source_cards"] = primary_cards
+        execution_shape = "chapel-one-shot-coforall-batch"
+    else:
+        dogfood_args = SimpleNamespace(
+            format="auto",
+            max_cards=args.max_cards,
+            min_toon_savings=args.min_toon_savings,
+            trust_tier=args.trust_tier,
+        )
+        cards, summary, manifest, toon_text = _build_python_condense(
+            dogfood_args,
+            engine=engine,
+            tier_overrides=tier_overrides,
+            run_id=args.id,
+            generated_at=generated_at,
+            items=items,
+        )
+        engine_finished = time.perf_counter()
+        format_analysis = manifest["format_analysis"]
+        execution_shape = "python-sequential-oracle"
+
+    manifest["format_analysis"]["token_estimator"] = LEXICAL_ESTIMATOR_ID
+    manifest["outputs"]["efficiency"] = "efficiency.json"
+    if toon_text is not None:
+        manifest["outputs"]["toon_compact_view"] = "source-cards.toon"
+        manifest["outputs"]["toon_note"] = (
+            "TOON view omits sha256 and evidence; JSONL is the provenance-bearing artifact."
+        )
+    _write_condense_artifacts(out_dir, cards, summary, manifest, toon_text)
+    run_finished = time.perf_counter()
+
+    ledger = build_efficiency_ledger(
+        run_id=args.id,
+        generated_at=generated_at,
+        output_dir=out_dir,
+        documents=len(items),
+        max_cards_per_document=args.max_cards,
+        input_bytes=sum(len(item["bytes"]) for item in items),
+        input_tokens_estimate=sum(rough_token_count(item["text"]) for item in items),
+        withheld_documents=withheld_documents,
+        withheld_details=withheld_details,
+        engine_requested=args.engine,
+        engine_resolved=engine.name,
+        execution_shape=execution_shape,
+        engine_wall_ms=(engine_finished - started) * 1000,
+        run_wall_ms=(run_finished - started) * 1000,
+        min_toon_savings=args.min_toon_savings,
+        min_handoff_savings=args.min_handoff_savings,
+        format_analysis=format_analysis,
+        mythos_route=mythos_route,
+        model_label=model_label,
+        token_counter=rough_token_count,
+    )
+    write_json(out_dir / "efficiency.json", ledger)
+    return ledger
+
+
+def command_dogfood(args: argparse.Namespace) -> int:
+    try:
+        expanded_inputs = expand_spool_inputs(args.inputs)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if not 0 <= args.min_toon_savings <= 1:
+        raise SystemExit("--min-toon-savings must be between 0 and 1")
+    if not 0 <= args.min_handoff_savings <= 1:
+        raise SystemExit("--min-handoff-savings must be between 0 and 1")
+    if not 1 <= args.max_cards <= MAX_DOGFOOD_CARDS_PER_DOCUMENT:
+        raise SystemExit(
+            f"--max-cards must be between 1 and {MAX_DOGFOOD_CARDS_PER_DOCUMENT}"
+        )
+    for source in expanded_inputs:
+        _validate_dogfood_source_label(source)
+    args.trust_tier = _validate_dogfood_trust_tier(args.trust_tier, "--trust-tier")
+
+    args.id = args.id or short_id("dogfood")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", args.id):
+        raise SystemExit(
+            "--id must be 1-128 characters of ASCII letters, digits, '.', '_', or '-'"
+        )
+    out_dir = (
+        Path(args.output_dir).expanduser()
+        if args.output_dir
+        else state_root() / "runs" / args.id
+    )
+    mythos_route = _validate_dogfood_label(args.mythos_route, "--mythos-route")
+    model_label = _validate_dogfood_label(args.model_label, "--model-label")
+    tier_overrides = _dogfood_tier_overrides(args.input_tier, expanded_inputs)
+    items = _read_dogfood_inputs(expanded_inputs)
+    generated_at = now_utc()
+    engine = resolve_engine(args.engine)
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    with _dogfood_output_lock(out_dir):
+        if out_dir.exists() or out_dir.is_symlink():
+            raise SystemExit(f"dogfood output directory already exists: {out_dir}")
+        stage_dir = Path(
+            tempfile.mkdtemp(prefix=".prompt-toon-dogfood-", dir=out_dir.parent)
+        )
+        try:
+            ledger = _run_dogfood_to_directory(
+                args,
+                items=items,
+                tier_overrides=tier_overrides,
+                generated_at=generated_at,
+                engine=engine,
+                out_dir=stage_dir,
+                mythos_route=mythos_route,
+                model_label=model_label,
+            )
+            if out_dir.exists() or out_dir.is_symlink():
+                raise SystemExit(f"dogfood output directory already exists: {out_dir}")
+            stage_dir.rename(out_dir)
+        except BaseException:
+            shutil.rmtree(stage_dir, ignore_errors=True)
+            raise
+    write_json_to_stdout(
+        {
+            "run_id": args.id,
+            "out_dir": str(out_dir),
+            "efficiency": str(out_dir / "efficiency.json"),
+            "engine": engine.name,
+            "provider_requests": 0,
+            "handoff_gate": ledger["handoff_decision"]["gate"],
+            "recommended_handoff": ledger["handoff_decision"]["recommended_handoff"],
+        }
+    )
     return 0
 
 
@@ -883,7 +1304,63 @@ def build_parser() -> argparse.ArgumentParser:
     )
     condense.set_defaults(func=command_condense)
 
-    analyze = sub.add_parser("analyze", help="Analyze JSON/JSONL for compact JSON vs TOON row encoding.")
+    dogfood = sub.add_parser(
+        "dogfood",
+        help="Condense a durable local spool and write a claim-bounded efficiency ledger.",
+    )
+    dogfood.add_argument(
+        "inputs",
+        nargs="+",
+        help=(
+            "UTF-8 files or directories. Directories expand recursively in stable "
+            f"path order; at most {MAX_DOGFOOD_DOCUMENTS} documents."
+        ),
+    )
+    dogfood.add_argument("--id")
+    dogfood.add_argument("--output-dir")
+    dogfood.add_argument("--trust-tier", default="untrusted_tool_output")
+    dogfood.add_argument(
+        "--input-tier",
+        action="append",
+        default=[],
+        metavar="PATH=TIER",
+        help="Per-file or per-directory trust-tier override; repeatable.",
+    )
+    dogfood.add_argument(
+        "--max-cards",
+        type=int,
+        default=MAX_DOGFOOD_CARDS_PER_DOCUMENT,
+        help=f"Cards per document (maximum {MAX_DOGFOOD_CARDS_PER_DOCUMENT}).",
+    )
+    dogfood.add_argument("--min-toon-savings", type=float, default=0.20)
+    dogfood.add_argument(
+        "--min-handoff-savings",
+        type=float,
+        default=0.20,
+        help="Required whole-handoff token-estimate savings versus raw input.",
+    )
+    dogfood.add_argument(
+        "--mythos-route",
+        help="Caller-observed route label, such as mythos.synthesis; not a policy binding.",
+    )
+    dogfood.add_argument(
+        "--model-label",
+        help="Caller-observed model label; not provider-routing proof.",
+    )
+    dogfood.add_argument(
+        "--engine",
+        choices=["python", "chapel", "auto"],
+        default="auto",
+        help=(
+            "Full condensation engine. 'chapel' uses one coforall batch and fails "
+            "closed if ptoon is absent; 'auto' records a Python-oracle fallback."
+        ),
+    )
+    dogfood.set_defaults(func=command_dogfood)
+
+    analyze = sub.add_parser(
+        "analyze", help="Analyze JSON/JSONL for compact JSON vs TOON row encoding."
+    )
     analyze.add_argument("input", nargs="?")
     analyze.add_argument("--delimiter", default="\t")
     analyze.add_argument("--min-savings", type=float, default=0.20)

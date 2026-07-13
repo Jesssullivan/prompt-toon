@@ -146,6 +146,7 @@ sha256+evidence.
 | 4 | Subagent self-serve (501 dir) | one-shot framed `ptoon condense`/`condense-batch` exists; there is no durable transform service or registered hook | bounded resident transforms behind provider-owned transport | C4a `ptoon serve` (TIN-2792) |
 | 5 | Managed rules update | Dhall→JSON structural tests and manifest drift gate landed; regeneration still degrades to hand-sync when Dhall tooling is absent | one command: regenerate, test, version-bump, propagate, parity-confirm | keep reviewed HM version/policy bumps |
 | 6 | Queue/spool consumer | queue/stage are pure file-writers; no runner by design | gated runner with human authorization (INV-9) | `run --dry-run` printing the would-be command |
+| 7 | Offline efficiency dogfood | C4e accepts bounded durable files/directories and records local byte/token estimates without provider IO | authorized corpus replay plus exact provider counts and synthesis-quality crossover | `just dogfood` (TIN-2819) |
 
 Stories 1/4 now split at the C4 boundary: the provider gateway identifies
 typed transformable context and preserves authority-bearing bytes; the
@@ -566,9 +567,10 @@ the binary, `auto` falls open to Python when the binary is absent.
 **Current baseline:** v0.2.0 is installed and advisory, and its binary predates
 `ptoon serve`. Current v0.3.0 source contains the C4a resident transform service,
 the C4b Anthropic Messages gateway, the C4c OpenAI Responses gateway/profile,
-and the disabled C4d managed-consumption contract, including both unbilled
-real-CLI harness probes. It is not yet tagged, released, or installed through
-a fleet profile. Enforcement policy ships locked.
+the disabled C4d managed-consumption contract, and the C4e offline dogfood
+ledger, including both unbilled real-CLI harness probes. It is not yet tagged,
+released, or installed through a fleet profile. Enforcement policy ships
+locked.
 
 **Target boundary:** the provider gateway owns HTTP, auth/header forwarding,
 provider request/response adaptation, errors, and SSE. A private long-lived
@@ -604,6 +606,7 @@ the Chapel child retains its separate 256 MiB ceiling.
 - **C4b TIN-2793:** Claude Messages shadow gateway with typed-context transforms.
 - **C4c TIN-2794:** Codex Responses adapter and user-level provider profile.
 - **C4d TIN-2791:** multi-platform binaries and Home Manager gateway rollout.
+- **C4e TIN-2819:** offline durable-spool dogfood and efficiency ledger.
 
 ### C4b source contract
 
@@ -673,3 +676,21 @@ Native-surface pull requests repeat the Darwin derivation on a bounded standard
 GitHub-hosted `macos-15` arm64 runner; releases continue to use the remote Nix
 builder path. Linux Bazel/GF REAPI stays Linux-only. See
 `docs/home-manager-adoption.md`.
+
+### C4e offline measurement contract
+
+`prompt-toon dogfood` expands regular UTF-8 files and directories in stable
+path order, rejects symlinks and non-regular entries, and caps each run at 64
+documents. With a resolved Chapel binary it invokes the full one-shot
+`ptoon condense` surface, so one process owns the per-document `coforall`;
+otherwise `--engine auto` records a Python-oracle fallback. This is one bounded
+spool, not evidence of resident multi-stream capacity.
+
+The command writes `efficiency.json` beside the normal provenance-bearing run
+artifacts. It records bytes, hashes, a versioned regex estimator, explicit
+before/after denominators, engine/shape, wall time, and optional caller-observed
+Mythos route/model labels. It records zero provider requests and never presents
+local estimates as context-window or billing truth. Exact GPT request counts
+require the complete payload and the separately authorized Responses input
+token count endpoint. TOON remains a non-authoritative compact view because it
+omits evidence and source hashes.

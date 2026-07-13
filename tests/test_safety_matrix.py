@@ -139,6 +139,19 @@ class ToonPrimaryRefusalTests(unittest.TestCase):
         self.assertTrue(toon_view_exists)
         self.assertEqual(manifest["format_analysis"]["format"], "toon-compact-view")
 
+    def test_rerun_removes_a_stale_toon_view(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "rows.md"
+            source.write_text("- alpha must hold\n", encoding="utf-8")
+            out_dir = root / "out"
+            base = ["condense", str(source), "--output-dir", str(out_dir)]
+
+            self.assertEqual(main([*base, "--format", "toon"]), 0)
+            self.assertTrue((out_dir / "source-cards.toon").is_file())
+            self.assertEqual(main([*base, "--format", "jsonl"]), 0)
+            self.assertFalse((out_dir / "source-cards.toon").exists())
+
 
 class ToonColumnShiftTests(unittest.TestCase):
     def test_tab_and_cr_cannot_shift_columns(self):

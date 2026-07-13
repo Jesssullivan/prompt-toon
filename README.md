@@ -16,7 +16,8 @@ The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
 and the provider gateway. Current v0.3.0 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
 gateways plus the C4d managed-consumption source contract, but no v0.3.0
-release or fleet service profile exists yet. IO enforcement remains locked.
+release or fleet service profile exists yet. C4e adds provider-free local
+spool dogfooding and an efficiency ledger; IO enforcement remains locked.
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -42,6 +43,21 @@ Analyze JSON rows:
 ```sh
 just prompt-toon analyze path/to/results.json
 ```
+
+Dogfood a durable multi-document spool without contacting a provider:
+
+```sh
+just dogfood path/to/spool/ \
+  --mythos-route mythos.synthesis \
+  --model-label gpt-5.6-sol
+```
+
+The run writes `summary.md`, authoritative `source-cards.jsonl`,
+`manifest.json`, optional `source-cards.toon`, and `efficiency.json` under the
+state directory. Token figures are explicitly labeled lexical estimates, not
+provider usage or billing telemetry. A separate whole-handoff gate prevents a
+TOON-vs-JSONL win from being presented as an end-to-end prompt win. See
+`docs/dogfood-efficiency.md`.
 
 ## The `ptoon` binary (Chapel engine)
 
@@ -85,12 +101,22 @@ HTTP, auth/header forwarding, errors, and SSE; `ptoon serve` owns a fixed pool
 of bounded transform workers over private framed pipes. Only typed,
 provenance-bearing context is eligible for transformation. Authority-bearing
 request bytes, including instructions, approval state, tool schemas, and
-provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
+provider controls, remain unchanged. See `docs/linear.md` for C4a-e.
+
+C4e is an offline adoption-measurement lane. With `--engine chapel`, one
+`ptoon condense` process owns a bounded coforall fan-in across at most 64
+documents. `--engine auto` uses that path when the binary is available and
+records an explicit Python-oracle fallback otherwise. It does not claim the
+resident 64-stream production path, which remains covered by
+`just gateway-capacity`.
 
 ## Gates
 
 - `just check` — compile/secrets/tests + Bazel graph and test (includes the
   packaging-manifest drift gate).
+- `just dogfood <files-or-directories...>` — provider-free spool replay with
+  output hashes, local byte/token estimates, TOON selection evidence, engine
+  identity, and caller-observed Mythos/model labels.
 - `just gateway-harness-probe` — unbilled real-Claude-Code/SSE gateway proof
   plus local readiness, same-port rebind, and profile-rendering checks against
   a scripted loopback upstream.
@@ -140,6 +166,7 @@ manifest exist.
 - Managed-consumption contract: `packaging/home-manager.json` and
   `docs/home-manager-adoption.md`
 - Design record: `docs/mythos-delivery-design.md` · Linear map: `docs/linear.md`
+- Dogfood measurement contract: `docs/dogfood-efficiency.md`
 - Provider guides: `docs/anthropic-shadow-gateway.md` ·
   `docs/openai-responses-gateway.md`
 - Founding prompt: `docs/founding-prompt.md` · Vision: `docs/mythos-vision.md`
