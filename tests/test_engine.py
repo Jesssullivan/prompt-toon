@@ -658,6 +658,26 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
         self.assertIsInstance(redacted, str)
         self.assertIsInstance(findings, list)
 
+    def test_multiline_redaction_preserves_python_line_separators(self):
+        begin_marker = "-----BEGIN RSA " + "PRIVATE KEY-----"
+        end_marker = "-----END RSA " + "PRIVATE KEY-----"
+        for separator in ("\n", "\x85", "\u2028", "\u2029"):
+            with self.subTest(separator=repr(separator)):
+                source = separator.join(
+                    (
+                        "before",
+                        begin_marker,
+                        "MIIEow",
+                        end_marker,
+                        "after",
+                    )
+                )
+                expected = python_redact_text(source)
+                self.assertEqual(self.engine.redact_text(source), expected)
+                self.assertEqual(
+                    len(expected[0].splitlines()), len(source.splitlines())
+                )
+
     def test_redact_batch_matches_per_document_redact(self):
         # The coforall fan-in must be byte-identical to redacting each document
         # on its own, in input order. Includes a PEM that spans newlines (the

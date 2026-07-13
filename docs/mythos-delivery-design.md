@@ -712,7 +712,19 @@ distributions and weighted aggregates remain separate, as do format-local TOON
 rates and whole-handoff pass rates. Engine, execution shape, budget mode,
 policy thresholds, and card limits form distinct cohorts. Withheld and
 zero-token runs count toward operational outcomes but not economics. C4f.1
-reports self-attested optimization evidence with promotion blocked; C4f.2 must
-prove deterministic constraint, open-question, redaction, and provenance
-quality before a reduction can be adopted. Corpus-report success does not
-enable gateway policy or change the shadow gateways' provider-bound bytes.
+reports self-attested optimization evidence with promotion blocked. C4f.2 adds
+a separate generated synthetic suite that requires 100% constraint and
+open-question recall, exclusion of untrusted imperatives from authority-bearing
+sections, zero secret-fragment leakage, exact clean-claim retention, and exact
+claim-to-source/hash/tier/line-range provenance. Multiline secret replacement
+preserves Python `splitlines()` separators in both engines so later card ranges
+remain raw-source-addressable. Local checks run the Python oracle; remote parity
+repeats the same cases through Chapel. Its canonical report omits paths, raw
+text, clocks, and timings.
+
+The fixture pass is implementation regression evidence, not an attestation of
+arbitrary ledger contents or model-visible SWE quality, so it does not flip the
+ledger-only reporter's promotion field. Adoption still requires a reviewed
+implementation/fixture/corpus binding and separately authorized provider
+evidence. Corpus-report or fixture success does not enable gateway policy or
+change the shadow gateways' provider-bound bytes.
