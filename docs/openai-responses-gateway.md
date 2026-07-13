@@ -28,6 +28,21 @@ not expose exact model labels or persist request bodies, credentials, tool
 output, model output, or session identifiers. Provider errors and future SSE
 events remain opaque.
 
+For GPT-5.6 and later Responses telemetry, the aggregate
+`provider_cache_write_tokens` counter records valid non-negative integer
+`usage.input_tokens_details.cache_write_tokens` values from complete JSON or
+SSE responses. This is an observed provider usage metric only: the gateway
+does not calculate billing, infer cache writes when the field is absent, or
+retain the response body or per-response usage data. Boolean, negative, and
+non-integer values are ignored.
+
+Current `codex exec --json` documentation shows completed-turn input,
+cache-read, output, and reasoning counts, but not cache-write counts. The
+harness parser retains `cache_write_tokens` only when a Codex event explicitly
+contains it; it never infers a missing write count or converts absence to zero.
+The gateway aggregate is therefore the current observation point for provider
+cache writes.
+
 Responses WebSocket transport is not implemented. The generated provider
 profile sets `supports_websockets = false`; an attempted upgrade is rejected
 with 426 and counted. HTTP/SSE remains the only accepted inference transport.
@@ -174,11 +189,17 @@ probe, which is mandatory in the release preflight.
   wire API and expose the WebSocket capability flag.
 - [Codex advanced configuration](https://learn.chatgpt.com/codex/config-file/config-advanced#profiles):
   named profiles are separate `$CODEX_HOME/<name>.config.toml` overlays.
+- [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode):
+  `turn.completed` JSONL documents input, cache-read, output, and reasoning
+  usage counters.
 - [Responses create reference](https://developers.openai.com/api/reference/resources/responses/methods/create):
   input items, function calls, textual/image/file call outputs, tools, and
   unknown request controls remain provider-owned.
 - [Streaming Responses](https://developers.openai.com/api/docs/guides/streaming-responses):
   lifecycle, delta, completion, and error events are typed SSE events.
+- [Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching#requirements):
+  GPT-5.6 and later report prompt cache writes as
+  `usage.input_tokens_details.cache_write_tokens`.
 - [Codex 0.144.1 Responses fixtures](https://github.com/openai/codex/blob/rust-v0.144.1/codex-rs/core/tests/common/responses.rs):
   current Codex exercises `/v1/responses`, `/v1/responses/compact`, SSE, and
   `function_call_output` follow-up requests.

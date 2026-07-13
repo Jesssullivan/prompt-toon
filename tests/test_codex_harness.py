@@ -175,7 +175,7 @@ class CodexHarnessTests(unittest.TestCase):
         )
         self.assertNotIn("--profile", direct)
 
-    def test_stream_parser_requires_one_completion_and_final_message(self) -> None:
+    def test_stream_parser_returns_documented_completed_turn_usage(self) -> None:
         stream = "\n".join(
             json.dumps(event)
             for event in (
@@ -184,13 +184,110 @@ class CodexHarnessTests(unittest.TestCase):
                     "type": "item.completed",
                     "item": {"type": "agent_message", "text": "PASS"},
                 },
-                {"type": "turn.completed", "usage": {"input_tokens": 1}},
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 1,
+                        "cached_input_tokens": 2,
+                        "output_tokens": 3,
+                        "reasoning_output_tokens": 4,
+                    },
+                },
             )
         )
         parsed = parse_codex_stream(stream)
         self.assertEqual(parsed["result"], "PASS")
         self.assertEqual(parsed["completed_turns"], 1)
         self.assertEqual(parsed["errors"], 0)
+        self.assertEqual(
+            parsed["usage"],
+            {
+                "input_tokens": 1,
+                "cached_input_tokens": 2,
+                "output_tokens": 3,
+                "reasoning_output_tokens": 4,
+            },
+        )
+
+    def test_stream_parser_accepts_optional_cache_write_usage(self) -> None:
+        stream = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "item.completed",
+                    "item": {"type": "agent_message", "text": "PASS"},
+                },
+                {
+                    "type": "turn.completed",
+                    "usage": {"cache_write_tokens": 5},
+                },
+            )
+        )
+        self.assertEqual(
+            parse_codex_stream(stream)["usage"], {"cache_write_tokens": 5}
+        )
+
+    def test_stream_parser_keeps_missing_usage_explicit(self) -> None:
+        stream = "\n".join(
+            json.dumps(event)
+            for event in (
+                {
+                    "type": "item.completed",
+                    "item": {"type": "agent_message", "text": "PASS"},
+                },
+                {"type": "turn.completed"},
+            )
+        )
+        self.assertIsNone(parse_codex_stream(stream)["usage"])
+
+        partial_stream = "\n".join(
+            (
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "agent_message", "text": "PASS"},
+                    }
+                ),
+                json.dumps(
+                    {"type": "turn.completed", "usage": {"input_tokens": 1}}
+                ),
+            )
+        )
+        self.assertEqual(
+            parse_codex_stream(partial_stream)["usage"], {"input_tokens": 1}
+        )
+
+    def test_stream_parser_rejects_malformed_completed_turn_usage(self) -> None:
+        for usage in (
+            None,
+            [],
+            {"input_tokens": -1},
+            {"cached_input_tokens": True},
+            {"output_tokens": 1.5},
+            {"reasoning_output_tokens": "4"},
+            {"cache_write_tokens": {}},
+        ):
+            with self.subTest(usage=usage), self.assertRaisesRegex(
+                ValueError, "usage"
+            ):
+                parse_codex_stream(
+                    "\n".join(
+                        (
+                            json.dumps(
+                                {
+                                    "type": "item.completed",
+                                    "item": {
+                                        "type": "agent_message",
+                                        "text": "PASS",
+                                    },
+                                }
+                            ),
+                            json.dumps({"type": "turn.completed", "usage": usage}),
+                        )
+                    )
+                )
+
+    def test_stream_parser_requires_one_completion_and_final_message(self) -> None:
         with self.assertRaisesRegex(ValueError, "completed turn"):
             parse_codex_stream(
                 json.dumps(

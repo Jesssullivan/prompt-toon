@@ -101,6 +101,7 @@ _USAGE_FIELDS = (
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
     "cached_input_tokens",
+    "cache_write_tokens",
     "reasoning_output_tokens",
     "total_tokens",
 )
@@ -1014,20 +1015,23 @@ class ResponseObserver:
 
     def _observe_openai_value(self, value: dict[str, Any]) -> None:
         event_type = value.get("type")
-        if event_type in ("error", "response.failed", "response.incomplete"):
-            self._stream_errors += 1
-        elif event_type == "response.completed":
+        if self._sse:
+            if event_type in ("error", "response.failed", "response.incomplete"):
+                self._stream_errors += 1
+                return
+            if event_type != "response.completed":
+                return
             self._sse_complete = True
-
-        response = value.get("response")
-        candidates = [response, value]
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
-                continue
-            model = _safe_model(candidate.get("model"))
-            if model is not None:
-                self._returned_model = model
-            self._observe_usage(candidate.get("usage"))
+            self._usage.clear()
+            candidate = value.get("response")
+        else:
+            candidate = value
+        if not isinstance(candidate, dict):
+            return
+        model = _safe_model(candidate.get("model"))
+        if model is not None:
+            self._returned_model = model
+        self._observe_usage(candidate.get("usage"))
 
     def _observe_usage(self, value: object) -> None:
         if not isinstance(value, dict):
@@ -1050,6 +1054,13 @@ class ResponseObserver:
                     and cached >= 0
                 ):
                     self._usage["cached_input_tokens"] = cached
+                cache_write = input_details.get("cache_write_tokens")
+                if (
+                    isinstance(cache_write, int)
+                    and not isinstance(cache_write, bool)
+                    and cache_write >= 0
+                ):
+                    self._usage["cache_write_tokens"] = cache_write
             output_details = value.get("output_tokens_details")
             if isinstance(output_details, dict):
                 reasoning = output_details.get("reasoning_tokens")
