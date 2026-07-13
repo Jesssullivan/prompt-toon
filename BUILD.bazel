@@ -41,6 +41,7 @@ sh_test(
         ":manifest_srcs",
         "tools/anthropic_gateway_canary.py",
         "tools/anthropic_gateway_harness_probe.py",
+        "tools/openai_gateway_harness_probe.py",
         "//tools/packaging:gen_manifest.py",
     ] + glob([
         "prompt_toon/**/*.py",

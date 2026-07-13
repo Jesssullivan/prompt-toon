@@ -79,6 +79,14 @@
       "tier": "untrusted_tool_output"
     },
     {
+      "source": "shell_command",
+      "tier": "untrusted_tool_output"
+    },
+    {
+      "source": "exec_command",
+      "tier": "untrusted_tool_output"
+    },
+    {
       "source": "Read",
       "tier": "repo_source"
     },

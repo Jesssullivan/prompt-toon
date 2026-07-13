@@ -544,10 +544,11 @@ the binary, `auto` falls open to Python when the binary is absent.
 ## 9. C4 online IO gateway (accepted 2026-07-11)
 
 **Current baseline:** v0.2.0 is installed and advisory, and its binary predates
-`ptoon serve`. Current v0.3.0 source contains the C4a resident transform service
-and C4b Anthropic shadow gateway, including the unbilled real-Claude-Code
-harness probe. It is not yet tagged, released, or installed through a fleet
-profile. Enforcement policy ships locked.
+`ptoon serve`. Current v0.3.0 source contains the C4a resident transform service,
+the C4b Anthropic Messages gateway, and the C4c OpenAI Responses gateway and
+user-level Codex profile, including both unbilled real-CLI harness probes. It is
+not yet tagged, released, or installed through a fleet profile. Enforcement
+policy ships locked.
 
 **Target boundary:** the provider gateway owns HTTP, auth/header forwarding,
 provider request/response adaptation, errors, and SSE. A private long-lived
@@ -583,9 +584,9 @@ framing terminates the service because it cannot be safely resynchronized.
 reverse proxy. It forwards original request entity bytes before parsing a
 separate in-memory view, preserves provider responses and SSE opaquely, and
 submits only policy-known, `tool_use_id`-correlated textual `tool_result`
-segments to `ResidentEngine`. Aggregate metrics expose requested/returned
-models, provider usage, transform savings, withholding, and quality outcomes;
-they never retain credentials or body text. The exact operator flow,
+segments to `ResidentEngine`. Aggregate metrics expose process-local HMAC model
+buckets, provider usage, transform savings, withholding, and quality outcomes;
+they never retain credentials, exact model labels, or body text. The exact operator flow,
 direct-versus-gateway proof contract, current platform limitation, and
 official protocol references are in `docs/anthropic-shadow-gateway.md`.
 
@@ -596,3 +597,25 @@ Local readiness proves process admission plus resident-engine availability;
 observed upstream reachability is reported separately. The live canary owns a
 dedicated zero-traffic gateway and real resident engine. Process-scoped
 activation and rollback leave the caller's credentials and model choice alone.
+
+### C4c source contract
+
+The same loopback server now has an explicit OpenAI protocol mode for
+`POST /v1/responses`. It forwards entity bytes, headers, query strings,
+provider errors, and SSE opaquely, while a separate in-memory view correlates
+policy-known `function_call` names with textual `function_call_output` items.
+Instructions, messages, tools, arguments, approvals, reasoning, images, files,
+custom-tool outputs, ambiguous IDs, and unknown fields never enter Chapel.
+Current Codex remote compaction at `/v1/responses/compact` passes through
+without shadow analysis so durable sessions retain their provider behavior.
+
+`prompt_toon/codex_harness.py` renders a user-level
+`prompt-toon-shadow.config.toml` overlay. It fixes the Responses wire protocol,
+disables WebSockets and retries, and does not pin a model or mutate project
+configuration. Direct rollback is omission of `--profile prompt-toon-shadow`,
+which restores the base user profile unchanged. The unbilled proof runs the
+real Codex CLI against scripted loopback SSE. C4c deliberately ships no billed
+canary: current Codex still exposes host-reading built-ins when shell execution
+is disabled, and a request cap is not a spend bound. Live transform evidence
+requires a purpose-built filesystem sandbox and constrained billing project. See
+`docs/openai-responses-gateway.md` for the exact operator and protocol surface.
