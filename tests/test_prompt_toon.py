@@ -18,6 +18,24 @@ from prompt_toon.cli import (
 
 
 class PromptToonTests(unittest.TestCase):
+    def test_managed_gateway_fails_closed_when_split_auth_files_disappear(self):
+        with self.assertRaisesRegex(SystemExit, "requires split authentication"):
+            main(["gateway", "--require-split-auth"])
+
+    def test_doctor_reports_local_adoption_claim_boundary(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = main(["doctor", "--timeout", "0.05"])
+        self.assertEqual(code, 0)
+        status = json.loads(output.getvalue())
+        adoption = status["adoption"]
+        self.assertEqual(
+            adoption["claim_boundary"],
+            "local-observation-only; no provider request is made",
+        )
+        self.assertFalse(adoption["policy"]["enforcement_unlocked"])
+        self.assertFalse(adoption["request_paths"]["codex"]["selection_observable"])
+
     def test_responses_gateway_defaults_are_provider_scoped(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             args = build_parser().parse_args(["responses-gateway"])

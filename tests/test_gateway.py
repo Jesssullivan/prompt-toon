@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import http.client
 import http.server
+import hmac
 import json
+import os
 import socket
+import tempfile
 import threading
 import time
 import unittest
@@ -13,13 +16,17 @@ from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
+from prompt_toon.adoption import gateway_doctor_status
+from prompt_toon.engine import EngineError
 from prompt_toon.gateway import (
+    GatewayAuth,
     GatewayConfig,
     GatewayMetrics,
     GatewayPolicy,
     ResponseObserver,
     ShadowAnalyzer,
     create_gateway_server,
+    ownership_attestation_message,
     parse_message_for_shadow,
 )
 
@@ -81,6 +88,16 @@ class NeverCompletesEngine(FakeEngine):
         self.closed_event.set()
 
 
+class TerminalFailureEngine(FakeEngine):
+    def submit_condense_run(self, **kwargs: Any) -> Future:
+        self.submissions.append(kwargs)
+        self.closed = True
+        self.submitted.set()
+        future: Future = Future()
+        future.set_exception(EngineError("fixture resident protocol failure"))
+        return future
+
+
 class UpstreamState:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -119,9 +136,7 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"0\r\n\r\n")
             return
         if response_mode == "truncated":
-            response_body = (
-                b'{"model":"claude-partial","usage":{"input_tokens":77}}'
-            )
+            response_body = b'{"model":"claude-partial","usage":{"input_tokens":77}}'
             self.close_connection = True
             self.send_response_only(200, "OK")
             self.send_header("Content-Type", "application/json")
@@ -130,7 +145,10 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response_body)
             return
-        if response_mode in ("duplicate-length-short-first", "duplicate-length-long-first"):
+        if response_mode in (
+            "duplicate-length-short-first",
+            "duplicate-length-long-first",
+        ):
             response_body = b"123456789"
             lengths = (
                 ("3", "9")
@@ -326,7 +344,9 @@ class GatewayProtocolTests(unittest.TestCase):
         direct_record, gateway_record = self.upstream_state.requests
         self.assertEqual(gateway_record["body"], direct_record["body"])
         self.assertEqual(gateway_record["body"], body)
-        gateway_headers = {name.lower(): value for name, value in gateway_record["headers"]}
+        gateway_headers = {
+            name.lower(): value for name, value in gateway_record["headers"]
+        }
         expected_headers = {name.lower(): value for name, value in headers.items()}
         for name in (
             "x-api-key",
@@ -394,7 +414,9 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertEqual(response_headers["request-id"], "req_fixture")
         self.assertEqual(response_headers["x-upstream-unknown"], "preserved")
 
-    def test_sse_bytes_unknown_events_stream_errors_and_fallback_model_survive(self) -> None:
+    def test_sse_bytes_unknown_events_stream_errors_and_fallback_model_survive(
+        self,
+    ) -> None:
         response = self._send(
             self.gateway.server_port,
             request_body(),
@@ -482,7 +504,9 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertEqual(list(metrics["models"]["returned"].values()), [1])
         self.assertEqual(metrics["counters"]["provider_input_tokens"], 21)
 
-    def test_readiness_and_connectivity_probe_track_local_and_upstream_state(self) -> None:
+    def test_readiness_and_connectivity_probe_track_local_and_upstream_state(
+        self,
+    ) -> None:
         connection = http.client.HTTPConnection(
             "127.0.0.1", self.gateway.server_port, timeout=5
         )
@@ -532,16 +556,32 @@ class GatewayBoundaryTests(unittest.TestCase):
                 {
                     "role": "assistant",
                     "content": [
-                        {"type": "tool_use", "id": "m1", "name": "mcp__linear__get_issue"},
+                        {
+                            "type": "tool_use",
+                            "id": "m1",
+                            "name": "mcp__linear__get_issue",
+                        },
                         {"type": "tool_use", "id": "m2", "name": "NotDeclared"},
                     ],
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "tool_result", "tool_use_id": "m1", "content": "linear"},
-                        {"type": "tool_result", "tool_use_id": "m2", "content": "unknown"},
-                        {"type": "tool_result", "tool_use_id": "missing", "content": "orphan"},
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "m1",
+                            "content": "linear",
+                        },
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "m2",
+                            "content": "unknown",
+                        },
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "missing",
+                            "content": "orphan",
+                        },
                     ],
                 },
             ],
@@ -567,7 +607,11 @@ class GatewayBoundaryTests(unittest.TestCase):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "tool_result", "tool_use_id": "same", "content": "ambiguous"}
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "same",
+                            "content": "ambiguous",
+                        }
                     ],
                 },
             ]
@@ -582,6 +626,19 @@ class GatewayBoundaryTests(unittest.TestCase):
             GatewayConfig("0.0.0.0", 8787, "https://api.anthropic.com", 10, 1)
         with self.assertRaisesRegex(ValueError, "HTTPS"):
             GatewayConfig("127.0.0.1", 8787, "http://example.com", 10, 1)
+        with self.assertRaisesRegex(ValueError, "invalid port"):
+            GatewayConfig(
+                "127.0.0.1", 8787, "https://api.anthropic.com:secret", 10, 1
+            )
+        with self.assertRaisesRegex(ValueError, "aggregate ingress"):
+            GatewayConfig(
+                "127.0.0.1",
+                8787,
+                "https://api.anthropic.com",
+                10,
+                1,
+                max_inflight_request_bytes=0,
+            )
 
     def test_model_telemetry_cardinality_is_bounded(self) -> None:
         metrics = GatewayMetrics()
@@ -658,7 +715,9 @@ class GatewayBoundaryTests(unittest.TestCase):
             second_thread.join(timeout=5)
             second.server_close()
 
-    def test_readiness_reports_transport_failure_without_conflating_local_state(self) -> None:
+    def test_readiness_reports_transport_failure_without_conflating_local_state(
+        self,
+    ) -> None:
         unused = socket.socket()
         unused.bind(("127.0.0.1", 0))
         upstream_port = unused.getsockname()[1]
@@ -768,6 +827,172 @@ class GatewayBoundaryTests(unittest.TestCase):
         self.assertEqual(counters["shadow_timeouts"], 1)
         self.assertEqual(counters["shadow_failed"], 1)
 
+    def test_terminal_engine_failure_quarantines_readiness_and_ownership(self) -> None:
+        local_token = "terminal-local-" + "t" * 32
+        upstream = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), FakeUpstreamHandler
+        )
+        upstream.state = UpstreamState()  # type: ignore[attr-defined]
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        metrics = GatewayMetrics()
+        engine = TerminalFailureEngine()
+        analyzer = ShadowAnalyzer(self.policy, metrics, engine)
+        server = create_gateway_server(
+            GatewayConfig(
+                "127.0.0.1",
+                0,
+                f"http://127.0.0.1:{upstream.server_port}",
+                self.policy.max_request_bytes,
+                1,
+                auth=GatewayAuth(local_token, "provider-fixture-secret"),
+                policy_sha256="a" * 64,
+                resident_binary_sha256="b" * 64,
+            ),
+            analyzer,
+            metrics,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=5
+            )
+            connection.request(
+                "POST",
+                "/v1/messages",
+                body=request_body(),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": local_token,
+                },
+            )
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            self.assertEqual(response.status, 200)
+            self.assertTrue(wait_for(lambda: not analyzer.engine_available))
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=5
+            )
+            connection.request("GET", "/__prompt_toon/ready")
+            response = connection.getresponse()
+            readiness = json.loads(response.read())
+            connection.close()
+            self.assertEqual(response.status, 503)
+            self.assertFalse(readiness["engine_available"])
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=5
+            )
+            connection.request(
+                "GET",
+                "/__prompt_toon/ownership",
+                headers={"X-Prompt-Toon-Challenge": "e" * 64},
+            )
+            response = connection.getresponse()
+            ownership = json.loads(response.read())
+            connection.close()
+            self.assertEqual(response.status, 200)
+            self.assertFalse(ownership["engine_available"])
+            self.assertEqual(
+                metrics.snapshot()["counters"]["shadow_engine_terminal_failures"],
+                1,
+            )
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+            upstream.shutdown()
+            upstream_thread.join(timeout=5)
+            upstream.server_close()
+
+    def test_aggregate_ingress_budget_rejects_before_second_upstream(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        upstream_requests = 0
+        upstream_lock = threading.Lock()
+
+        class HoldingUpstream(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+            def do_POST(self) -> None:
+                nonlocal upstream_requests
+                self.rfile.read(int(self.headers["Content-Length"]))
+                with upstream_lock:
+                    upstream_requests += 1
+                entered.set()
+                release.wait(5)
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), HoldingUpstream)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+        gateway = create_gateway_server(
+            GatewayConfig(
+                "127.0.0.1",
+                0,
+                f"http://127.0.0.1:{upstream.server_port}",
+                64,
+                2,
+                max_inflight_request_bytes=64,
+            ),
+            analyzer,
+            metrics,
+        )
+        gateway_thread = threading.Thread(target=gateway.serve_forever, daemon=True)
+        gateway_thread.start()
+        first_result: list[int] = []
+
+        def send_first() -> None:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", gateway.server_port, timeout=5
+            )
+            connection.request("POST", "/v1/messages", body=b"x" * 48)
+            response = connection.getresponse()
+            response.read()
+            first_result.append(response.status)
+            connection.close()
+
+        first_thread = threading.Thread(target=send_first)
+        first_thread.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            self.assertEqual(gateway.inflight_request_bytes, 48)
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", gateway.server_port, timeout=5
+            )
+            connection.request("POST", "/v1/messages", body=b"y" * 17)
+            response = connection.getresponse()
+            body = response.read()
+            connection.close()
+            self.assertEqual(response.status, 503)
+            self.assertIn(b"overloaded_error", body)
+            with upstream_lock:
+                self.assertEqual(upstream_requests, 1)
+            self.assertEqual(
+                metrics.snapshot()["counters"]["ingress_byte_budget_rejected"],
+                1,
+            )
+        finally:
+            release.set()
+            first_thread.join(timeout=5)
+            gateway.shutdown()
+            gateway_thread.join(timeout=5)
+            gateway.server_close()
+            upstream.shutdown()
+            upstream_thread.join(timeout=5)
+            upstream.server_close()
+        self.assertEqual(first_result, [200])
+        self.assertEqual(gateway.inflight_request_bytes, 0)
+
 
 class GatewayFailureIsolationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -801,6 +1026,9 @@ class GatewayFailureIsolationTests(unittest.TestCase):
         max_concurrent_requests: int = 2,
         ingress_header_timeout_seconds: float = 10.0,
         ingress_body_timeout_seconds: float = 30.0,
+        auth: GatewayAuth | None = None,
+        policy_sha256: str | None = None,
+        resident_binary_sha256: str | None = None,
     ) -> Any:
         server = create_gateway_server(
             GatewayConfig(
@@ -809,6 +1037,9 @@ class GatewayFailureIsolationTests(unittest.TestCase):
                 f"http://127.0.0.1:{self.upstream.server_port}",
                 max_request_bytes,
                 max_concurrent_requests,
+                auth=auth,
+                policy_sha256=policy_sha256,
+                resident_binary_sha256=resident_binary_sha256,
                 ingress_header_timeout_seconds=ingress_header_timeout_seconds,
                 ingress_body_timeout_seconds=ingress_body_timeout_seconds,
             ),
@@ -821,13 +1052,20 @@ class GatewayFailureIsolationTests(unittest.TestCase):
         return server
 
     @staticmethod
-    def send(port: int, body: bytes) -> tuple[int, bytes]:
+    def send(
+        port: int,
+        body: bytes,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, bytes]:
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        request_headers = {"Content-Type": "application/json"}
+        if headers:
+            request_headers.update(headers)
         connection.request(
             "POST",
             "/v1/messages",
             body=body,
-            headers={"Content-Type": "application/json"},
+            headers=request_headers,
         )
         response = connection.getresponse()
         result = response.status, response.read()
@@ -880,7 +1118,9 @@ class GatewayFailureIsolationTests(unittest.TestCase):
         counters = metrics.snapshot()["counters"]
         self.assertEqual(counters["shadow_request_parse_errors"], 1)
 
-    def test_local_endpoint_closes_instead_of_parsing_unread_body_as_request(self) -> None:
+    def test_local_endpoint_closes_instead_of_parsing_unread_body_as_request(
+        self,
+    ) -> None:
         metrics = GatewayMetrics()
         analyzer = ShadowAnalyzer(self.policy, metrics, None)
         server = self.start_gateway(
@@ -943,9 +1183,7 @@ class GatewayFailureIsolationTests(unittest.TestCase):
             )
             client.sendall(b"G")
             held.append(client)
-        self.assertTrue(
-            wait_for(lambda: server.active_connection_count == 3)
-        )
+        self.assertTrue(wait_for(lambda: server.active_connection_count == 3))
         rejected = socket.create_connection(
             ("127.0.0.1", server.server_port), timeout=2
         )
@@ -994,6 +1232,259 @@ class GatewayFailureIsolationTests(unittest.TestCase):
         client.close()
         self.assertEqual(response.count(b"HTTP/1.1"), 1)
         self.assertIn(b"Connection: close", response)
+
+    def test_managed_auth_terminates_local_token_and_proves_port_ownership(
+        self,
+    ) -> None:
+        local_token = "local-" + "l" * 40
+        upstream_token = "provider-fixture-secret"
+        auth = GatewayAuth(local_token, upstream_token)
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+        server = self.start_gateway(
+            analyzer,
+            metrics,
+            max_request_bytes=self.policy.max_request_bytes,
+            auth=auth,
+            policy_sha256="a" * 64,
+            resident_binary_sha256="b" * 64,
+        )
+
+        for supplied in (None, "wrong-local-token"):
+            headers = {} if supplied is None else {"x-api-key": supplied}
+            status, response = self.send(server.server_port, request_body(), headers)
+            self.assertEqual(status, 401)
+            self.assertIn(b"authentication_error", response)
+        self.assertEqual(self.upstream_state.requests, [])
+
+        status, _ = self.send(
+            server.server_port,
+            request_body(),
+            {
+                "x-api-key": local_token,
+                "Authorization": "Bearer must-not-leak",
+                "x-future-feature": "preserved",
+            },
+        )
+        self.assertEqual(status, 200)
+        forwarded = {
+            name.lower(): value
+            for name, value in self.upstream_state.requests[-1]["headers"]
+        }
+        self.assertEqual(forwarded["x-api-key"], upstream_token)
+        self.assertNotIn("authorization", forwarded)
+        self.assertEqual(forwarded["x-future-feature"], "preserved")
+        self.assertNotIn(local_token, repr(self.upstream_state.requests[-1]))
+
+        owner = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        challenge = "c" * 64
+        owner.request(
+            "GET",
+            "/__prompt_toon/ownership",
+            headers={"X-Prompt-Toon-Challenge": challenge},
+        )
+        response = owner.getresponse()
+        ownership = json.loads(response.read())
+        owner.close()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(ownership["status"], "owned")
+        self.assertEqual(ownership["provider"], "anthropic")
+        self.assertEqual(ownership["auth_mode"], "split")
+        self.assertEqual(ownership["policy_sha256"], "a" * 64)
+        self.assertEqual(ownership["resident_binary_sha256"], "b" * 64)
+        self.assertEqual(
+            ownership["ownership_endpoint"],
+            f"http://127.0.0.1:{server.server_port}/__prompt_toon/ownership",
+        )
+        attestation = dict(ownership)
+        challenge_response = attestation.pop("challenge_response")
+        self.assertEqual(
+            challenge_response,
+            hmac.new(
+                local_token.encode(),
+                ownership_attestation_message(challenge, attestation),
+                "sha256",
+            ).hexdigest(),
+        )
+        self.assertEqual(metrics.snapshot()["counters"]["client_auth_rejected"], 2)
+
+    def test_doctor_authenticates_real_managed_gateway_without_echoing_token(
+        self,
+    ) -> None:
+        local_token = "doctor-local-" + "l" * 32
+        auth = GatewayAuth(local_token, "provider-fixture-secret")
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+        server = self.start_gateway(
+            analyzer,
+            metrics,
+            max_request_bytes=self.policy.max_request_bytes,
+            auth=auth,
+            policy_sha256="a" * 64,
+            resident_binary_sha256="b" * 64,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            token_file = Path(tmp) / "client-token"
+            token_file.write_text(local_token + "\n", encoding="ascii")
+            os.chmod(token_file, 0o600)
+            status = gateway_doctor_status(
+                f"http://127.0.0.1:{server.server_port}",
+                provider="anthropic",
+                client_token_file=token_file,
+                timeout=2,
+            )
+
+        self.assertTrue(status["ownership"]["authenticated"])
+        self.assertEqual(status["ownership"]["payload"]["status"], "owned")
+        self.assertEqual(status["ownership"]["payload"]["policy_sha256"], "a" * 64)
+        self.assertEqual(
+            status["ownership"]["payload"]["resident_binary_sha256"], "b" * 64
+        )
+        self.assertNotIn("challenge_response", status["ownership"]["payload"])
+        self.assertEqual(status["readiness"]["payload"]["status"], "ready")
+        self.assertEqual(status["metrics"]["payload"]["mode"], "shadow")
+        self.assertNotIn(local_token, repr(status))
+
+    def test_doctor_rejects_relayed_mac_with_forged_attestation(self) -> None:
+        local_token = "relay-local-" + "r" * 32
+        metrics = GatewayMetrics()
+        analyzer = ShadowAnalyzer(self.policy, metrics, FakeEngine())
+        real = self.start_gateway(
+            analyzer,
+            metrics,
+            max_request_bytes=self.policy.max_request_bytes,
+            auth=GatewayAuth(local_token, "provider-fixture-secret"),
+            policy_sha256="a" * 64,
+            resident_binary_sha256="b" * 64,
+        )
+
+        class RelayHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+            def do_GET(self) -> None:
+                if self.path == "/__prompt_toon/ownership":
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", real.server_port, timeout=2
+                    )
+                    connection.request(
+                        "GET",
+                        self.path,
+                        headers={
+                            "X-Prompt-Toon-Challenge": self.headers[
+                                "X-Prompt-Toon-Challenge"
+                            ]
+                        },
+                    )
+                    response = connection.getresponse()
+                    payload = json.loads(response.read())
+                    connection.close()
+                    payload["policy_sha256"] = "f" * 64
+                    payload["ownership_endpoint"] = (
+                        f"http://127.0.0.1:{self.server.server_port}{self.path}"
+                    )
+                elif self.path == "/__prompt_toon/ready":
+                    payload = {
+                        "status": "ready",
+                        "mode": "shadow",
+                        "provider": "anthropic",
+                        "accepting": True,
+                        "engine_available": True,
+                        "upstream": "unknown",
+                    }
+                else:
+                    payload = {
+                        "schema_version": 1,
+                        "mode": "shadow",
+                        "counters": {},
+                        "quality": {},
+                    }
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        relay = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RelayHandler)
+        relay_thread = threading.Thread(target=relay.serve_forever, daemon=True)
+        relay_thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                token_file = Path(tmp) / "client-token"
+                token_file.write_text(local_token, encoding="ascii")
+                os.chmod(token_file, 0o600)
+                status = gateway_doctor_status(
+                    f"http://127.0.0.1:{relay.server_port}",
+                    provider="anthropic",
+                    client_token_file=token_file,
+                    timeout=2,
+                )
+            self.assertFalse(status["ownership"]["authenticated"])
+            self.assertEqual(
+                status["ownership"]["payload"]["policy_sha256"], "f" * 64
+            )
+            self.assertNotIn(local_token, repr(status))
+        finally:
+            relay.shutdown()
+            relay_thread.join(timeout=5)
+            relay.server_close()
+
+
+class GatewayAuthFileTests(unittest.TestCase):
+    def test_token_fifo_is_rejected_without_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            client = Path(tmp) / "client-token"
+            upstream = Path(tmp) / "upstream-token"
+            os.mkfifo(client, 0o600)
+            upstream.write_text("provider-secret", encoding="ascii")
+            os.chmod(upstream, 0o600)
+            with self.assertRaisesRegex(ValueError, "regular file"):
+                GatewayAuth.from_files(client, upstream)
+
+    def test_owner_only_distinct_files_load_without_secret_repr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            client = Path(tmp) / "client-token"
+            upstream = Path(tmp) / "upstream-token"
+            client.write_text("c" * 40 + "\n", encoding="ascii")
+            upstream.write_text("provider-secret\n", encoding="ascii")
+            os.chmod(client, 0o600)
+            os.chmod(upstream, 0o600)
+            auth = GatewayAuth.from_files(client, upstream)
+            self.assertIsNotNone(auth)
+            self.assertNotIn("provider-secret", repr(auth))
+
+    def test_split_auth_requires_both_secure_distinct_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            client = Path(tmp) / "client-token"
+            upstream = Path(tmp) / "upstream-token"
+            client.write_text("c" * 40, encoding="ascii")
+            upstream.write_text("provider-secret", encoding="ascii")
+            os.chmod(client, 0o600)
+            os.chmod(upstream, 0o600)
+            with self.assertRaisesRegex(ValueError, "requires both"):
+                GatewayAuth.from_files(client, None)
+            os.chmod(upstream, 0o644)
+            with self.assertRaisesRegex(ValueError, "group or other"):
+                GatewayAuth.from_files(client, upstream)
+            os.chmod(upstream, 0o600)
+            upstream.write_text("c" * 40, encoding="ascii")
+            with self.assertRaisesRegex(ValueError, "must be distinct"):
+                GatewayAuth.from_files(client, upstream)
+
+    def test_token_file_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(tmp) / "real-token"
+            link = Path(tmp) / "client-token"
+            upstream = Path(tmp) / "upstream-token"
+            real.write_text("c" * 40, encoding="ascii")
+            upstream.write_text("provider-secret", encoding="ascii")
+            os.chmod(real, 0o600)
+            os.chmod(upstream, 0o600)
+            link.symlink_to(real)
+            with self.assertRaisesRegex(ValueError, "opened safely"):
+                GatewayAuth.from_files(link, upstream)
 
 
 if __name__ == "__main__":

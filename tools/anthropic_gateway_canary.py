@@ -192,6 +192,7 @@ def _run_dedicated_canary(
         upstream=args.upstream,
         max_request_bytes=policy.max_request_bytes,
         max_concurrent_requests=policy.max_concurrent_streams,
+        max_inflight_request_bytes=policy.max_inflight_request_bytes,
         upstream_timeout_seconds=args.timeout,
     )
     try:

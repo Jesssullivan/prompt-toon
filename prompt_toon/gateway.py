@@ -14,21 +14,24 @@ import http.client
 import http.server
 import ipaddress
 import json
+import os
 import re
 import secrets
 import signal
 import socket
+import stat
 import threading
 import time
 import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import SplitResult, urlsplit
 
+from prompt_toon import __version__
 from prompt_toon.engine import EngineError
 from prompt_toon.resident import ResidentEngine
 
@@ -36,6 +39,7 @@ from prompt_toon.resident import ResidentEngine
 HEALTH_PATH = "/__prompt_toon/health"
 READINESS_PATH = "/__prompt_toon/ready"
 METRICS_PATH = "/__prompt_toon/metrics"
+OWNERSHIP_PATH = "/__prompt_toon/ownership"
 MESSAGES_PATH = "/v1/messages"
 RESPONSES_PATH = "/v1/responses"
 RESPONSES_COMPACT_PATH = "/v1/responses/compact"
@@ -56,7 +60,29 @@ _MAX_OBSERVED_RESPONSE_BYTES = 1024 * 1024
 _MAX_SSE_LINE_BYTES = 256 * 1024
 _MAX_MODEL_CARDINALITY = 32
 _MAX_CORRELATION_ID_BYTES = 1024
+_MAX_AUTH_TOKEN_BYTES = 8192
+_MIN_CLIENT_AUTH_TOKEN_BYTES = 32
 _ADMIN_CONNECTION_RESERVE = 2
+_LISTEN_BACKLOG = 128
+_OWNERSHIP_CHALLENGE_HEADER = "X-Prompt-Toon-Challenge"
+_OWNERSHIP_CHALLENGE_RE = re.compile(r"[0-9a-f]{64}\Z")
+_OWNERSHIP_MAC_DOMAIN = b"prompt-toon-ownership-attestation-v1\0"
+_OWNERSHIP_ATTESTATION_FIELDS = (
+    "schema_version",
+    "status",
+    "provider",
+    "auth_mode",
+    "ownership_endpoint",
+    "instance_id",
+    "service_version",
+    "upstream_url",
+    "policy_sha256",
+    "resident_binary_sha256",
+    "accepting",
+    "engine_available",
+    "upstream",
+)
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _MODEL_RE = re.compile(r"[A-Za-z0-9._:/-]{1,128}\Z")
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]")
 _HOP_BY_HOP = {
@@ -107,6 +133,130 @@ def _safe_model(value: object) -> str | None:
     return None
 
 
+def _read_auth_token_file(path: str | Path, *, client: bool) -> str:
+    """Read one owner-only, non-symlink token file without retaining its path."""
+
+    label = "client" if client else "upstream"
+    raw_path = os.fspath(path)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        fd = os.open(raw_path, flags)
+    except OSError as exc:
+        raise ValueError(
+            f"{label} token file could not be opened safely: {exc.strerror}"
+        ) from exc
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"{label} token file must be a regular file")
+        if metadata.st_uid != os.geteuid():
+            raise ValueError(f"{label} token file must be owned by the gateway user")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise ValueError(f"{label} token file must not grant group or other access")
+        data = os.read(fd, _MAX_AUTH_TOKEN_BYTES + 2)
+        if os.read(fd, 1):
+            data += b"x"
+    finally:
+        os.close(fd)
+
+    if data.endswith(b"\n"):
+        data = data[:-1]
+    minimum = _MIN_CLIENT_AUTH_TOKEN_BYTES if client else 1
+    if not minimum <= len(data) <= _MAX_AUTH_TOKEN_BYTES:
+        raise ValueError(
+            f"{label} token must contain {minimum}..{_MAX_AUTH_TOKEN_BYTES} bytes"
+        )
+    if any(byte < 0x21 or byte > 0x7E for byte in data):
+        raise ValueError(f"{label} token must contain visible ASCII without spaces")
+    return data.decode("ascii")
+
+
+def read_gateway_client_token(path: str | Path) -> str:
+    """Read a managed gateway client token using gateway custody rules."""
+
+    return _read_auth_token_file(path, client=True)
+
+
+def ownership_attestation_message(
+    challenge: str, attestation: Mapping[str, Any]
+) -> bytes:
+    """Return the versioned canonical bytes authenticated by ownership HMAC."""
+
+    if not _OWNERSHIP_CHALLENGE_RE.fullmatch(challenge):
+        raise ValueError("ownership challenge must be 64 lowercase hex characters")
+    if set(attestation) != set(_OWNERSHIP_ATTESTATION_FIELDS):
+        raise ValueError("ownership attestation fields do not match the protocol")
+    canonical = {field: attestation[field] for field in _OWNERSHIP_ATTESTATION_FIELDS}
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return _OWNERSHIP_MAC_DOMAIN + challenge.encode("ascii") + b"\0" + encoded
+
+
+def _sha256_file(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class GatewayAuth:
+    """Split local-client authentication from upstream provider custody."""
+
+    client_token: str = field(repr=False)
+    upstream_token: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        for label, value, minimum in (
+            ("client", self.client_token, _MIN_CLIENT_AUTH_TOKEN_BYTES),
+            ("upstream", self.upstream_token, 1),
+        ):
+            if not isinstance(value, str):
+                raise ValueError(f"{label} token must be a string")
+            try:
+                encoded = value.encode("ascii")
+            except UnicodeEncodeError as exc:
+                raise ValueError(f"{label} token must be visible ASCII") from exc
+            if not minimum <= len(encoded) <= _MAX_AUTH_TOKEN_BYTES:
+                raise ValueError(
+                    f"{label} token must contain {minimum}..{_MAX_AUTH_TOKEN_BYTES} bytes"
+                )
+            if any(byte < 0x21 or byte > 0x7E for byte in encoded):
+                raise ValueError(
+                    f"{label} token must contain visible ASCII without spaces"
+                )
+        if hmac.compare_digest(self.client_token, self.upstream_token):
+            raise ValueError("client and upstream tokens must be distinct")
+
+    @classmethod
+    def from_files(
+        cls,
+        client_token_file: str | Path | None,
+        upstream_token_file: str | Path | None,
+    ) -> GatewayAuth | None:
+        if client_token_file is None and upstream_token_file is None:
+            return None
+        if client_token_file is None or upstream_token_file is None:
+            raise ValueError(
+                "split gateway authentication requires both client and upstream token files"
+            )
+        return cls(
+            client_token=_read_auth_token_file(client_token_file, client=True),
+            upstream_token=_read_auth_token_file(upstream_token_file, client=False),
+        )
+
+
 @dataclass(frozen=True)
 class GatewayPolicy:
     max_concurrent_streams: int
@@ -114,6 +264,7 @@ class GatewayPolicy:
     pending_queue_depth: int
     max_documents_per_request: int
     max_request_bytes: int
+    max_inflight_request_bytes: int
     max_response_bytes: int
     max_label_bytes: int
     max_input_bytes: int
@@ -124,8 +275,12 @@ class GatewayPolicy:
 
     @classmethod
     def load(cls, path: str | Path) -> GatewayPolicy:
+        return cls.from_bytes(Path(path).read_bytes())
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> GatewayPolicy:
         raw = json.loads(
-            Path(path).read_text(encoding="utf-8"),
+            data.decode("utf-8"),
             parse_constant=_reject_json_constant,
         )
         if not isinstance(raw, dict):
@@ -145,6 +300,7 @@ class GatewayPolicy:
             "pending_queue_depth",
             "max_documents_per_request",
             "max_request_bytes",
+            "max_inflight_request_bytes",
             "max_response_bytes",
             "max_label_bytes",
             "max_cards_per_document",
@@ -186,6 +342,8 @@ class GatewayPolicy:
             raise ValueError("IO policy queue depth is smaller than worker count")
         if values["max_input_bytes"] > values["max_request_bytes"]:
             raise ValueError("IO policy input cap exceeds request cap")
+        if values["max_inflight_request_bytes"] < values["max_request_bytes"]:
+            raise ValueError("IO policy aggregate ingress cap is smaller than request cap")
         if values["max_response_bytes"] < values["max_request_bytes"]:
             raise ValueError("IO policy response cap is smaller than request cap")
 
@@ -396,7 +554,9 @@ class GatewayMetrics:
     """Bounded in-memory counters; never stores request bodies or credentials."""
 
     def __init__(self, *, model_hash_key: bytes | None = None) -> None:
-        key = secrets.token_bytes(32) if model_hash_key is None else bytes(model_hash_key)
+        key = (
+            secrets.token_bytes(32) if model_hash_key is None else bytes(model_hash_key)
+        )
         if len(key) < 16:
             raise ValueError("model hash key must contain at least 16 bytes")
         self._lock = threading.Lock()
@@ -432,9 +592,12 @@ class GatewayMetrics:
                 self._record_model(self._requested_models, requested_model)
 
     def _record_model(self, counter: Counter[str], model: str) -> None:
-        bucket = "model:" + hmac.new(
-            self._model_hash_key, model.encode("utf-8"), hashlib.sha256
-        ).hexdigest()[:16]
+        bucket = (
+            "model:"
+            + hmac.new(
+                self._model_hash_key, model.encode("utf-8"), hashlib.sha256
+            ).hexdigest()[:16]
+        )
         if bucket in counter or len(counter) < _MAX_MODEL_CARDINALITY:
             counter[bucket] += 1
         else:
@@ -546,8 +709,26 @@ class ShadowAnalyzer:
 
     @property
     def engine_available(self) -> bool:
+        disabled: Any | None = None
         with self._lock:
-            return self.engine is not None
+            engine = self.engine
+            if engine is None:
+                return False
+            try:
+                terminal = bool(getattr(engine, "closed", False))
+            except Exception:
+                terminal = True
+            if terminal:
+                self.engine = None
+                disabled = engine
+        if disabled is not None:
+            try:
+                disabled.close()
+            except Exception:
+                self.metrics.increment("shadow_engine_close_errors")
+            self.metrics.increment("shadow_engine_terminal_failures")
+            return False
+        return True
 
     @property
     def pending_jobs(self) -> int:
@@ -578,6 +759,9 @@ class ShadowAnalyzer:
             self.metrics.increment("shadow_documents_truncated", parsed.truncated_docs)
         if not parsed.docs:
             self.metrics.increment("shadow_skipped_no_typed_context")
+            return
+        if not self.engine_available:
+            self.metrics.increment("shadow_skipped_engine_unavailable")
             return
         with self._lock:
             if (
@@ -652,6 +836,12 @@ class ShadowAnalyzer:
             self._disable_engine(engine)
         except Exception:
             self.metrics.record_shadow_error()
+            try:
+                terminal = bool(getattr(engine, "closed", False))
+            except Exception:
+                terminal = True
+            if terminal and self._disable_engine(engine):
+                self.metrics.increment("shadow_engine_terminal_failures")
         finally:
             self._release(parsed.selected_bytes)
 
@@ -660,7 +850,7 @@ class ShadowAnalyzer:
             self._pending_jobs -= 1
             self._pending_bytes -= selected_bytes
 
-    def _disable_engine(self, engine: Any) -> None:
+    def _disable_engine(self, engine: Any) -> bool:
         with self._lock:
             if self.engine is engine:
                 self.engine = None
@@ -668,7 +858,11 @@ class ShadowAnalyzer:
             else:
                 should_close = False
         if should_close:
-            engine.close()
+            try:
+                engine.close()
+            except Exception:
+                self.metrics.increment("shadow_engine_close_errors")
+        return should_close
 
     def close(self) -> None:
         with self._lock:
@@ -909,11 +1103,17 @@ class GatewayConfig:
     max_request_bytes: int
     max_concurrent_requests: int
     protocol: str = ANTHROPIC_PROTOCOL
+    auth: GatewayAuth | None = None
+    instance_id: str = field(default_factory=lambda: secrets.token_hex(16))
+    service_version: str = __version__
+    policy_sha256: str | None = None
+    resident_binary_sha256: str | None = None
     max_total_requests: int | None = None
     upstream_timeout_seconds: float = DEFAULT_UPSTREAM_TIMEOUT_SECONDS
     ingress_header_timeout_seconds: float = DEFAULT_INGRESS_HEADER_TIMEOUT_SECONDS
     ingress_body_timeout_seconds: float = DEFAULT_INGRESS_BODY_TIMEOUT_SECONDS
     shutdown_grace_seconds: float = DEFAULT_SHUTDOWN_GRACE_SECONDS
+    max_inflight_request_bytes: int | None = None
 
     def __post_init__(self) -> None:
         if self.protocol not in (ANTHROPIC_PROTOCOL, OPENAI_PROTOCOL):
@@ -924,8 +1124,24 @@ class GatewayConfig:
             raise ValueError("gateway port must be in [0, 65535]")
         if self.max_request_bytes <= 0 or self.max_concurrent_requests <= 0:
             raise ValueError("gateway request limits must be positive")
+        if self.max_inflight_request_bytes is None:
+            object.__setattr__(
+                self, "max_inflight_request_bytes", self.max_request_bytes
+            )
+        elif self.max_inflight_request_bytes <= 0:
+            raise ValueError("gateway aggregate ingress limit must be positive")
         if self.max_total_requests is not None and self.max_total_requests <= 0:
             raise ValueError("gateway total request limit must be positive")
+        if not re.fullmatch(r"[0-9a-f]{32}", self.instance_id):
+            raise ValueError("gateway instance_id must be 32 lowercase hex characters")
+        if not re.fullmatch(r"[A-Za-z0-9._+-]{1,64}", self.service_version):
+            raise ValueError("gateway service_version is invalid")
+        for name, value in (
+            ("policy_sha256", self.policy_sha256),
+            ("resident_binary_sha256", self.resident_binary_sha256),
+        ):
+            if value is not None and not _SHA256_RE.fullmatch(value):
+                raise ValueError(f"gateway {name} must be a lowercase SHA-256 digest")
         for name, value in (
             ("upstream timeout", self.upstream_timeout_seconds),
             ("ingress header timeout", self.ingress_header_timeout_seconds),
@@ -941,6 +1157,12 @@ class GatewayConfig:
             raise ValueError("upstream URL must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("upstream URL must not contain a query or fragment")
+        try:
+            upstream_port = parsed.port
+        except ValueError as exc:
+            raise ValueError("upstream URL has an invalid port") from exc
+        if upstream_port is not None and not 1 <= upstream_port <= 65535:
+            raise ValueError("upstream URL port must be in [1, 65535]")
         if parsed.scheme == "http" and not _is_loopback(parsed.hostname):
             raise ValueError("non-loopback upstreams must use HTTPS")
 
@@ -983,6 +1205,7 @@ class _UnsupportedUpstreamResponse(Exception):
 class ShadowGatewayServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    request_queue_size = _LISTEN_BACKLOG
 
     def __init__(
         self,
@@ -998,6 +1221,8 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             config.max_concurrent_requests + _ADMIN_CONNECTION_RESERVE
         )
         self.request_slots = threading.BoundedSemaphore(config.max_concurrent_requests)
+        self._ingress_budget_lock = threading.Lock()
+        self._inflight_request_bytes = 0
         self._request_budget_lock = threading.Lock()
         self._requests_started = 0
         self._active_condition = threading.Condition()
@@ -1055,6 +1280,13 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             return not self._closing and not self._closed
 
     @property
+    def ownership_endpoint(self) -> str:
+        host, port = self.server_address[:2]
+        normalized = ipaddress.ip_address(host).compressed
+        authority = f"[{normalized}]" if ":" in normalized else normalized
+        return f"http://{authority}:{port}{OWNERSHIP_PATH}"
+
+    @property
     def upstream_state(self) -> str:
         with self._active_condition:
             return self._upstream_state
@@ -1076,6 +1308,32 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
                 return False
             self._requests_started += 1
             return True
+
+    def reserve_ingress_bytes(self, amount: int) -> bool:
+        if amount < 0:
+            raise ValueError("ingress reservation must not be negative")
+        with self._ingress_budget_lock:
+            assert self.config.max_inflight_request_bytes is not None
+            if (
+                self._inflight_request_bytes + amount
+                > self.config.max_inflight_request_bytes
+            ):
+                return False
+            self._inflight_request_bytes += amount
+            return True
+
+    def release_ingress_bytes(self, amount: int) -> None:
+        if amount < 0:
+            raise ValueError("ingress release must not be negative")
+        with self._ingress_budget_lock:
+            if amount > self._inflight_request_bytes:
+                raise RuntimeError("ingress byte budget release underflow")
+            self._inflight_request_bytes -= amount
+
+    @property
+    def inflight_request_bytes(self) -> int:
+        with self._ingress_budget_lock:
+            return self._inflight_request_bytes
 
     def _reject_connection(self, request: socket.socket) -> None:
         error = {
@@ -1194,6 +1452,39 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
                 "Responses WebSocket transport is not implemented",
             )
             return
+        if path == OWNERSHIP_PATH:
+            challenge = self._ownership_challenge()
+            if challenge is None:
+                return
+            attestation = {
+                "schema_version": 2,
+                "status": "owned",
+                "provider": self.server.config.protocol,
+                "auth_mode": "split",
+                "ownership_endpoint": self.server.ownership_endpoint,
+                "instance_id": self.server.config.instance_id,
+                "service_version": self.server.config.service_version,
+                "upstream_url": self.server.config.upstream,
+                "policy_sha256": self.server.config.policy_sha256,
+                "resident_binary_sha256": self.server.config.resident_binary_sha256,
+                "accepting": self.server.accepting,
+                "engine_available": self.server.analyzer.engine_available,
+                "upstream": self.server.upstream_state,
+            }
+            assert self.server.config.auth is not None
+            challenge_response = hmac.new(
+                self.server.config.auth.client_token.encode("ascii"),
+                ownership_attestation_message(challenge, attestation),
+                hashlib.sha256,
+            ).hexdigest()
+            self._send_json(
+                200,
+                {
+                    **attestation,
+                    "challenge_response": challenge_response,
+                },
+            )
+            return
         if path == HEALTH_PATH:
             self._send_json(
                 200,
@@ -1252,6 +1543,8 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
                 f"only POST {request_path} is supported",
             )
             return
+        if not self._authenticate_client():
+            return
         if not self.server.admit_request_budget():
             self.close_connection = True
             self.server.metrics.increment("request_budget_rejected")
@@ -1268,6 +1561,7 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             )
             return
         try:
+            self._reserved_ingress_bytes = 0
             deadline = (
                 time.monotonic() + self.server.config.ingress_body_timeout_seconds
             )
@@ -1281,7 +1575,52 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             self.close_connection = True
             self._send_local_error(exc.status, exc.error_type, exc.message)
         finally:
+            self.server.release_ingress_bytes(self._reserved_ingress_bytes)
+            self._reserved_ingress_bytes = 0
             self.server.request_slots.release()
+
+    def _authenticate_client(self) -> bool:
+        auth = self.server.config.auth
+        if auth is None:
+            return True
+        if self.server.config.protocol == OPENAI_PROTOCOL:
+            values = self.headers.get_all("Authorization", [])
+            expected = f"Bearer {auth.client_token}"
+        else:
+            values = self.headers.get_all("x-api-key", [])
+            expected = auth.client_token
+        if len(values) == 1 and hmac.compare_digest(values[0], expected):
+            return True
+        self.close_connection = True
+        self.server.metrics.increment("client_auth_rejected")
+        self._send_local_error(
+            401,
+            "authentication_error",
+            "local gateway authentication failed",
+        )
+        return False
+
+    def _ownership_challenge(self) -> str | None:
+        auth = self.server.config.auth
+        challenges = self.headers.get_all(_OWNERSHIP_CHALLENGE_HEADER, [])
+        authorization = self.headers.get_all("Authorization", [])
+        api_keys = self.headers.get_all("x-api-key", [])
+        if (
+            auth is not None
+            and len(challenges) == 1
+            and _OWNERSHIP_CHALLENGE_RE.fullmatch(challenges[0])
+            and not authorization
+            and not api_keys
+        ):
+            return challenges[0]
+        self.close_connection = True
+        self.server.metrics.increment("ownership_auth_rejected")
+        self._send_local_error(
+            401,
+            "authentication_error",
+            "gateway ownership authentication failed",
+        )
+        return None
 
     def _read_request_body(self, deadline: float) -> bytes:
         lengths = self.headers.get_all("Content-Length", [])
@@ -1326,7 +1665,20 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             raise _RequestBodyError(
                 413, "request_too_large", "request body exceeds gateway limit"
             )
+        self._reserve_ingress_bytes(length)
         return self._read_exact(length, deadline)
+
+    def _reserve_ingress_bytes(self, amount: int) -> None:
+        if self.server.reserve_ingress_bytes(amount):
+            self._reserved_ingress_bytes += amount
+            return
+        self.server.metrics.increment("ingress_byte_budget_rejected")
+        self.server.metrics.increment("ingress_bytes_rejected", amount)
+        raise _RequestBodyError(
+            503,
+            "overloaded_error",
+            "gateway aggregate request body limit reached",
+        )
 
     def _read_exact(self, length: int, deadline: float) -> bytes:
         body = bytearray()
@@ -1388,6 +1740,7 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
                         "invalid_request_error",
                         "request trailers are not supported",
                     )
+            self._reserve_ingress_bytes(size)
             body += self._read_exact(size, deadline)
             if self._read_exact(2, deadline) != b"\r\n":
                 raise _RequestBodyError(
@@ -1454,9 +1807,21 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
                     "content-length",
                 }
             )
+            if config.auth is not None:
+                # Managed mode terminates its local credential. Neither local
+                # auth form may reach the provider; inject the separately
+                # custodied provider token below.
+                stripped |= {"authorization", "x-api-key"}
             for name, value in self.headers.raw_items():
                 if name.lower() not in stripped:
                     connection.putheader(name, value)
+            if config.auth is not None:
+                if config.protocol == OPENAI_PROTOCOL:
+                    connection.putheader(
+                        "Authorization", f"Bearer {config.auth.upstream_token}"
+                    )
+                else:
+                    connection.putheader("x-api-key", config.auth.upstream_token)
             connection.putheader("Content-Length", str(len(body)))
             connection.endheaders(body)
 
@@ -1524,9 +1889,7 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             name.lower() == "trailer" and value.strip() for name, value in headers
         )
         content_lengths = [
-            value.strip()
-            for name, value in headers
-            if name.lower() == "content-length"
+            value.strip() for name, value in headers if name.lower() == "content-length"
         ]
         if (
             transfer_tokens not in ([], ["chunked"])
@@ -1543,10 +1906,7 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
                 or len(declared) > _MAX_DECIMAL_DIGITS
             ):
                 raise _UnsupportedUpstreamResponse
-            if (
-                response.status not in (204, 304)
-                and response.length != int(declared)
-            ):
+            if response.status not in (204, 304) and response.length != int(declared):
                 raise _UnsupportedUpstreamResponse
         upstream_chunked = transfer_tokens == ["chunked"]
         stripped = _HOP_BY_HOP | connection_tokens
@@ -1654,21 +2014,23 @@ def create_gateway_server(
 
 
 def run_gateway(args: Any) -> int:
-    policy = GatewayPolicy.load(args.policy)
+    policy_path = Path(args.policy)
+    policy_bytes = policy_path.read_bytes()
+    policy = GatewayPolicy.from_bytes(policy_bytes)
+    policy_sha256 = hashlib.sha256(policy_bytes).hexdigest()
     metrics = GatewayMetrics()
     protocol = getattr(args, "protocol", ANTHROPIC_PROTOCOL)
-    config = GatewayConfig(
-        listen_host=args.listen,
-        listen_port=args.port,
-        upstream=args.upstream,
-        max_request_bytes=policy.max_request_bytes,
-        max_concurrent_requests=policy.max_concurrent_streams,
-        protocol=protocol,
-        upstream_timeout_seconds=args.upstream_timeout,
-        ingress_header_timeout_seconds=args.ingress_header_timeout,
-        ingress_body_timeout_seconds=args.ingress_body_timeout,
-        shutdown_grace_seconds=args.shutdown_grace,
-    )
+    try:
+        auth = GatewayAuth.from_files(
+            getattr(args, "client_token_file", None),
+            getattr(args, "upstream_token_file", None),
+        )
+    except ValueError as exc:
+        raise SystemExit(f"gateway authentication configuration failed: {exc}") from exc
+    if getattr(args, "require_split_auth", False) and auth is None:
+        raise SystemExit(
+            "managed gateway requires split authentication; provide both token files"
+        )
     try:
         engine: ResidentEngine | None = ResidentEngine(
             binary_path=args.ptoon,
@@ -1687,6 +2049,24 @@ def run_gateway(args: Any) -> int:
         if args.require_ptoon:
             raise SystemExit(str(exc)) from exc
         engine = None
+    config = GatewayConfig(
+        listen_host=args.listen,
+        listen_port=args.port,
+        upstream=args.upstream,
+        max_request_bytes=policy.max_request_bytes,
+        max_concurrent_requests=policy.max_concurrent_streams,
+        max_inflight_request_bytes=policy.max_inflight_request_bytes,
+        protocol=protocol,
+        auth=auth,
+        policy_sha256=policy_sha256,
+        resident_binary_sha256=(
+            _sha256_file(engine.binary_path) if engine is not None else None
+        ),
+        upstream_timeout_seconds=args.upstream_timeout,
+        ingress_header_timeout_seconds=args.ingress_header_timeout,
+        ingress_body_timeout_seconds=args.ingress_body_timeout,
+        shutdown_grace_seconds=args.shutdown_grace,
+    )
     analyzer = ShadowAnalyzer(policy, metrics, engine, protocol=protocol)
     try:
         server = create_gateway_server(config, analyzer, metrics)
@@ -1696,7 +2076,8 @@ def run_gateway(args: Any) -> int:
     host, port = server.server_address[:2]
     print(
         f"prompt-toon {protocol} shadow gateway listening on http://{host}:{port}; "
-        f"upstream={args.upstream}; engine_available={engine is not None}",
+        f"upstream={args.upstream}; engine_available={engine is not None}; "
+        f"auth_mode={'split' if auth is not None else 'passthrough'}",
         flush=True,
     )
     previous_handlers: dict[signal.Signals, Any] = {}

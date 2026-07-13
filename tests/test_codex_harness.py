@@ -12,6 +12,7 @@ from unittest import mock
 from prompt_toon.codex_harness import (
     GATEWAY_TOKEN_ENV,
     PROFILE_NAME,
+    PROXY_BYPASS_CONFLICT,
     build_codex_command,
     build_codex_env,
     codex_profile,
@@ -30,13 +31,19 @@ class CodexHarnessTests(unittest.TestCase):
         )
         self.assertEqual(
             validate_loopback_gateway("https://localhost:8788"),
-            "https://localhost:8788",
+            "https://127.0.0.1:8788",
+        )
+        self.assertEqual(
+            validate_loopback_gateway("http://[::1]/"),
+            "http://[::1]:80",
         )
         for invalid in (
             "https://api.openai.com",
             "http://user:pass@127.0.0.1:8788",
             "http://127.0.0.1:8788/base",
             "http://127.0.0.1:8788?x=1",
+            "http://127.0.0.1:secret-in-port",
+            "http://127.0.0.1:0",
             "not-a-url",
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
@@ -92,6 +99,30 @@ class CodexHarnessTests(unittest.TestCase):
         self.assertEqual(direct["select_args"], [])
         self.assertIsNone(direct["profile_name"])
         self.assertFalse(direct["user_config_mutated"])
+
+    def test_shadow_profile_rejects_proxy_without_loopback_bypass(self) -> None:
+        shadow = codex_profile(
+            "shadow",
+            "http://127.0.0.1:8788",
+            auth_mode="api-key",
+            base_env={"HTTPS_PROXY": "http://proxy.invalid"},
+        )
+        self.assertEqual(shadow["proxy_environment_present"], ["HTTPS_PROXY"])
+        self.assertFalse(shadow["loopback_proxy_bypass_configured"])
+        self.assertIn(PROXY_BYPASS_CONFLICT, shadow["conflicts"])
+
+        safe = codex_profile(
+            "shadow",
+            "http://127.0.0.1:8788",
+            auth_mode="api-key",
+            base_env={
+                "HTTPS_PROXY": "http://proxy.invalid",
+                "NO_PROXY": "127.0.0.1,localhost,::1",
+                "no_proxy": "127.0.0.1,localhost,::1",
+            },
+        )
+        self.assertEqual(safe["conflicts"], [])
+        self.assertTrue(safe["loopback_proxy_bypass_configured"])
 
     def test_child_environment_is_minimal_and_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -16,19 +16,25 @@ loudly rather than shipping skew.
 
 DETERMINISM SPLIT (same doctrine as the ptoon stream surface): the
 COMMITTED manifest is a pure function of repo content — `git_rev` is the
-literal "UNSTAMPED" and every targets[] sha256/size is null (a committed
-self-hash would be stale by construction). The RELEASE lane re-runs this
-generator with --git-rev/--tag/--ci-run/--with-binary to stamp provenance
-and inject the real artifact digest; derived lanes (GH Release source.json,
-brew bottle, nfpm rpm/deb) consume THAT stamped emission, keyed by the same
-schema.
+literal "UNSTAMPED", every targets[] sha256/size is null, and every closure
+target's entrypoint_sha256 is null (committed self-hashes would be stale by
+construction). The RELEASE lane re-runs this generator with
+--git-rev/--tag/--ci-run/--with-closure/--with-entrypoint/--with-wheel to stamp
+provenance and inject every platform artifact, entrypoint, and wheel digest;
+stamped output rejects incomplete target metadata. Derived lanes (GH Release
+source.json, brew bottle, nfpm rpm/deb) consume THAT stamped emission, keyed by
+the same schema.
 
 Usage:
   gen_manifest.py                      # write packaging/manifest.json
   gen_manifest.py --check              # regenerate, byte-diff, exit 1 on drift
   gen_manifest.py --stdout             # print instead of writing
   gen_manifest.py --git-rev SHA --tag v0.2.0 --ci-run 123 \
-                  --with-binary path/to/ptoon   # stamped release emission
+                  --with-closure x86_64-linux=path/to/ptoon-linux.nar \
+                  --with-entrypoint x86_64-linux=/nix/store/.../bin/ptoon \
+                  --with-closure aarch64-darwin=path/to/ptoon-darwin.nar \
+                  --with-entrypoint aarch64-darwin=/nix/store/.../bin/ptoon \
+                  --with-wheel path/to/prompt_toon.whl
 """
 
 from __future__ import annotations
@@ -42,9 +48,13 @@ from hashlib import sha256
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 MANIFEST_PATH = ROOT / "packaging" / "manifest.json"
-SCHEMA_VERSION = 1
+HOME_MANAGER_CONTRACT_PATH = ROOT / "packaging" / "home-manager.json"
+SCHEMA_VERSION = 2
 SAFE_PACKAGE_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+PTOON_PLATFORMS = ("x86_64-linux", "aarch64-darwin")
 
 
 def version_from_init() -> str:
@@ -82,6 +92,25 @@ def file_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
+def policy_entries() -> list[dict[str, str]]:
+    return [
+        {"file": f"policy/{p.name}", "sha256": file_digest(p)}
+        for p in sorted((ROOT / "policy").glob("*.json"))
+    ]
+
+
+def policy_digest_map() -> dict[str, str]:
+    return {entry["file"]: entry["sha256"] for entry in policy_entries()}
+
+
+def rendered_home_manager_contract(version: str, policy_digests: dict[str, str]) -> str:
+    from prompt_toon.adoption import build_home_manager_contract, render_contract
+
+    return render_contract(
+        build_home_manager_contract(version=version, policy_digests=policy_digests)
+    )
+
+
 def validate_package_component(kind: str, value: str) -> str:
     if not SAFE_PACKAGE_COMPONENT_RE.fullmatch(value):
         raise SystemExit(
@@ -89,6 +118,99 @@ def validate_package_component(kind: str, value: str) -> str:
             "ASCII letters, digits, dot, underscore, and dash"
         )
     return value
+
+
+def platform_paths(
+    specs: list[str], *, option: str, description: str
+) -> dict[str, Path]:
+    """Parse unambiguous PLATFORM=PATH inputs for a release artifact kind."""
+
+    result: dict[str, Path] = {}
+    for spec in specs:
+        platform, separator, raw_path = spec.partition("=")
+        if not separator or not raw_path:
+            raise SystemExit(f"gen_manifest: {option} must be PLATFORM=PATH")
+        if platform not in PTOON_PLATFORMS:
+            raise SystemExit(
+                f"gen_manifest: unsupported ptoon platform {platform!r}; "
+                f"expected one of {', '.join(PTOON_PLATFORMS)}"
+            )
+        if platform in result:
+            raise SystemExit(f"gen_manifest: duplicate {option} for {platform}")
+        path = Path(raw_path)
+        if not path.is_file():
+            raise SystemExit(
+                f"gen_manifest: ptoon {description} for {platform} is not a file"
+            )
+        result[platform] = path
+    return result
+
+
+def release_ptoon_paths(
+    closure_specs: list[str], entrypoint_specs: list[str]
+) -> tuple[dict[str, Path], dict[str, Path]]:
+    """Require complete, platform-matched closure and entrypoint provenance."""
+
+    closures = platform_paths(
+        closure_specs,
+        option="--with-closure",
+        description="closure",
+    )
+    entrypoints = platform_paths(
+        entrypoint_specs,
+        option="--with-entrypoint",
+        description="entrypoint",
+    )
+    if bool(closures) != bool(entrypoints):
+        raise SystemExit(
+            "gen_manifest: --with-closure and --with-entrypoint must be "
+            "provided together"
+        )
+
+    closure_platforms = set(closures)
+    entrypoint_platforms = set(entrypoints)
+    if closure_platforms != entrypoint_platforms:
+        details: list[str] = []
+        missing_entrypoints = sorted(closure_platforms - entrypoint_platforms)
+        missing_closures = sorted(entrypoint_platforms - closure_platforms)
+        if missing_entrypoints:
+            details.append(
+                "missing --with-entrypoint for " + ", ".join(missing_entrypoints)
+            )
+        if missing_closures:
+            details.append("missing --with-closure for " + ", ".join(missing_closures))
+        raise SystemExit(
+            "gen_manifest: closure and entrypoint platform coverage must match; "
+            + "; ".join(details)
+        )
+
+    if closure_platforms and closure_platforms != set(PTOON_PLATFORMS):
+        missing = sorted(set(PTOON_PLATFORMS) - closure_platforms)
+        raise SystemExit(
+            "gen_manifest: stamped ptoon closure/entrypoint coverage is "
+            "all-or-none; missing " + ", ".join(missing)
+        )
+    return closures, entrypoints
+
+
+def validate_stamped_artifacts(manifest: dict) -> None:
+    """Reject provenance emissions that leave any release target unauthenticated."""
+
+    missing: list[str] = []
+    for target in manifest["targets"]:
+        label = f"{target['artifact']}:{target['platform']}"
+        for field in ("sha256", "size"):
+            if target.get(field) is None:
+                missing.append(f"{label}.{field}")
+        if target.get("kind") == "nix-closure-export" and target.get(
+            "entrypoint_sha256"
+        ) is None:
+            missing.append(f"{label}.entrypoint_sha256")
+    if missing:
+        raise SystemExit(
+            "gen_manifest: stamped emission requires complete release artifact "
+            "digests; missing " + ", ".join(missing)
+        )
 
 
 def build_manifest(args: argparse.Namespace) -> dict:
@@ -100,23 +222,33 @@ def build_manifest(args: argparse.Namespace) -> dict:
         for p in (ROOT / ".agents" / "skills").iterdir()
         if p.is_dir()
     )
-    policy = [
-        {"file": f"policy/{p.name}", "sha256": file_digest(p)}
-        for p in sorted((ROOT / "policy").glob("*.json"))
-    ]
+    policy = policy_entries()
+    home_manager_contract = rendered_home_manager_contract(version, policy_digest_map())
+    home_manager_sha256 = sha256(home_manager_contract.encode("utf-8")).hexdigest()
 
-    ptoon_target: dict = {
-        "platform": "x86_64-linux",
-        "kind": "static-binary",
-        "artifact": "ptoon",
-        "capabilities": {"serve_protocol": 1},
-        "sha256": None,
-        "size": None,
-    }
-    if args.with_binary:
-        binary = Path(args.with_binary)
-        ptoon_target["sha256"] = file_digest(binary)
-        ptoon_target["size"] = binary.stat().st_size
+    release_closures, release_entrypoints = release_ptoon_paths(
+        args.with_closure, args.with_entrypoint
+    )
+    ptoon_targets: list[dict] = []
+    for platform in PTOON_PLATFORMS:
+        target: dict = {
+            "platform": platform,
+            "kind": "nix-closure-export",
+            "artifact": "ptoon",
+            "filename": f"ptoon-{platform}.nar",
+            "closure_format": "nix-store-export-v1",
+            "entrypoint": "bin/ptoon",
+            "entrypoint_sha256": None,
+            "capabilities": {"serve_protocol": 1},
+            "sha256": None,
+            "size": None,
+        }
+        closure = release_closures.get(platform)
+        if closure is not None:
+            target["sha256"] = file_digest(closure)
+            target["size"] = closure.stat().st_size
+            target["entrypoint_sha256"] = file_digest(release_entrypoints[platform])
+        ptoon_targets.append(target)
 
     python_target: dict = {
         "platform": "any",
@@ -151,19 +283,22 @@ def build_manifest(args: argparse.Namespace) -> dict:
             "chapel": {
                 "source": "github:Jesssullivan/chapel/llvm-21-support",
                 "flags": "--fast",
-                "substrate": "remote-only (nix remote builder / GF REAPI; never local darwin)",
+                "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: nix Darwin builder; never local chpl)",
             },
             "python": ">=3.11",
         },
-        "targets": [
-            ptoon_target,
-            python_target,
-        ],
+        "targets": [*ptoon_targets, python_target],
         "skills": skills,
         "policy": policy,
         "derived_lanes": {
             "nix": {"enabled": True},
-            "home_manager": {"enabled": True},
+            "home_manager": {
+                "enabled": False,
+                "contract_ready": True,
+                "contract": "packaging/home-manager.json",
+                "sha256": home_manager_sha256,
+                "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
+            },
             "pipx": {
                 "enabled": False,
                 "note": "installable (explicit setuptools packages); private-repo auth gated",
@@ -174,7 +309,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             },
             "gh_release": {
                 "enabled": True,
-                "note": "operated via `just release <version>` (remote-builder ptoon, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
+                "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
             },
             "brew": {"enabled": False, "note": "C3 phase gate"},
             "rpm_deb": {"enabled": False, "note": "C3 phase gate (nfpm)"},
@@ -198,9 +333,24 @@ def main() -> int:
     parser.add_argument("--tag", default=None)
     parser.add_argument("--ci-run", default=None)
     parser.add_argument(
-        "--with-binary",
-        default=None,
-        help="inject sha256/size of a built ptoon binary (release lane)",
+        "--with-closure",
+        action="append",
+        default=[],
+        metavar="PLATFORM=PATH",
+        help=(
+            "inject sha256/size of a platform ptoon Nix closure export; repeat for "
+            "x86_64-linux and aarch64-darwin"
+        ),
+    )
+    parser.add_argument(
+        "--with-entrypoint",
+        action="append",
+        default=[],
+        metavar="PLATFORM=PATH",
+        help=(
+            "inject sha256 of the bin/ptoon entrypoint in a platform Nix "
+            "closure; repeat for x86_64-linux and aarch64-darwin"
+        ),
     )
     parser.add_argument(
         "--with-wheel",
@@ -210,15 +360,39 @@ def main() -> int:
     args = parser.parse_args()
 
     stamped = bool(
-        args.git_rev or args.tag or args.ci_run or args.with_binary or args.with_wheel
+        args.git_rev
+        or args.tag
+        or args.ci_run
+        or args.with_closure
+        or args.with_entrypoint
+        or args.with_wheel
     )
-    rendered = render(build_manifest(args))
+    version = version_from_init()
+    policy_digests = policy_digest_map()
+    home_manager_contract = rendered_home_manager_contract(version, policy_digests)
+    manifest = build_manifest(args)
+    if stamped:
+        validate_stamped_artifacts(manifest)
+    rendered = render(manifest)
 
     if args.check:
         if stamped:
             raise SystemExit(
                 "gen_manifest: --check compares the UNSTAMPED committed form"
             )
+        if not HOME_MANAGER_CONTRACT_PATH.exists():
+            sys.stderr.write(
+                "gen_manifest: packaging/home-manager.json is missing; "
+                "run tools/packaging/gen_manifest.py and commit the result\n"
+            )
+            return 1
+        committed_contract = HOME_MANAGER_CONTRACT_PATH.read_bytes()
+        if committed_contract != home_manager_contract.encode("utf-8"):
+            sys.stderr.write(
+                "gen_manifest: packaging/home-manager.json has drifted from repo truth; "
+                "run tools/packaging/gen_manifest.py and commit the result\n"
+            )
+            return 1
         committed = MANIFEST_PATH.read_bytes() if MANIFEST_PATH.exists() else b""
         if committed != rendered.encode("utf-8"):
             sys.stderr.write(
@@ -226,7 +400,7 @@ def main() -> int:
                 "run tools/packaging/gen_manifest.py and commit the result\n"
             )
             return 1
-        print("manifest: no drift")
+        print("manifest and home-manager contract: no drift")
         return 0
 
     if args.stdout or stamped:
@@ -235,7 +409,9 @@ def main() -> int:
         return 0
 
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HOME_MANAGER_CONTRACT_PATH.write_text(home_manager_contract, encoding="utf-8")
     MANIFEST_PATH.write_text(rendered, encoding="utf-8")
+    print(f"wrote {HOME_MANAGER_CONTRACT_PATH.relative_to(ROOT)}")
     print(f"wrote {MANIFEST_PATH.relative_to(ROOT)}")
     return 0
 

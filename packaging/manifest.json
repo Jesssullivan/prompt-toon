@@ -3,7 +3,7 @@
     "chapel": {
       "flags": "--fast",
       "source": "github:Jesssullivan/chapel/llvm-21-support",
-      "substrate": "remote-only (nix remote builder / GF REAPI; never local darwin)"
+      "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: nix Darwin builder; never local chpl)"
     },
     "python": ">=3.11",
     "toolchain": "chapel+python"
@@ -19,10 +19,14 @@
     },
     "gh_release": {
       "enabled": true,
-      "note": "operated via `just release <version>` (remote-builder ptoon, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
+      "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
     },
     "home_manager": {
-      "enabled": true
+      "contract": "packaging/home-manager.json",
+      "contract_ready": true,
+      "enabled": false,
+      "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
+      "sha256": "20ed2a31e03024b7f15879b675f03b451396deead55e328d0a6d35cf149b918c"
     },
     "nix": {
       "enabled": true
@@ -45,7 +49,7 @@
     },
     {
       "file": "policy/io.json",
-      "sha256": "c1e84ac1f56e9025fa4daee21cf629b48e827f645651a35457dd3b5829637383"
+      "sha256": "b7738b760370d3a9e4e029a4731145eb975ac77aa1cd173673b751b134480655"
     }
   ],
   "provenance": {
@@ -53,7 +57,7 @@
     "repo": "github.com/Jesssullivan/prompt-toon",
     "tag": null
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "skills": [
     "mythos-delegation",
     "prompt-toon"
@@ -64,8 +68,26 @@
       "capabilities": {
         "serve_protocol": 1
       },
-      "kind": "static-binary",
+      "closure_format": "nix-store-export-v1",
+      "entrypoint": "bin/ptoon",
+      "entrypoint_sha256": null,
+      "filename": "ptoon-x86_64-linux.nar",
+      "kind": "nix-closure-export",
       "platform": "x86_64-linux",
+      "sha256": null,
+      "size": null
+    },
+    {
+      "artifact": "ptoon",
+      "capabilities": {
+        "serve_protocol": 1
+      },
+      "closure_format": "nix-store-export-v1",
+      "entrypoint": "bin/ptoon",
+      "entrypoint_sha256": null,
+      "filename": "ptoon-aarch64-darwin.nar",
+      "kind": "nix-closure-export",
+      "platform": "aarch64-darwin",
       "sha256": null,
       "size": null
     },

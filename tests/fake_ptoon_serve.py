@@ -5,9 +5,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import BinaryIO
+
+
+EXPECTED_RUNTIME_ENV = {
+    "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+    "QT_NUM_SHEPHERDS": "1",
+    "QT_NUM_WORKERS_PER_SHEPHERD": "2",
+}
 
 
 @dataclass(frozen=True)
@@ -277,6 +285,9 @@ def response_for(
 
 
 def main() -> int:
+    if any(os.environ.get(key) != value for key, value in EXPECTED_RUNTIME_ENV.items()):
+        print("bounded Chapel runtime environment is missing", file=sys.stderr)
+        return 3
     if sys.argv[1:] == ["caps"]:
         sys.stdout.write(
             '{"engine":"chapel","serve_protocol":1,"features":["serve"]}'

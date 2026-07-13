@@ -34,6 +34,11 @@ gateway-harness-probe *args:
 responses-gateway-harness-probe *args:
     cd {{root}} && PYTHONPATH={{root}} python3 tools/openai_gateway_harness_probe.py {{args}}
 
+# Remote release gate when PROMPT_TOON_PTOON is set: real resident child,
+# 64 concurrent loopback HTTP/SSE sessions per provider, and no external IO.
+gateway-capacity *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/gateway_capacity.py {{args}}
+
 # Inspect process-scoped routing and fail closed on conflicting provider modes.
 claude-profile *args:
     @cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon claude-profile {{args}}
@@ -88,8 +93,9 @@ manifest:
     cd {{root}} && python3 tools/packaging/gen_manifest.py
 
 # TIN-2706 gh_release lane: local-operated release. Builds ptoon on the
-# remote substrate (never local chpl), builds and installs the universal wheel,
-# stamps both asset digests, then publishes the binary, wheel, and manifest.
+# native remote substrates (never local chpl), builds and installs the universal
+# wheel, stamps every asset digest, then publishes both closure exports, the
+# wheel, and manifest.
 # CI tag-push automation stays gated on a publicly reachable chapel cache.
 release version:
     #!/usr/bin/env bash
@@ -129,11 +135,19 @@ release version:
     # A release may never claim gates it did not run: realize the full
     # parity + hook-canary derivation at this rev before anything is tagged.
     nix build .#packages.x86_64-linux.ptoon-parity --no-link --print-build-logs
-    ptoon_store="$(nix build .#packages.x86_64-linux.ptoon --no-link --print-out-paths --print-build-logs)"
+    linux_ptoon_store="$(nix build .#packages.x86_64-linux.ptoon --no-link --print-out-paths --print-build-logs)"
+    # max-jobs=0 forbids a same-architecture local Darwin build; the native
+    # aarch64-darwin remote builder must realize or substitute this target.
+    darwin_ptoon_store="$(nix build --max-jobs 0 .#packages.aarch64-darwin.ptoon --no-link --print-out-paths --print-build-logs)"
     nix build .#packages.x86_64-linux.prompt-toon --no-link --print-build-logs
     stage="$(mktemp -d)"
-    cp -L "$ptoon_store/bin/ptoon" "$stage/ptoon-x86_64-linux"
-    chmod +w "$stage/ptoon-x86_64-linux" >/dev/null 2>&1 || true
+    # Raw executables are Nix-store linked and are not portable standalone
+    # assets. Export each complete runtime closure for import with nix-store
+    # --import; the tagged flake remains the canonical online install path.
+    nix-store --export $(nix-store --query --requisites "$linux_ptoon_store") > "$stage/ptoon-x86_64-linux.nar"
+    nix-store --export $(nix-store --query --requisites "$darwin_ptoon_store") > "$stage/ptoon-aarch64-darwin.nar"
+    test -s "$stage/ptoon-x86_64-linux.nar"
+    test -s "$stage/ptoon-aarch64-darwin.nar"
     mkdir "$stage/source"
     git archive "$rev" | tar -x -C "$stage/source"
     (cd "$stage/source" && UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage")
@@ -143,21 +157,29 @@ release version:
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
     (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
-    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" --with-binary "$stage/ptoon-x86_64-linux" --with-wheel "$wheel" > "$stage/manifest-$tag.json"
+    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" \
+      --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
+      --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \
+      --with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar" \
+      --with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon" \
+      --with-wheel "$wheel" > "$stage/manifest-$tag.json"
     git tag -a "$tag" -m "prompt-toon $tag" "$rev"
     local_tag_created=1
     git push origin "$tag"
     remote_tag_pushed=1
-    gh release create "$tag" "$stage/ptoon-x86_64-linux" "$wheel" "$stage/manifest-$tag.json" \
+    gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$wheel" "$stage/manifest-$tag.json" \
       --verify-tag \
       --title "prompt-toon v{{version}}" \
-      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon and wheel assets. Built on the remote x86_64-linux substrate; parity, hook canary, Claude/Codex real-CLI harness probes, package install, and repository gates green at $rev."
+      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates both importable Nix closure exports and the wheel, while each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke, package install, and repository gates green at $rev."
     trap - ERR
     rm -rf "$stage"
     echo "released $tag at $rev"
 
 build-ptoon:
     cd {{root}} && nix build .#packages.x86_64-linux.ptoon --print-build-logs
+
+build-ptoon-darwin:
+    cd {{root}} && nix build --max-jobs 0 .#packages.aarch64-darwin.ptoon --print-build-logs
 
 # TIN-2708 C1: shared golden-corpus parity runner. By default it checks both
 # python (oracle) and chapel (if PROMPT_TOON_PTOON or build/ptoon is present)
