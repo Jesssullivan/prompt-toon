@@ -276,6 +276,8 @@ def _sample(
     engine: ResidentEngine,
     stop: threading.Event,
     samples: list[Sample],
+    first_sample: threading.Event,
+    failures: list[BaseException],
 ) -> None:
     proc_available = Path(f"/proc/{os.getpid()}/status").is_file()
     while not stop.is_set():
@@ -300,7 +302,10 @@ def _sample(
                     resident_pending=engine.pending_count,
                 )
             )
-        except FileNotFoundError:
+            first_sample.set()
+        except BaseException as exc:
+            failures.append(exc)
+            first_sample.set()
             return
         stop.wait(0.005)
 
@@ -334,6 +339,8 @@ def _gateway_worker_main(
     sampler: threading.Thread | None = None
     samples: list[Sample] = []
     stop = threading.Event()
+    first_sample = threading.Event()
+    sampler_failures: list[BaseException] = []
     shutdown_requested = threading.Event()
     failure: dict[str, str] | None = None
 
@@ -385,11 +392,20 @@ def _gateway_worker_main(
         gateway_thread.start()
         sampler = threading.Thread(
             target=_sample,
-            args=(gateway, engine, stop, samples),
+            args=(gateway, engine, stop, samples, first_sample, sampler_failures),
             name=f"capacity-{protocol}-sampler",
             daemon=True,
         )
         sampler.start()
+        if not first_sample.wait(PROCESS_EXIT_TIMEOUT_SECONDS):
+            raise TimeoutError("gateway worker sampler timed out during startup")
+        if sampler_failures:
+            exc = sampler_failures[0]
+            raise RuntimeError(
+                f"gateway worker sampler failed during startup: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not samples:
+            raise RuntimeError("gateway worker sampler failed during startup")
         control.send(
             {
                 "kind": "ready",

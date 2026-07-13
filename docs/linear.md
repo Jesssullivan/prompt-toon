@@ -46,6 +46,12 @@ C4 online IO gateway:
 - `TIN-2791` C4d: native remote Linux/Darwin package proof, split-auth managed
   gateway contract, actual-state doctor/host-ledger schema, then a separate
   Home Manager consumption and attended shadow rollout.
+- `TIN-2819` C4e: provider-free durable-spool dogfood command and
+  claim-bounded prompt-efficiency ledger; exact provider counts and live
+  synthesis crossover remain separately authorized experiments.
+- `TIN-2820` C4f: aggregate authorized C4e ledgers, tune whole-handoff
+  efficiency under safety/constraint-recall gates, and keep format-local TOON
+  savings distinct from end-to-end synthesis-context savings.
 - `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
   current 2.9 docs inform review but do not rewrite artifact provenance.
 

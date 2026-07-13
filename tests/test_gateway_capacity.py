@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,6 +22,25 @@ FAKE_SERVER = ROOT / "tests" / "fake_ptoon_serve.py"
 
 
 class GatewayCapacityTest(unittest.TestCase):
+    def test_sampler_startup_failure_is_reported_without_waiting_for_timeout(self) -> None:
+        first_sample = threading.Event()
+        failures: list[BaseException] = []
+        with mock.patch.object(Path, "is_file", return_value=True), mock.patch.object(
+            capacity, "_status_value", side_effect=RuntimeError("sample failed")
+        ):
+            capacity._sample(
+                SimpleNamespace(),
+                SimpleNamespace(pid=1),
+                threading.Event(),
+                [],
+                first_sample,
+                failures,
+            )
+
+        self.assertTrue(first_sample.is_set())
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0], RuntimeError)
+
     def test_capacity_gate_measures_an_isolated_gateway_process(self) -> None:
         env = dict(os.environ)
         env.update(

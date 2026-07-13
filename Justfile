@@ -11,6 +11,11 @@ setup:
 prompt-toon *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon {{args}}
 
+# TIN-2819 C4e: provider-free durable-spool condensation plus a claim-bounded
+# byte/token-estimate ledger. `--engine auto` records any Python fallback.
+dogfood *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon dogfood {{args}}
+
 doctor:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon doctor
 
