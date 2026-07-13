@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime as dt
 import hashlib
 import json
@@ -559,7 +558,6 @@ def choose_card_format(cards: list[SourceCard], fmt: str, min_savings: float) ->
         return "source-cards.jsonl", None, analysis
 
     scalar_rows = []
-    fields = ["id", "source", "trust_tier", "line_start", "line_end", "claim", "confidence", "flags"]
     for row in card_rows:
         scalar_rows.append(
             {
@@ -743,6 +741,30 @@ def command_claude_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_codex_profile(args: argparse.Namespace) -> int:
+    from .codex_harness import codex_profile
+
+    try:
+        profile = codex_profile(
+            args.mode,
+            args.gateway,
+            auth_mode=args.auth,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    conflicts = profile.get("conflicts", [])
+    if conflicts:
+        raise SystemExit("conflicting Codex provider routing is active: " + ", ".join(conflicts))
+    if args.format == "toml":
+        toml = profile.get("toml")
+        if not isinstance(toml, str):
+            raise SystemExit("direct rollback uses the base Codex profile; no TOML emitted")
+        sys.stdout.write(toml)
+    else:
+        write_json_to_stdout(profile)
+    return 0
+
+
 def default_io_policy_path() -> str:
     configured = os.environ.get("PROMPT_TOON_IO_POLICY")
     if configured:
@@ -851,7 +873,31 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail startup instead of forwarding with shadow analysis unavailable.",
     )
-    gateway.set_defaults(func=command_gateway)
+    gateway.set_defaults(func=command_gateway, protocol="anthropic")
+
+    responses_gateway = sub.add_parser(
+        "responses-gateway",
+        help="Run the opt-in loopback OpenAI Responses shadow gateway.",
+    )
+    responses_gateway.add_argument("--listen", default="127.0.0.1")
+    responses_gateway.add_argument("--port", type=int, default=8788)
+    responses_gateway.add_argument(
+        "--upstream",
+        default=os.environ.get("PROMPT_TOON_OPENAI_UPSTREAM", "https://api.openai.com/v1"),
+        help="Provider base URL; deliberately does not read OPENAI_BASE_URL.",
+    )
+    responses_gateway.add_argument("--upstream-timeout", type=float, default=300.0)
+    responses_gateway.add_argument("--ingress-header-timeout", type=float, default=10.0)
+    responses_gateway.add_argument("--ingress-body-timeout", type=float, default=30.0)
+    responses_gateway.add_argument("--shutdown-grace", type=float, default=10.0)
+    responses_gateway.add_argument("--policy", default=default_io_policy_path())
+    responses_gateway.add_argument("--ptoon")
+    responses_gateway.add_argument(
+        "--require-ptoon",
+        action="store_true",
+        help="Fail startup instead of forwarding with shadow analysis unavailable.",
+    )
+    responses_gateway.set_defaults(func=command_gateway, protocol="openai")
 
     claude_profile = sub.add_parser(
         "claude-profile",
@@ -865,6 +911,23 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     claude_profile.set_defaults(func=command_claude_profile)
+
+    codex_profile = sub.add_parser(
+        "codex-profile",
+        help="Render user-level Codex Responses gateway profile state.",
+    )
+    codex_profile.add_argument("mode", choices=["shadow", "direct"])
+    codex_profile.add_argument(
+        "--gateway",
+        default=os.environ.get("PROMPT_TOON_CODEX_GATEWAY_URL", "http://127.0.0.1:8788"),
+    )
+    codex_profile.add_argument(
+        "--auth",
+        choices=["api-key", "openai"],
+        default="api-key",
+    )
+    codex_profile.add_argument("--format", choices=["json", "toml"], default="json")
+    codex_profile.set_defaults(func=command_codex_profile)
 
     return parser
 

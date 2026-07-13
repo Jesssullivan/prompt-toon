@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from prompt_toon.cli import (
+    build_parser,
     encode_rows_to_toon,
     find_uniform_rows,
     main,
@@ -17,6 +18,13 @@ from prompt_toon.cli import (
 
 
 class PromptToonTests(unittest.TestCase):
+    def test_responses_gateway_defaults_are_provider_scoped(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            args = build_parser().parse_args(["responses-gateway"])
+        self.assertEqual(args.protocol, "openai")
+        self.assertEqual(args.port, 8788)
+        self.assertEqual(args.upstream, "https://api.openai.com/v1")
+
     def test_claude_profile_is_structured_and_fails_closed_on_provider_conflict(self):
         output = io.StringIO()
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -27,14 +35,33 @@ class PromptToonTests(unittest.TestCase):
         self.assertEqual(profile["mode"], "shadow")
         self.assertEqual(profile["gateway"], "http://127.0.0.1:8787")
         self.assertEqual(profile["conflicts"], [])
-        with mock.patch.dict(
-            os.environ, {"CLAUDE_CODE_USE_BEDROCK": "1"}, clear=True
-        ):
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_USE_BEDROCK": "1"}, clear=True):
             with self.assertRaisesRegex(SystemExit, "CLAUDE_CODE_USE_BEDROCK"):
                 main(["claude-profile", "shadow"])
 
+    def test_codex_profile_renders_toml_and_fails_closed_on_route_conflict(self):
+        output = io.StringIO()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with redirect_stdout(output):
+                code = main(["codex-profile", "shadow", "--format", "toml"])
+        self.assertEqual(code, 0)
+        self.assertIn('wire_api = "responses"', output.getvalue())
+        self.assertNotIn("\nmodel =", output.getvalue())
+        with mock.patch.dict(
+            os.environ, {"OPENAI_BASE_URL": "https://example.invalid"}, clear=True
+        ):
+            with self.assertRaisesRegex(SystemExit, "OPENAI_BASE_URL"):
+                main(["codex-profile", "shadow"])
+
+        direct = io.StringIO()
+        with redirect_stdout(direct):
+            self.assertEqual(main(["codex-profile", "direct"]), 0)
+        self.assertEqual(json.loads(direct.getvalue())["select_args"], [])
+
     def test_redacts_secret_like_values(self):
-        text, findings = redact_text("token=ghp_abcdefghijklmnopqrstuvwxyz user a@example.com")
+        text, findings = redact_text(
+            "token=ghp_abcdefghijklmnopqrstuvwxyz user a@example.com"
+        )
         self.assertIn("[REDACTED]", text)
         self.assertNotIn("ghp_", text)
         self.assertNotIn("a@example.com", text)
@@ -85,7 +112,10 @@ class PromptToonTests(unittest.TestCase):
             self.assertIn("injection-shaped", cards)
 
     def test_analyze_recommends_toon_for_large_flat_rows(self):
-        rows = [{"id": index, "name": f"name-{index}", "role": "user"} for index in range(30)]
+        rows = [
+            {"id": index, "name": f"name-{index}", "role": "user"}
+            for index in range(30)
+        ]
         compact_tokens = rough_token_count(json.dumps(rows, separators=(",", ":")))
         toon_tokens = rough_token_count(encode_rows_to_toon("rows", rows))
         self.assertLess(toon_tokens, compact_tokens)

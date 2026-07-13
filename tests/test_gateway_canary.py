@@ -44,8 +44,8 @@ class GatewayCanaryTests(unittest.TestCase):
                 "response_telemetry_unavailable": 0,
             },
             "models": {
-                "requested": {"claude-test": 2},
-                "returned": {"claude-returned": 2},
+                "requested": {"model:opaque-requested": 2},
+                "returned": {"model:opaque-returned": 2},
             },
             "quality": {"eligible": 1},
         }
@@ -82,18 +82,15 @@ class GatewayCanaryTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["harness"]["client"], "claude-code")
         self.assertTrue(result["transport"]["dedicated_gateway"])
-        self.assertEqual(
-            result["transport"]["requested_models"], {"claude-test": 2}
-        )
-        self.assertEqual(
-            result["transport"]["returned_models"], {"claude-returned": 2}
-        )
+        self.assertEqual(result["transport"]["requested_model_count"], 2)
+        self.assertEqual(result["transport"]["returned_model_count"], 2)
         self.assertEqual(result["transport"]["provider_usage"]["input_tokens"], 220)
         self.assertEqual(result["transform"]["estimated_transform_tokens_saved"], 90)
         self.assertEqual(result["transform"]["quality"], {"eligible": 1})
         rendered = output.getvalue()
         self.assertNotIn("unit-test-key", rendered)
         self.assertNotIn(canary._MARKER, rendered)
+        self.assertNotIn("claude-test", rendered)
 
     def test_report_rejects_retries_and_nonexclusive_metrics(self) -> None:
         harness = {
@@ -102,9 +99,7 @@ class GatewayCanaryTests(unittest.TestCase):
             "api_retries": 1,
         }
         with self.assertRaisesRegex(RuntimeError, "retried"):
-            canary.build_report(
-                model_argument="claude-test", harness=harness, metrics={}
-            )
+            canary.build_report(harness=harness, metrics={})
         harness["api_retries"] = 0
         metrics = {
             "counters": {
@@ -118,9 +113,7 @@ class GatewayCanaryTests(unittest.TestCase):
             "quality": {"eligible": 1},
         }
         with self.assertRaisesRegex(RuntimeError, "messages_requests=3"):
-            canary.build_report(
-                model_argument="claude-test", harness=harness, metrics=metrics
-            )
+            canary.build_report(harness=harness, metrics=metrics)
 
 
 if __name__ == "__main__":

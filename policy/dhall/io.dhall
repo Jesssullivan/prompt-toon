@@ -74,6 +74,8 @@ in    { `$comment` =
           [ { source = "Task", tier = "subagent_return" }
           , { source = "Agent", tier = "subagent_return" }
           , { source = "Bash", tier = "untrusted_tool_output" }
+          , { source = "shell_command", tier = "untrusted_tool_output" }
+          , { source = "exec_command", tier = "untrusted_tool_output" }
           , { source = "Read", tier = "repo_source" }
           , { source = "WebFetch", tier = "untrusted_web" }
           , { source = "WebSearch", tier = "untrusted_web" }

@@ -85,7 +85,15 @@ class IoPolicyTests(unittest.TestCase):
 
     def test_trust_tiers_cover_core_sources(self):
         sources = {t["source"]: t["tier"] for t in self.policy["trust_tiers"]}
-        for required in ("Task", "Agent", "Bash", "Read", "WebFetch"):
+        for required in (
+            "Task",
+            "Agent",
+            "Bash",
+            "shell_command",
+            "exec_command",
+            "Read",
+            "WebFetch",
+        ):
             self.assertIn(required, sources)
             self.assertTrue(sources[required].strip())
         self.assertNotEqual(sources["WebFetch"], "repo_source")

@@ -130,6 +130,22 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response_body)
             return
+        if response_mode in ("duplicate-length-short-first", "duplicate-length-long-first"):
+            response_body = b"123456789"
+            lengths = (
+                ("3", "9")
+                if response_mode == "duplicate-length-short-first"
+                else ("9", "3")
+            )
+            self.close_connection = True
+            self.send_response_only(200, "OK")
+            self.send_header("Content-Type", "application/json")
+            for value in lengths:
+                self.send_header("Content-Length", value)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(response_body)
+            return
         if response_mode == "error":
             response_body = (
                 b'{"type":"error","error":{"type":"rate_limit_error",'
@@ -389,13 +405,11 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertIn(b'"type":"error"', response[2])
         self.assertTrue(response[2].endswith(b'data: {"type":"message_stop"}\n\n'))
         self.assertTrue(
-            wait_for(
-                lambda: self.metrics.snapshot()["models"]["returned"]
-                == {"claude-fallback": 1}
-            )
+            wait_for(lambda: bool(self.metrics.snapshot()["models"]["returned"]))
         )
         snapshot = self.metrics.snapshot()
-        self.assertEqual(snapshot["models"]["returned"], {"claude-fallback": 1})
+        self.assertEqual(list(snapshot["models"]["returned"].values()), [1])
+        self.assertNotIn("claude-fallback", json.dumps(snapshot))
         self.assertEqual(snapshot["counters"]["provider_input_tokens"], 12)
         self.assertEqual(snapshot["counters"]["provider_output_tokens"], 4)
         self.assertEqual(snapshot["counters"]["sse_error_events"], 1)
@@ -410,6 +424,20 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertIn(b"unsupported upstream response framing", response[2])
         self.assertEqual(
             self.metrics.snapshot()["counters"]["upstream_framing_rejected"], 1
+        )
+
+    def test_duplicate_content_lengths_are_rejected_in_both_orders(self) -> None:
+        for mode in ("duplicate-length-short-first", "duplicate-length-long-first"):
+            with self.subTest(mode=mode):
+                response = self._send(
+                    self.gateway.server_port,
+                    request_body(),
+                    self._headers(mode),
+                )
+                self.assertEqual(response[0], 502)
+                self.assertIn(b"unsupported upstream response framing", response[2])
+        self.assertEqual(
+            self.metrics.snapshot()["counters"]["upstream_framing_rejected"], 2
         )
 
     def test_truncated_upstream_body_does_not_record_partial_telemetry(self) -> None:
@@ -446,10 +474,12 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertNotIn(b"unit-test-credential", payload)
         self.assertNotIn(b"first typed result", payload)
         self.assertNotIn(b"AUTHORITY_MARKER", payload)
+        self.assertNotIn(b"claude-requested", payload)
+        self.assertNotIn(b"claude-returned", payload)
         metrics = json.loads(payload)
         self.assertEqual(metrics["mode"], "shadow")
-        self.assertEqual(metrics["models"]["requested"], {"claude-requested": 1})
-        self.assertEqual(metrics["models"]["returned"], {"claude-returned": 1})
+        self.assertEqual(list(metrics["models"]["requested"].values()), [1])
+        self.assertEqual(list(metrics["models"]["returned"].values()), [1])
         self.assertEqual(metrics["counters"]["provider_input_tokens"], 21)
 
     def test_readiness_and_connectivity_probe_track_local_and_upstream_state(self) -> None:
