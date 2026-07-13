@@ -607,6 +607,7 @@ the Chapel child retains its separate 256 MiB ceiling.
 - **C4c TIN-2794:** Codex Responses adapter and user-level provider profile.
 - **C4d TIN-2791:** multi-platform binaries and Home Manager gateway rollout.
 - **C4e TIN-2819:** offline durable-spool dogfood and efficiency ledger.
+- **C4f TIN-2820:** ledger-only corpus evidence and quality-gated optimization.
 
 ### C4b source contract
 
@@ -694,3 +695,24 @@ local estimates as context-window or billing truth. Exact GPT request counts
 require the complete payload and the separately authorized Responses input
 token count endpoint. TOON remains a non-authoritative compact view because it
 omits evidence and source hashes.
+
+### C4f corpus evidence contract
+
+`prompt-toon corpus-report` accepts only explicit schema-v2
+`efficiency.json` files. Each ledger carries an artifact-derived card count and
+a recomputable, path-free identity over ordered input hashes, trust tiers, and
+byte counts plus an order-insensitive diversity key. Replays within one cohort,
+mixed estimators, malformed provider claims, and resident gateway shapes fail
+closed; the same spool remains valid once per execution cohort for parity. The
+report contains no source paths, implicit clock values, provider calls, or
+cross-plane timing blends.
+
+The corpus gate requires 20 unique spools within a 50-ledger cap. Nearest-rank
+distributions and weighted aggregates remain separate, as do format-local TOON
+rates and whole-handoff pass rates. Engine, execution shape, budget mode,
+policy thresholds, and card limits form distinct cohorts. Withheld and
+zero-token runs count toward operational outcomes but not economics. C4f.1
+reports self-attested optimization evidence with promotion blocked; C4f.2 must
+prove deterministic constraint, open-question, redaction, and provenance
+quality before a reduction can be adopted. Corpus-report success does not
+enable gateway policy or change the shadow gateways' provider-bound bytes.
