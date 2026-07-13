@@ -34,7 +34,8 @@ class ManifestTests(unittest.TestCase):
             [sys.executable, str(GEN), "--check"], capture_output=True, cwd=ROOT
         )
         self.assertEqual(
-            proc.returncode, 0,
+            proc.returncode,
+            0,
             f"manifest drift: {proc.stderr.decode('utf-8', 'replace')}",
         )
 
@@ -46,25 +47,26 @@ class ManifestTests(unittest.TestCase):
         self.assertIn(f'version = "{self.manifest["version"]}"', module_text)
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('dynamic = ["version"]', pyproject)
-        self.assertNotIn('\nversion = "', pyproject.split("[tool.setuptools.dynamic]")[0])
+        self.assertNotIn(
+            '\nversion = "', pyproject.split("[tool.setuptools.dynamic]")[0]
+        )
 
     def test_policy_digests_authenticate_the_artifacts(self):
         entries = {e["file"]: e["sha256"] for e in self.manifest["policy"]}
         self.assertIn("policy/delegation.json", entries)
         self.assertIn("policy/io.json", entries)
         for rel, digest in entries.items():
-            self.assertEqual(
-                digest, sha256((ROOT / rel).read_bytes()).hexdigest(), rel
-            )
+            self.assertEqual(digest, sha256((ROOT / rel).read_bytes()).hexdigest(), rel)
 
     def test_c4_artifacts_declare_their_runtime_protocols(self):
         targets = {target["artifact"]: target for target in self.manifest["targets"]}
-        self.assertEqual(
-            targets["ptoon"]["capabilities"], {"serve_protocol": 1}
-        )
+        self.assertEqual(targets["ptoon"]["capabilities"], {"serve_protocol": 1})
         self.assertEqual(
             targets["prompt_toon"]["capabilities"],
-            {"anthropic_shadow_gateway": 1},
+            {
+                "anthropic_shadow_gateway": 1,
+                "openai_responses_shadow_gateway": 1,
+            },
         )
 
     def test_committed_manifest_is_unstamped_and_binaryless(self):
@@ -82,7 +84,9 @@ class ManifestTests(unittest.TestCase):
         )
         self.assertEqual(self.manifest["skills"], on_disk)
         for skill in self.manifest["skills"]:
-            self.assertEqual(gen_manifest.validate_package_component("skill", skill), skill)
+            self.assertEqual(
+                gen_manifest.validate_package_component("skill", skill), skill
+            )
 
     def test_unsafe_skill_names_fail_before_packaging_interpolation(self):
         for name in ("bad/name", "bad name", "bad;name", "../escape"):
@@ -102,9 +106,18 @@ class ManifestTests(unittest.TestCase):
         wheel.write_bytes(b"not a real wheel")
         try:
             proc = subprocess.run(
-                [sys.executable, str(GEN), "--git-rev", "deadbeef",
-                 "--with-binary", str(fake), "--with-wheel", str(wheel)],
-                capture_output=True, cwd=ROOT,
+                [
+                    sys.executable,
+                    str(GEN),
+                    "--git-rev",
+                    "deadbeef",
+                    "--with-binary",
+                    str(fake),
+                    "--with-wheel",
+                    str(wheel),
+                ],
+                capture_output=True,
+                cwd=ROOT,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             stamped = json.loads(proc.stdout.decode("utf-8"))
@@ -136,6 +149,7 @@ class ManifestTests(unittest.TestCase):
             "git ls-remote origin refs/heads/main",
             "just check",
             "just gateway-harness-probe",
+            "just responses-gateway-harness-probe",
             "uv build --wheel",
             '--with-wheel "$wheel"',
             '"$wheel" "$stage/manifest-$tag.json"',

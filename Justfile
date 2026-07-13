@@ -20,14 +20,27 @@ doctor:
 gateway *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon gateway {{args}}
 
+# TIN-2794 C4c: opt-in loopback OpenAI Responses shadow gateway.
+responses-gateway *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon responses-gateway {{args}}
+
 # Unbilled protocol proof: real Claude Code CLI, real gateway, scripted
 # loopback SSE upstream, and an in-memory transform engine.
 gateway-harness-probe *args:
     cd {{root}} && PYTHONPATH={{root}} python3 tools/anthropic_gateway_harness_probe.py {{args}}
 
+# Unbilled protocol proof: real Codex CLI, real Responses gateway, scripted
+# loopback SSE upstream, and an in-memory transform engine.
+responses-gateway-harness-probe *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 tools/openai_gateway_harness_probe.py {{args}}
+
 # Inspect process-scoped routing and fail closed on conflicting provider modes.
 claude-profile *args:
     @cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon claude-profile {{args}}
+
+# Render user-level Codex profile state; no file or model is changed.
+codex-profile *args:
+    @cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon codex-profile {{args}}
 
 # Explicitly billed and disabled by default. Starts a dedicated gateway and
 # resident ptoon engine; requires PROMPT_TOON_LIVE_CANARY=1,
@@ -112,6 +125,7 @@ release version:
     python3 tools/packaging/gen_manifest.py --check
     just check
     just gateway-harness-probe
+    just responses-gateway-harness-probe
     # A release may never claim gates it did not run: realize the full
     # parity + hook-canary derivation at this rev before anything is tagged.
     nix build .#packages.x86_64-linux.ptoon-parity --no-link --print-build-logs
@@ -128,7 +142,7 @@ release version:
     wheel="${wheels[0]}"
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
-    (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" claude-profile direct > profile.json)
+    (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
     python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" --with-binary "$stage/ptoon-x86_64-linux" --with-wheel "$wheel" > "$stage/manifest-$tag.json"
     git tag -a "$tag" -m "prompt-toon $tag" "$rev"
     local_tag_created=1
@@ -137,7 +151,7 @@ release version:
     gh release create "$tag" "$stage/ptoon-x86_64-linux" "$wheel" "$stage/manifest-$tag.json" \
       --verify-tag \
       --title "prompt-toon v{{version}}" \
-      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon and wheel assets. Built on the remote x86_64-linux substrate; parity, hook canary, real-CLI harness probe, package install, and repository gates green at $rev."
+      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates the ptoon and wheel assets. Built on the remote x86_64-linux substrate; parity, hook canary, Claude/Codex real-CLI harness probes, package install, and repository gates green at $rev."
     trap - ERR
     rm -rf "$stage"
     echo "released $tag at $rev"

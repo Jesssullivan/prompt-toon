@@ -45,7 +45,7 @@
     },
     {
       "file": "policy/io.json",
-      "sha256": "4fd3d54f3ef7893d5da7e8c7c867ac583cb3c455d74a7b4132a75644305276ef"
+      "sha256": "c1e84ac1f56e9025fa4daee21cf629b48e827f645651a35457dd3b5829637383"
     }
   ],
   "provenance": {
@@ -72,7 +72,8 @@
     {
       "artifact": "prompt_toon",
       "capabilities": {
-        "anthropic_shadow_gateway": 1
+        "anthropic_shadow_gateway": 1,
+        "openai_responses_shadow_gateway": 1
       },
       "filename": null,
       "kind": "python-wheel",

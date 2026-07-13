@@ -35,9 +35,9 @@ SIGTERM stop admission, drain for up to 10 seconds, then close remaining
 connections. Any parse, capacity, binary, redaction, or transform failure
 affects aggregate metrics only. The provider exchange continues unchanged.
 
-The gateway keeps only bounded counters, model labels, usage totals, and
-quality outcomes in memory. It has no request-body, credential, cache, log,
-or artifact writer. Model label cardinality is capped. `GET
+The gateway keeps only bounded counters, process-local HMAC model buckets,
+usage totals, and quality outcomes in memory. It has no request-body,
+credential, cache, log, or artifact writer. Model cardinality is capped. `GET
 /__prompt_toon/health`, `GET /__prompt_toon/ready`, and `GET
 /__prompt_toon/metrics` are available only on the loopback listener. Readiness
 means the process is accepting requests and the resident engine is available;
@@ -121,8 +121,8 @@ It gives Claude Code permission to read exactly one ephemeral fixture, uses a
 minimal child environment and ephemeral home, and accepts no concurrent
 traffic. `PASS` requires exactly two requests, no retries, transport/SSE errors,
 unavailable telemetry, withholding, or non-eligible transform. It reports only
-the exact-marker harness check plus requested/returned models, provider usage,
-transform quality, and estimated transform token savings. The estimate is not
+the exact-marker harness check plus model counts, provider usage, transform
+quality, and estimated transform token savings. The estimate is not
 provider-billed savings because shadow mode does not rewrite requests. It is
 also not a claim of SWE-quality preservation. The canary never prints the
 credential, request body, tool result, model answer, or session ID.
@@ -140,9 +140,10 @@ credential, request body, tool result, model answer, or session ID.
 - `model_gateway.enabled` and the global enforcement gate remain false. No
   request is rewritten. Promotion requires measured canaries, a reviewed
   replacement grammar, and the existing policy gates.
-- The gateway reports requested and returned models. It does not infer private
-  provider routing rules, scrub speculative trigger strings, or override model
-  selection. Lexical brittleness remains TIN-2697.
+- The gateway reports process-local HMAC buckets and counts for requested and
+  returned models, not exact identifiers. It does not infer private provider
+  routing rules, scrub speculative trigger strings, or override model selection.
+  Lexical brittleness remains TIN-2697.
 
 ## Protocol grounding
 
