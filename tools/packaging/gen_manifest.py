@@ -30,6 +30,7 @@ Usage:
   gen_manifest.py --git-rev SHA --tag v0.2.0 --ci-run 123 \
                   --with-binary path/to/ptoon   # stamped release emission
 """
+
 from __future__ import annotations
 
 import argparse
@@ -121,7 +122,10 @@ def build_manifest(args: argparse.Namespace) -> dict:
         "platform": "any",
         "kind": "python-wheel",
         "artifact": "prompt_toon",
-        "capabilities": {"anthropic_shadow_gateway": 1},
+        "capabilities": {
+            "anthropic_shadow_gateway": 1,
+            "openai_responses_shadow_gateway": 1,
+        },
         "filename": None,
         "sha256": None,
         "size": None,
@@ -160,7 +164,10 @@ def build_manifest(args: argparse.Namespace) -> dict:
         "derived_lanes": {
             "nix": {"enabled": True},
             "home_manager": {"enabled": True},
-            "pipx": {"enabled": False, "note": "installable (explicit setuptools packages); private-repo auth gated"},
+            "pipx": {
+                "enabled": False,
+                "note": "installable (explicit setuptools packages); private-repo auth gated",
+            },
             "bazel_registry": {
                 "enabled": False,
                 "note": "phase gate OPEN since C2; enabling = building the lane. Per tinyland-inc/bazel-registry convention source.json integrity is the SRI of the TAG TARBALL (not targets[].sha256); repo visibility (private) is the consumption gate.",
@@ -181,16 +188,25 @@ def render(manifest: dict) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true",
-                        help="regenerate and byte-diff against the committed manifest")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="regenerate and byte-diff against the committed manifest",
+    )
     parser.add_argument("--stdout", action="store_true")
     parser.add_argument("--git-rev", default=None)
     parser.add_argument("--tag", default=None)
     parser.add_argument("--ci-run", default=None)
-    parser.add_argument("--with-binary", default=None,
-                        help="inject sha256/size of a built ptoon binary (release lane)")
-    parser.add_argument("--with-wheel", default=None,
-                        help="inject filename/sha256/size of the built Python wheel")
+    parser.add_argument(
+        "--with-binary",
+        default=None,
+        help="inject sha256/size of a built ptoon binary (release lane)",
+    )
+    parser.add_argument(
+        "--with-wheel",
+        default=None,
+        help="inject filename/sha256/size of the built Python wheel",
+    )
     args = parser.parse_args()
 
     stamped = bool(
@@ -200,7 +216,9 @@ def main() -> int:
 
     if args.check:
         if stamped:
-            raise SystemExit("gen_manifest: --check compares the UNSTAMPED committed form")
+            raise SystemExit(
+                "gen_manifest: --check compares the UNSTAMPED committed form"
+            )
         committed = MANIFEST_PATH.read_bytes() if MANIFEST_PATH.exists() else b""
         if committed != rendered.encode("utf-8"):
             sys.stderr.write(

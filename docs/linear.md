@@ -40,7 +40,9 @@ C4 online IO gateway:
   64-stream parity/RSS capacity gate.
 - `TIN-2793` C4b: Claude Messages shadow gateway with typed-context transforms;
   C4b.1 adds real-CLI/SSE proof, readiness, rollback, and the v0.3.0 release line.
-- `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile.
+- `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile;
+  exact-byte HTTP/SSE, opaque remote compaction, and real-CLI loopback proof;
+  provider-backed canary waits on a filesystem-confined tool sandbox.
 - `TIN-2791` C4d: multi-platform binaries and Home Manager gateway rollout.
 
 Related prior work:

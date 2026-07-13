@@ -247,7 +247,6 @@ def _run_dedicated_canary(
 
 def build_report(
     *,
-    model_argument: str,
     harness: dict[str, Any],
     metrics: dict[str, Any],
 ) -> dict[str, Any]:
@@ -310,8 +309,8 @@ def build_report(
             "dedicated_gateway": True,
             "messages_requests": 2,
             "sse_error_events": 0,
-            "requested_models": requested,
-            "returned_models": returned,
+            "requested_model_count": sum(requested.values()),
+            "returned_model_count": sum(returned.values()),
             "provider_usage": provider_usage,
         },
         "transform": {
@@ -324,7 +323,6 @@ def build_report(
             "estimated_transform_tokens_saved": estimated_saved,
             "quality": quality,
         },
-        "model_argument": model_argument,
     }
 
 
@@ -346,7 +344,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         harness, metrics = _run_dedicated_canary(args, api_key)
         result = build_report(
-            model_argument=args.model,
             harness=harness,
             metrics=metrics,
         )

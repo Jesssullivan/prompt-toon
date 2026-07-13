@@ -1,19 +1,21 @@
-"""Opt-in loopback shadow gateway for Anthropic Messages.
+"""Opt-in loopback shadow gateway for Anthropic Messages and OpenAI Responses.
 
 The HTTP path is deliberately transparent: request bodies are forwarded as
 the exact bytes received, while a separate in-memory view identifies typed
-``tool_result`` blocks for the resident Chapel transformer. Shadow failures
-never alter the provider request or response.
+tool-result blocks for the resident Chapel transformer. Shadow failures never
+alter the provider request or response.
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import http.client
 import http.server
 import ipaddress
 import json
 import re
+import secrets
 import signal
 import socket
 import threading
@@ -35,6 +37,10 @@ HEALTH_PATH = "/__prompt_toon/health"
 READINESS_PATH = "/__prompt_toon/ready"
 METRICS_PATH = "/__prompt_toon/metrics"
 MESSAGES_PATH = "/v1/messages"
+RESPONSES_PATH = "/v1/responses"
+RESPONSES_COMPACT_PATH = "/v1/responses/compact"
+ANTHROPIC_PROTOCOL = "anthropic"
+OPENAI_PROTOCOL = "openai"
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 DEFAULT_LISTEN = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -49,6 +55,7 @@ _MAX_TRAILER_BYTES = 64 * 1024
 _MAX_OBSERVED_RESPONSE_BYTES = 1024 * 1024
 _MAX_SSE_LINE_BYTES = 256 * 1024
 _MAX_MODEL_CARDINALITY = 32
+_MAX_CORRELATION_ID_BYTES = 1024
 _ADMIN_CONNECTION_RESERVE = 2
 _MODEL_RE = re.compile(r"[A-Za-z0-9._:/-]{1,128}\Z")
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]")
@@ -67,6 +74,9 @@ _USAGE_FIELDS = (
     "output_tokens",
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
+    "cached_input_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
 )
 
 
@@ -212,6 +222,7 @@ class ParsedMessage:
     docs: list[dict[str, str]]
     selected_bytes: int
     truncated_docs: int
+    provider: str = ANTHROPIC_PROTOCOL
 
 
 def _content_texts(content: object) -> Iterable[str]:
@@ -295,11 +306,101 @@ def parse_message_for_shadow(body: bytes, policy: GatewayPolicy) -> ParsedMessag
     return ParsedMessage(requested_model, docs, selected_bytes, truncated_docs)
 
 
+def _response_output_texts(output: object) -> Iterable[str]:
+    if isinstance(output, str):
+        yield output
+        return
+    if not isinstance(output, list):
+        return
+    for item in output:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "input_text"
+            and isinstance(item.get("text"), str)
+        ):
+            yield item["text"]
+
+
+def _valid_correlation_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value.encode("utf-8")) <= _MAX_CORRELATION_ID_BYTES
+    )
+
+
+def parse_response_for_shadow(body: bytes, policy: GatewayPolicy) -> ParsedMessage:
+    """Select only correlated textual Responses function-call outputs."""
+
+    value = json.loads(body, parse_constant=_reject_json_constant)
+    if not isinstance(value, dict):
+        raise ValueError("Responses request must be a JSON object")
+    requested_model = _safe_model(value.get("model"))
+    inputs = value.get("input")
+    if not isinstance(inputs, list):
+        return ParsedMessage(requested_model, [], 0, 0, provider=OPENAI_PROTOCOL)
+
+    calls: dict[str, str] = {}
+    ambiguous_calls: set[str] = set()
+    for item in inputs:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "function_call":
+            continue
+        call_id = item.get("call_id")
+        name = item.get("name")
+        if not _valid_correlation_id(call_id) or not isinstance(name, str):
+            continue
+        if call_id in calls:
+            del calls[call_id]
+            ambiguous_calls.add(call_id)
+        elif call_id not in ambiguous_calls:
+            calls[call_id] = name
+
+    docs: list[dict[str, str]] = []
+    selected_bytes = 0
+    truncated_docs = 0
+    for item in inputs:
+        if not isinstance(item, dict) or item.get("type") != "function_call_output":
+            continue
+        call_id = item.get("call_id")
+        if not _valid_correlation_id(call_id):
+            continue
+        classified = policy.classify_tool(calls.get(call_id))
+        if classified is None:
+            continue
+        source, trust_tier = classified
+        link = hashlib.sha256(call_id.encode("utf-8")).hexdigest()[:16]
+        for text_index, text in enumerate(_response_output_texts(item.get("output"))):
+            if len(docs) >= policy.max_documents_per_request:
+                truncated_docs += 1
+                continue
+            docs.append(
+                {
+                    "source": f"openai:{source}:{link}:{text_index}",
+                    "trust_tier": trust_tier,
+                    "body": text,
+                }
+            )
+            selected_bytes += len(text.encode("utf-8"))
+    return ParsedMessage(
+        requested_model,
+        docs,
+        selected_bytes,
+        truncated_docs,
+        provider=OPENAI_PROTOCOL,
+    )
+
+
 class GatewayMetrics:
     """Bounded in-memory counters; never stores request bodies or credentials."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, model_hash_key: bytes | None = None) -> None:
+        key = secrets.token_bytes(32) if model_hash_key is None else bytes(model_hash_key)
+        if len(key) < 16:
+            raise ValueError("model hash key must contain at least 16 bytes")
         self._lock = threading.Lock()
+        self._model_hash_key = key
         self._counters: Counter[str] = Counter()
         self._quality: Counter[str] = Counter()
         self._requested_models: Counter[str] = Counter()
@@ -309,19 +410,33 @@ class GatewayMetrics:
         with self._lock:
             self._counters[name] += amount
 
-    def record_request(self, requested_model: str | None, docs: int) -> None:
+    def record_request(
+        self,
+        requested_model: str | None,
+        docs: int,
+        *,
+        provider: str = ANTHROPIC_PROTOCOL,
+    ) -> None:
+        request_counter = {
+            ANTHROPIC_PROTOCOL: "messages_requests",
+            OPENAI_PROTOCOL: "responses_requests",
+        }.get(provider)
+        if request_counter is None:
+            raise ValueError(f"unknown gateway provider {provider!r}")
         with self._lock:
-            self._counters["messages_requests"] += 1
+            self._counters[request_counter] += 1
             self._counters["typed_documents_selected"] += docs
             if requested_model is None:
                 self._counters["requested_model_unavailable"] += 1
             else:
                 self._record_model(self._requested_models, requested_model)
 
-    @staticmethod
-    def _record_model(counter: Counter[str], model: str) -> None:
-        if model in counter or len(counter) < _MAX_MODEL_CARDINALITY:
-            counter[model] += 1
+    def _record_model(self, counter: Counter[str], model: str) -> None:
+        bucket = "model:" + hmac.new(
+            self._model_hash_key, model.encode("utf-8"), hashlib.sha256
+        ).hexdigest()[:16]
+        if bucket in counter or len(counter) < _MAX_MODEL_CARDINALITY:
+            counter[bucket] += 1
         else:
             counter["__other__"] += 1
 
@@ -396,12 +511,16 @@ class ShadowAnalyzer:
         metrics: GatewayMetrics,
         engine: ResidentEngine | Any | None,
         *,
+        protocol: str = ANTHROPIC_PROTOCOL,
         max_pending_bytes: int | None = None,
         completion_timeout_seconds: float | None = None,
     ) -> None:
+        if protocol not in (ANTHROPIC_PROTOCOL, OPENAI_PROTOCOL):
+            raise ValueError(f"unknown gateway protocol {protocol!r}")
         self.policy = policy
         self.metrics = metrics
         self.engine = engine
+        self.protocol = protocol
         self.max_pending_bytes = (
             policy.max_response_bytes
             if max_pending_bytes is None
@@ -442,12 +561,19 @@ class ShadowAnalyzer:
 
     def observe_request(self, body: bytes) -> None:
         try:
-            parsed = parse_message_for_shadow(body, self.policy)
+            parser = (
+                parse_message_for_shadow
+                if self.protocol == ANTHROPIC_PROTOCOL
+                else parse_response_for_shadow
+            )
+            parsed = parser(body, self.policy)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             self.metrics.increment("shadow_request_parse_errors")
-            self.metrics.record_request(None, 0)
+            self.metrics.record_request(None, 0, provider=self.protocol)
             return
-        self.metrics.record_request(parsed.requested_model, len(parsed.docs))
+        self.metrics.record_request(
+            parsed.requested_model, len(parsed.docs), provider=parsed.provider
+        )
         if parsed.truncated_docs:
             self.metrics.increment("shadow_documents_truncated", parsed.truncated_docs)
         if not parsed.docs:
@@ -484,7 +610,7 @@ class ShadowAnalyzer:
                 return
             response = engine.submit_condense_run(
                 request_id=request_id,
-                stream_id=f"anthropic-{uuid.uuid4().hex}",
+                stream_id=f"{parsed.provider}-{uuid.uuid4().hex}",
                 docs=parsed.docs,
                 run_id=request_id,
                 generated_at=_now_utc(),
@@ -564,9 +690,14 @@ class ResponseObserver:
         metrics: GatewayMetrics,
         status: int,
         headers: list[tuple[str, str]],
+        *,
+        protocol: str = ANTHROPIC_PROTOCOL,
     ) -> None:
+        if protocol not in (ANTHROPIC_PROTOCOL, OPENAI_PROTOCOL):
+            raise ValueError(f"unknown gateway protocol {protocol!r}")
         self.metrics = metrics
         self.status = status
+        self.protocol = protocol
         header_map = {name.lower(): value for name, value in headers}
         content_type = header_map.get("content-type", "").lower()
         content_encoding = header_map.get("content-encoding", "identity").lower()
@@ -576,7 +707,11 @@ class ResponseObserver:
         self._line_buffer = bytearray()
         self._event_data: list[bytes] = []
         self._event_bytes = 0
-        self._returned_model: str | None = None
+        self._returned_model: str | None = (
+            _safe_model(header_map.get("openai-model"))
+            if protocol == OPENAI_PROTOCOL
+            else None
+        )
         self._usage: dict[str, int] = {}
         self._stream_errors = 0
         self._sse_complete = False
@@ -605,7 +740,10 @@ class ResponseObserver:
 
     def _feed_sse(self, chunk: bytes) -> None:
         self._line_buffer += chunk
-        if len(self._line_buffer) > _MAX_SSE_LINE_BYTES and b"\n" not in self._line_buffer:
+        if (
+            len(self._line_buffer) > _MAX_SSE_LINE_BYTES
+            and b"\n" not in self._line_buffer
+        ):
             self._enabled = False
             self._line_buffer.clear()
             self._event_data.clear()
@@ -653,6 +791,9 @@ class ResponseObserver:
     def _observe_value(self, value: object) -> None:
         if not isinstance(value, dict):
             return
+        if self.protocol == OPENAI_PROTOCOL:
+            self._observe_openai_value(value)
+            return
         event_type = value.get("type")
         if event_type == "error":
             self._stream_errors += 1
@@ -677,8 +818,53 @@ class ResponseObserver:
                 if fallback_model is not None:
                     self._returned_model = fallback_model
 
+    def _observe_openai_value(self, value: dict[str, Any]) -> None:
+        event_type = value.get("type")
+        if event_type in ("error", "response.failed", "response.incomplete"):
+            self._stream_errors += 1
+        elif event_type == "response.completed":
+            self._sse_complete = True
+
+        response = value.get("response")
+        candidates = [response, value]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            model = _safe_model(candidate.get("model"))
+            if model is not None:
+                self._returned_model = model
+            self._observe_usage(candidate.get("usage"))
+
     def _observe_usage(self, value: object) -> None:
         if not isinstance(value, dict):
+            return
+        if self.protocol == OPENAI_PROTOCOL:
+            for field in ("input_tokens", "output_tokens", "total_tokens"):
+                amount = value.get(field)
+                if (
+                    isinstance(amount, int)
+                    and not isinstance(amount, bool)
+                    and amount >= 0
+                ):
+                    self._usage[field] = amount
+            input_details = value.get("input_tokens_details")
+            if isinstance(input_details, dict):
+                cached = input_details.get("cached_tokens")
+                if (
+                    isinstance(cached, int)
+                    and not isinstance(cached, bool)
+                    and cached >= 0
+                ):
+                    self._usage["cached_input_tokens"] = cached
+            output_details = value.get("output_tokens_details")
+            if isinstance(output_details, dict):
+                reasoning = output_details.get("reasoning_tokens")
+                if (
+                    isinstance(reasoning, int)
+                    and not isinstance(reasoning, bool)
+                    and reasoning >= 0
+                ):
+                    self._usage["reasoning_output_tokens"] = reasoning
             return
         for field in _USAGE_FIELDS:
             amount = value.get(field)
@@ -722,18 +908,24 @@ class GatewayConfig:
     upstream: str
     max_request_bytes: int
     max_concurrent_requests: int
+    protocol: str = ANTHROPIC_PROTOCOL
+    max_total_requests: int | None = None
     upstream_timeout_seconds: float = DEFAULT_UPSTREAM_TIMEOUT_SECONDS
     ingress_header_timeout_seconds: float = DEFAULT_INGRESS_HEADER_TIMEOUT_SECONDS
     ingress_body_timeout_seconds: float = DEFAULT_INGRESS_BODY_TIMEOUT_SECONDS
     shutdown_grace_seconds: float = DEFAULT_SHUTDOWN_GRACE_SECONDS
 
     def __post_init__(self) -> None:
+        if self.protocol not in (ANTHROPIC_PROTOCOL, OPENAI_PROTOCOL):
+            raise ValueError(f"unknown gateway protocol {self.protocol!r}")
         if not _is_loopback(self.listen_host):
             raise ValueError("gateway listen address must be loopback")
         if not 0 <= self.listen_port <= 65535:
             raise ValueError("gateway port must be in [0, 65535]")
         if self.max_request_bytes <= 0 or self.max_concurrent_requests <= 0:
             raise ValueError("gateway request limits must be positive")
+        if self.max_total_requests is not None and self.max_total_requests <= 0:
+            raise ValueError("gateway total request limit must be positive")
         for name, value in (
             ("upstream timeout", self.upstream_timeout_seconds),
             ("ingress header timeout", self.ingress_header_timeout_seconds),
@@ -756,6 +948,25 @@ class GatewayConfig:
     def upstream_parts(self) -> SplitResult:
         return urlsplit(self.upstream)
 
+    @property
+    def request_path(self) -> str:
+        if self.protocol == OPENAI_PROTOCOL:
+            return RESPONSES_PATH
+        return MESSAGES_PATH
+
+    def accepts_request_path(self, path: str) -> bool:
+        if self.protocol == OPENAI_PROTOCOL:
+            return path in (RESPONSES_PATH, RESPONSES_COMPACT_PATH)
+        return path == MESSAGES_PATH
+
+    def upstream_path(self, incoming_path: str) -> str:
+        base_path = self.upstream_parts.path.rstrip("/")
+        if self.protocol == OPENAI_PROTOCOL:
+            relative_path = incoming_path.removeprefix("/v1")
+        else:
+            relative_path = incoming_path
+        return f"{base_path}{relative_path}"
+
 
 class _RequestBodyError(Exception):
     def __init__(self, status: int, error_type: str, message: str) -> None:
@@ -769,7 +980,7 @@ class _UnsupportedUpstreamResponse(Exception):
     pass
 
 
-class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
+class ShadowGatewayServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
@@ -786,15 +997,15 @@ class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
         self._connection_slots = threading.BoundedSemaphore(
             config.max_concurrent_requests + _ADMIN_CONNECTION_RESERVE
         )
-        self.request_slots = threading.BoundedSemaphore(
-            config.max_concurrent_requests
-        )
+        self.request_slots = threading.BoundedSemaphore(config.max_concurrent_requests)
+        self._request_budget_lock = threading.Lock()
+        self._requests_started = 0
         self._active_condition = threading.Condition()
         self._active_connections: set[socket.socket] = set()
         self._upstream_state = "unknown"
         self._closing = False
         self._closed = False
-        super().__init__(server_address, AnthropicGatewayHandler)
+        super().__init__(server_address, ShadowGatewayHandler)
 
     def process_request(
         self, request: socket.socket, client_address: tuple[Any, ...]
@@ -858,12 +1069,26 @@ class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
         with self._active_condition:
             self._closing = True
 
-    @staticmethod
-    def _reject_connection(request: socket.socket) -> None:
-        body = (
-            b'{"error":{"message":"gateway connection limit reached",'
-            b'"type":"overloaded_error"},"type":"error"}\n'
-        )
+    def admit_request_budget(self) -> bool:
+        with self._request_budget_lock:
+            limit = self.config.max_total_requests
+            if limit is not None and self._requests_started >= limit:
+                return False
+            self._requests_started += 1
+            return True
+
+    def _reject_connection(self, request: socket.socket) -> None:
+        error = {
+            "error": {
+                "message": "gateway connection limit reached",
+                "type": "overloaded_error",
+            }
+        }
+        if self.config.protocol == ANTHROPIC_PROTOCOL:
+            error["type"] = "error"
+        else:
+            error["error"].update({"param": None, "code": None})
+        body = json.dumps(error, separators=(",", ":"), sort_keys=True).encode() + b"\n"
         response = b"".join(
             (
                 b"HTTP/1.1 503 Service Unavailable\r\n",
@@ -909,9 +1134,9 @@ class AnthropicGatewayServer(http.server.ThreadingHTTPServer):
             self.analyzer.close()
 
 
-class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
+class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server: AnthropicGatewayServer
+    server: ShadowGatewayServer
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -957,12 +1182,25 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.close_connection = True
         path = urlsplit(self.path).path
+        if (
+            self.server.config.protocol == OPENAI_PROTOCOL
+            and path == RESPONSES_PATH
+            and self.headers.get("Upgrade", "").lower() == "websocket"
+        ):
+            self.server.metrics.increment("websocket_upgrade_attempts")
+            self._send_local_error(
+                426,
+                "unsupported_transport_error",
+                "Responses WebSocket transport is not implemented",
+            )
+            return
         if path == HEALTH_PATH:
             self._send_json(
                 200,
                 {
                     "status": "ok",
                     "mode": "shadow",
+                    "provider": self.server.config.protocol,
                     "accepting": self.server.accepting,
                     "engine_available": self.server.analyzer.engine_available,
                     "pending_transforms": self.server.analyzer.pending_jobs,
@@ -980,6 +1218,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                 {
                     "status": "ready" if ready else "not_ready",
                     "mode": "shadow",
+                    "provider": self.server.config.protocol,
                     "accepting": accepting,
                     "engine_available": engine_available,
                     "upstream": self.server.upstream_state,
@@ -1003,10 +1242,23 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        if urlsplit(self.path).path != MESSAGES_PATH:
+        request_path = self.server.config.request_path
+        incoming_path = urlsplit(self.path).path
+        if not self.server.config.accepts_request_path(incoming_path):
             self.close_connection = True
             self._send_local_error(
-                404, "not_found_error", "only POST /v1/messages is supported"
+                404,
+                "not_found_error",
+                f"only POST {request_path} is supported",
+            )
+            return
+        if not self.server.admit_request_budget():
+            self.close_connection = True
+            self.server.metrics.increment("request_budget_rejected")
+            self._send_local_error(
+                429,
+                "request_budget_exhausted",
+                "gateway request budget exhausted",
             )
             return
         if not self.server.request_slots.acquire(blocking=False):
@@ -1016,12 +1268,15 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             )
             return
         try:
-            deadline = time.monotonic() + self.server.config.ingress_body_timeout_seconds
-            body = self._read_request_body(deadline)
-            self.connection.settimeout(
-                self.server.config.ingress_body_timeout_seconds
+            deadline = (
+                time.monotonic() + self.server.config.ingress_body_timeout_seconds
             )
-            self._proxy_messages(body)
+            body = self._read_request_body(deadline)
+            self.connection.settimeout(self.server.config.ingress_body_timeout_seconds)
+            observe_shadow = incoming_path == request_path
+            if not observe_shadow:
+                self.server.metrics.increment("responses_compact_requests")
+            self._proxy_request(body, observe_shadow=observe_shadow)
         except _RequestBodyError as exc:
             self.close_connection = True
             self._send_local_error(exc.status, exc.error_type, exc.message)
@@ -1156,7 +1411,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             )
         self.connection.settimeout(remaining)
 
-    def _proxy_messages(self, body: bytes) -> None:
+    def _proxy_request(self, body: bytes, *, observe_shadow: bool) -> None:
         config = self.server.config
         parts = config.upstream_parts
         port = parts.port or (443 if parts.scheme == "https" else 80)
@@ -1173,8 +1428,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
         response: http.client.HTTPResponse | None = None
         try:
             incoming = urlsplit(self.path)
-            base_path = parts.path.rstrip("/")
-            upstream_path = f"{base_path}{incoming.path}"
+            upstream_path = config.upstream_path(incoming.path)
             if incoming.query:
                 upstream_path += f"?{incoming.query}"
             connection.putrequest(
@@ -1192,10 +1446,14 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                 for value in self.headers.get_all("Connection", [])
                 for token in value.split(",")
             }
-            stripped = _HOP_BY_HOP | connection_tokens | {
-                "host",
-                "content-length",
-            }
+            stripped = (
+                _HOP_BY_HOP
+                | connection_tokens
+                | {
+                    "host",
+                    "content-length",
+                }
+            )
             for name, value in self.headers.raw_items():
                 if name.lower() not in stripped:
                     connection.putheader(name, value)
@@ -1204,14 +1462,15 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
 
             # The provider has received the exact entity bytes before any
             # JSON parsing or shadow transform can consume local latency.
-            try:
-                self.server.analyzer.observe_request(body)
-            except Exception:
-                # Shadow observation is never allowed to change provider IO.
-                self.server.metrics.record_shadow_error()
+            if observe_shadow:
+                try:
+                    self.server.analyzer.observe_request(body)
+                except Exception:
+                    # Shadow observation is never allowed to change provider IO.
+                    self.server.metrics.record_shadow_error()
             response = connection.getresponse()
             self.server.record_upstream_state("reachable")
-            self._forward_response(response)
+            self._forward_response(response, observe_telemetry=observe_shadow)
         except _UnsupportedUpstreamResponse:
             self.server.metrics.increment("upstream_framing_rejected")
             self.close_connection = True
@@ -1223,17 +1482,29 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             if response is None and not self.wfile.closed:
                 self.server.record_upstream_state("failed")
                 self.close_connection = True
-                self._send_local_error(
-                    502, "api_error", "upstream transport failed"
-                )
+                self._send_local_error(502, "api_error", "upstream transport failed")
             else:
                 self.close_connection = True
         finally:
             connection.close()
 
-    def _forward_response(self, response: http.client.HTTPResponse) -> None:
+    def _forward_response(
+        self,
+        response: http.client.HTTPResponse,
+        *,
+        observe_telemetry: bool,
+    ) -> None:
         headers = response.getheaders()
-        observer = ResponseObserver(self.server.metrics, response.status, headers)
+        observer = (
+            ResponseObserver(
+                self.server.metrics,
+                response.status,
+                headers,
+                protocol=self.server.config.protocol,
+            )
+            if observe_telemetry
+            else None
+        )
         connection_tokens = {
             token.strip().lower()
             for name, value in headers
@@ -1241,9 +1512,7 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             for token in value.split(",")
         }
         transfer_values = [
-            value
-            for name, value in headers
-            if name.lower() == "transfer-encoding"
+            value for name, value in headers if name.lower() == "transfer-encoding"
         ]
         transfer_tokens = [
             token.strip().lower()
@@ -1252,11 +1521,33 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
             if token.strip()
         ]
         has_trailers = any(
-            name.lower() == "trailer" and value.strip()
-            for name, value in headers
+            name.lower() == "trailer" and value.strip() for name, value in headers
         )
-        if transfer_tokens not in ([], ["chunked"]) or has_trailers:
+        content_lengths = [
+            value.strip()
+            for name, value in headers
+            if name.lower() == "content-length"
+        ]
+        if (
+            transfer_tokens not in ([], ["chunked"])
+            or has_trailers
+            or len(content_lengths) > 1
+            or (transfer_tokens and content_lengths)
+        ):
             raise _UnsupportedUpstreamResponse
+        if content_lengths:
+            declared = content_lengths[0]
+            if (
+                not declared.isascii()
+                or not declared.isdigit()
+                or len(declared) > _MAX_DECIMAL_DIGITS
+            ):
+                raise _UnsupportedUpstreamResponse
+            if (
+                response.status not in (204, 304)
+                and response.length != int(declared)
+            ):
+                raise _UnsupportedUpstreamResponse
         upstream_chunked = transfer_tokens == ["chunked"]
         stripped = _HOP_BY_HOP | connection_tokens
         if upstream_chunked:
@@ -1279,7 +1570,8 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                 chunk = response.read1(64 * 1024)
                 if not chunk:
                     break
-                observer.feed(chunk)
+                if observer is not None:
+                    observer.feed(chunk)
                 if client_failed:
                     continue
                 try:
@@ -1292,30 +1584,38 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     client_failed = True
-                    observer.abort()
+                    if observer is not None:
+                        observer.abort()
                     self.server.metrics.increment("downstream_disconnects")
                     break
             if not client_failed and response.length not in (None, 0):
-                observer.abort()
+                if observer is not None:
+                    observer.abort()
                 raise http.client.IncompleteRead(b"")
             if upstream_chunked and not client_failed:
                 try:
                     self.wfile.write(b"0\r\n\r\n")
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
-                    observer.abort()
+                    if observer is not None:
+                        observer.abort()
                     self.server.metrics.increment("downstream_disconnects")
         except (OSError, http.client.HTTPException):
-            observer.abort()
+            if observer is not None:
+                observer.abort()
             self.server.metrics.increment("upstream_response_read_failures")
             raise
         finally:
-            observer.finish()
+            if observer is not None:
+                observer.finish()
 
     def _send_json(self, status: int, value: object) -> None:
-        body = json.dumps(
-            value, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8") + b"\n"
+        body = (
+            json.dumps(
+                value, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            + b"\n"
+        )
         self.send_response_only(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -1326,39 +1626,44 @@ class AnthropicGatewayHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_local_error(self, status: int, error_type: str, message: str) -> None:
-        self._send_json(
-            status,
-            {
-                "type": "error",
-                "error": {"type": error_type, "message": message},
-            },
-        )
+        error: dict[str, Any] = {"type": error_type, "message": message}
+        value: dict[str, Any] = {"error": error}
+        if self.server.config.protocol == ANTHROPIC_PROTOCOL:
+            value["type"] = "error"
+        else:
+            error.update({"param": None, "code": None})
+        self._send_json(status, value)
 
 
 def create_gateway_server(
     config: GatewayConfig,
     analyzer: ShadowAnalyzer,
     metrics: GatewayMetrics,
-) -> AnthropicGatewayServer:
-    listen_host = "127.0.0.1" if config.listen_host == "localhost" else config.listen_host
+) -> ShadowGatewayServer:
+    listen_host = (
+        "127.0.0.1" if config.listen_host == "localhost" else config.listen_host
+    )
     address = (listen_host, config.listen_port)
     if ipaddress.ip_address(listen_host).version == 6:
-        class IPv6GatewayServer(AnthropicGatewayServer):
+
+        class IPv6GatewayServer(ShadowGatewayServer):
             address_family = socket.AF_INET6
 
         return IPv6GatewayServer(address, config, analyzer, metrics)
-    return AnthropicGatewayServer(address, config, analyzer, metrics)
+    return ShadowGatewayServer(address, config, analyzer, metrics)
 
 
 def run_gateway(args: Any) -> int:
     policy = GatewayPolicy.load(args.policy)
     metrics = GatewayMetrics()
+    protocol = getattr(args, "protocol", ANTHROPIC_PROTOCOL)
     config = GatewayConfig(
         listen_host=args.listen,
         listen_port=args.port,
         upstream=args.upstream,
         max_request_bytes=policy.max_request_bytes,
         max_concurrent_requests=policy.max_concurrent_streams,
+        protocol=protocol,
         upstream_timeout_seconds=args.upstream_timeout,
         ingress_header_timeout_seconds=args.ingress_header_timeout,
         ingress_body_timeout_seconds=args.ingress_body_timeout,
@@ -1382,7 +1687,7 @@ def run_gateway(args: Any) -> int:
         if args.require_ptoon:
             raise SystemExit(str(exc)) from exc
         engine = None
-    analyzer = ShadowAnalyzer(policy, metrics, engine)
+    analyzer = ShadowAnalyzer(policy, metrics, engine, protocol=protocol)
     try:
         server = create_gateway_server(config, analyzer, metrics)
     except Exception:
@@ -1390,7 +1695,7 @@ def run_gateway(args: Any) -> int:
         raise
     host, port = server.server_address[:2]
     print(
-        f"prompt-toon shadow gateway listening on http://{host}:{port}; "
+        f"prompt-toon {protocol} shadow gateway listening on http://{host}:{port}; "
         f"upstream={args.upstream}; engine_available={engine is not None}",
         flush=True,
     )
