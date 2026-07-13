@@ -53,7 +53,9 @@ C4 online IO gateway:
   efficiency under safety/constraint-recall gates, and keep format-local TOON
   savings distinct from end-to-end synthesis-context savings. C4f.1 adds the
   schema-v2 corpus identity/card count and deterministic ledger-only reporter;
-  promotion stays blocked pending C4f.2 quality fixtures.
+  C4f.2 adds a separate all-or-nothing synthetic artifact-quality gate for
+  constraint recall, open questions, redaction, and provenance. The fixture
+  pass does not attest arbitrary corpus ledgers or provider-visible quality.
 - `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
   current 2.9 docs inform review but do not rewrite artifact provenance.
 
