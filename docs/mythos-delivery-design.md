@@ -669,4 +669,7 @@ host-ledger fields; activation is false and the IO policy remains locked.
 Platform delivery is native remote: x86_64-linux retains exhaustive byte
 parity and the 64-session HTTP/SSE gate; aarch64-darwin builds with local jobs
 disabled and runs native caps, normalization, and resident round-trip smoke.
-Linux Bazel/GF REAPI stays Linux-only. See `docs/home-manager-adoption.md`.
+Native-surface pull requests repeat the Darwin derivation on a bounded standard
+GitHub-hosted `macos-15` arm64 runner; releases continue to use the remote Nix
+builder path. Linux Bazel/GF REAPI stays Linux-only. See
+`docs/home-manager-adoption.md`.

@@ -69,10 +69,15 @@ rollout.
 ## Platform delivery
 
 The tagged flake is the canonical online package for `x86_64-linux` and
-`aarch64-darwin`. Chapel builds and smoke tests run on native remote builders;
-`--max-jobs 0` forbids local Darwin compilation. Linux retains the exhaustive
-byte-parity and 64-stream capacity gate. Darwin additionally runs native
-`caps`, normalization, and resident-service round-trip checks.
+`aarch64-darwin`. Release builds and smoke tests run on native remote builders;
+`--max-jobs 0` forbids local Darwin compilation. Pull requests that change the
+native surface also run the path-scoped `Native Darwin` workflow on a standard
+GitHub-hosted `macos-15` arm64 runner, with a 30-minute job timeout. It builds
+`packages.aarch64-darwin.ptoon` and executes the derivation's native smoke
+checks; it is artifact proof, not a release build or a provider/fleet canary.
+Linux retains the exhaustive byte-parity and 64-stream capacity gate. Darwin
+additionally runs native `caps`, normalization, and resident-service round-trip
+checks.
 
 The implementation is reviewed against current Chapel 2.9 documentation, but
 the locked `chapel-nix` input still reports compiler version 2.7.0. The lock and
