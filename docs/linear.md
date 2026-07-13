@@ -43,7 +43,11 @@ C4 online IO gateway:
 - `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile;
   exact-byte HTTP/SSE, opaque remote compaction, and real-CLI loopback proof;
   provider-backed canary waits on a filesystem-confined tool sandbox.
-- `TIN-2791` C4d: multi-platform binaries and Home Manager gateway rollout.
+- `TIN-2791` C4d: native remote Linux/Darwin package proof, split-auth managed
+  gateway contract, actual-state doctor/host-ledger schema, then a separate
+  Home Manager consumption and attended shadow rollout.
+- `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
+  current 2.9 docs inform review but do not rewrite artifact provenance.
 
 Related prior work:
 

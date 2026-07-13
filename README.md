@@ -6,8 +6,8 @@ Private local tool and agent skill for safe research condensation.
 `summary.md`, `source-cards.jsonl`, and `manifest.json`. It is deterministic by
 default: no LLM call, no network call, no hidden transport change.
 
-Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` binary
-(x86_64-linux, built remote-only) owns normalize/redact/defang, the coforall
+Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` process
+(native remote-built Nix outputs) owns normalize/redact/defang, the coforall
 batch fan-in, and the full condense rendering — proven byte-identical to the
 Python oracle by the parity gates. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
@@ -15,8 +15,8 @@ engine until the C3 flip (TIN-2710).
 The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
 and the provider gateway. Current v0.3.0 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
-gateways, but no v0.3.0 release or fleet service profile exists yet. IO
-enforcement remains locked.
+gateways plus the C4d managed-consumption source contract, but no v0.3.0
+release or fleet service profile exists yet. IO enforcement remains locked.
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -27,7 +27,7 @@ against compact JSON/JSONL and emits TOON only when explicitly requested or when
 ```sh
 direnv allow
 just check
-just prompt-toon doctor        # reports both engines; chapel needs the binary
+just prompt-toon doctor        # local policy, engine, gateway, and route state
 ```
 
 Condense files (Python engine by default; `--engine chapel` fails closed,
@@ -65,7 +65,8 @@ policy ceilings, bounds active streams, continuously drains stdout/stderr, and
 validates each response against the framed provenance before completing its
 future. Defaults are 64 streams, 16 workers, a 64-request ring, 64 documents,
 16 MiB request / 256 MiB response frames, 4096-byte labels, 2 MiB per input,
-2 seconds, and 24 cards per document.
+2 seconds, and 24 cards per document. The child runtime is pinned to two Chapel
+worker threads; concurrency remains owned by the one resident Chapel process.
 
 `hooks/post_tool_condense.py` is a source-only PostToolUse adapter. It is
 policy-gated by `policy/io.json` (enforcement ships locked), cache-first via
@@ -76,7 +77,10 @@ It is not in the packaging manifest or any harness registration.
 
 C4 (TIN-2790) keeps provider transport out of Chapel. C4a establishes the
 resident transform service; C4b adds the opt-in Anthropic Messages shadow
-gateway; C4c adds OpenAI Responses and a user-level Codex profile. Python owns
+gateway; C4c adds OpenAI Responses and a user-level Codex profile; C4d adds
+split local/provider credential custody, authenticated instance ownership,
+two native platform targets, and a drift-gated Home Manager consumption
+contract. Python owns
 HTTP, auth/header forwarding, errors, and SSE; `ptoon serve` owns a fixed pool
 of bounded transform workers over private framed pipes. Only typed,
 provenance-bearing context is eligible for transformation. Authority-bearing
@@ -93,6 +97,10 @@ provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
 - `just responses-gateway-harness-probe` — unbilled real-Codex/SSE proof of
   the user profile, correlated function-call output, request ceiling, and
   direct rollback against a scripted loopback upstream.
+- `just gateway-capacity` — scripted-loopback HTTP/SSE saturation over the
+  real resident child; the remote parity derivation requires 64/64 streams for
+  both providers, near-cap aggregate ingress residency, deterministic overload,
+  split auth, and bounded gateway/resident resources.
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
   redact-batch, stream + condense-run vs goldens, resident multiplex parity,
   64-stream RSS capacity, analyze vs the committed pinned baseline
@@ -104,16 +112,20 @@ provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
 `packaging/manifest.json` is the committed, drift-gated packaging SSOT
 (TIN-2706): version, skills, policy digests, and per-lane enablement all
 derive from it. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
-regenerates via `just manifest`, merges, then `just release X.Y.Z` — parity
-preflight, remote binary build, stamped manifest (provenance + binary
-sha256), tag, GitHub Release. Fleet install rides the lab home-manager module
-(rev-pinned per INV-7; `bump-prompt-toon` recipe there).
+regenerates via `just manifest`, merges, then `just release X.Y.Z` — Linux
+parity, native remote Linux/Darwin builds, stamped manifest, wheel, and full
+Nix closure exports. The tagged flake is the canonical online install path;
+the `.nar` assets import with `nix-store --import`. Raw `ptoon` executables are
+Nix-store linked and are not claimed portable. The stamped manifest authenticates
+both each closure export and its `bin/ptoon` entrypoint. Fleet install will ride the lab
+Home Manager module (rev-pinned per INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
 C4 gateway. v0.3.0 is the first release line whose manifest declares
 per-target `serve_protocol = 1` and `anthropic_shadow_gateway = 1`
-plus `openai_responses_shadow_gateway = 1` capabilities. The release lane
-builds, installs, hashes, and publishes both the binary and universal wheel.
+plus `openai_responses_shadow_gateway = 1` capabilities. Manifest schema v2
+identifies ptoon targets by `(artifact, platform)` and authenticates complete
+Linux and Darwin Nix closure exports, their entrypoint binaries, and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
 manifest exist.
 
@@ -124,6 +136,8 @@ manifest exist.
 - Skills: `.agents/skills/{prompt-toon,mythos-delegation}/`
 - Policy SSOTs: `policy/{delegation,io}.json` (Dhall sources: `policy/dhall/`)
 - Packaging SSOT: `packaging/manifest.json` (`tools/packaging/gen_manifest.py`)
+- Managed-consumption contract: `packaging/home-manager.json` and
+  `docs/home-manager-adoption.md`
 - Design record: `docs/mythos-delivery-design.md` · Linear map: `docs/linear.md`
 - Provider guides: `docs/anthropic-shadow-gateway.md` ·
   `docs/openai-responses-gateway.md`

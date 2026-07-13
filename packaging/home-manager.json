@@ -1,0 +1,302 @@
+{
+  "activation": {
+    "default": false,
+    "enforcement": {
+      "locked": true,
+      "reason": "C4d publishes a consumption contract only; enforcement remains gated by the IO policy.",
+      "source": "policy/io.json"
+    },
+    "mode": "shadow"
+  },
+  "activation_default": false,
+  "activation_order": [
+    {
+      "name": "start-bind",
+      "requirement": "Start the selected loopback service and bind 127.0.0.1 before client exposure.",
+      "step": 1
+    },
+    {
+      "name": "authenticated-ownership-proof",
+      "requirement": "Challenge /__prompt_toon/ownership without sending the token; require a valid HMAC response, status=owned, auth_mode=split, and the reviewed policy/binary/upstream digests.",
+      "step": 2
+    },
+    {
+      "name": "expose-client-request-path",
+      "requirement": "Only after ownership proof, expose the Claude env or select the otherwise inert Codex profile.",
+      "step": 3
+    }
+  ],
+  "client_request_paths": {
+    "claude": {
+      "env": {
+        "ANTHROPIC_API_KEY": {
+          "service": "anthropic",
+          "source": "local_client_token_file"
+        },
+        "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "mode": "shadow",
+      "proxy_policy": {
+        "preserve": [
+          "ALL_PROXY",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "all_proxy",
+          "https_proxy",
+          "http_proxy"
+        ],
+        "require_both_no_proxy_casings": true,
+        "require_loopback_bypass": [
+          "127.0.0.1",
+          "localhost",
+          "::1"
+        ]
+      },
+      "reject_if_set": [
+        "ANTHROPIC_BEDROCK_BASE_URL",
+        "ANTHROPIC_VERTEX_BASE_URL",
+        "ANTHROPIC_FOUNDRY_BASE_URL",
+        "ANTHROPIC_AWS_BASE_URL",
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_USE_VERTEX",
+        "CLAUDE_CODE_USE_FOUNDRY",
+        "CLAUDE_CODE_USE_MANTLE",
+        "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_CUSTOM_HEADERS",
+        "CLAUDE_CODE_OAUTH_TOKEN"
+      ],
+      "rollback": {
+        "description": "Direct rollback removes the managed local token and route before restoring direct-provider auth.",
+        "provider_auth": "restore from direct-provider secret custody",
+        "restore": [
+          "NO_PROXY",
+          "no_proxy"
+        ],
+        "unset": [
+          "ANTHROPIC_API_KEY",
+          "ANTHROPIC_BASE_URL",
+          "PROMPT_TOON_GATEWAY_URL"
+        ]
+      }
+    },
+    "codex": {
+      "environment": {
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "local_token_env": "PROMPT_TOON_CODEX_GATEWAY_TOKEN",
+      "mode": "shadow",
+      "profile_file": "$CODEX_HOME/prompt-toon-shadow.config.toml",
+      "profile_name": "prompt-toon-shadow",
+      "profile_toml": "model_provider = \"prompt-toon-shadow\"\nallow_login_shell = false\n\n[model_providers.prompt-toon-shadow]\nname = \"prompt-toon Responses shadow gateway\"\nbase_url = \"http://127.0.0.1:8788/v1\"\nwire_api = \"responses\"\nsupports_websockets = false\nrequest_max_retries = 0\nstream_max_retries = 0\nenv_key = \"PROMPT_TOON_CODEX_GATEWAY_TOKEN\"\nrequires_openai_auth = false\n\n[shell_environment_policy]\ninherit = \"core\"\nignore_default_excludes = false\nexclude = [\"PROMPT_TOON_CODEX_GATEWAY_TOKEN\"]\n",
+      "profile_toml_sha256": "cef794afa62789783780ad9167348ea0c27503e82fba8c4f2c70cbc8fe9854bb",
+      "proxy_policy": {
+        "preserve": [
+          "ALL_PROXY",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "all_proxy",
+          "https_proxy",
+          "http_proxy"
+        ],
+        "require_both_no_proxy_casings": true,
+        "require_loopback_bypass": [
+          "127.0.0.1",
+          "localhost",
+          "::1"
+        ]
+      },
+      "reject_if_set": [
+        "CHATGPT_BASE_URL",
+        "OPENAI_BASE_URL"
+      ],
+      "rollback": {
+        "description": "Direct-provider rollback omits --profile and removes the inert local gateway token.",
+        "select_args": [],
+        "unset": [
+          "PROMPT_TOON_CODEX_GATEWAY_TOKEN"
+        ]
+      },
+      "select_args": [
+        "--profile",
+        "prompt-toon-shadow"
+      ]
+    }
+  },
+  "contract_path": "packaging/home-manager.json",
+  "endpoints": {
+    "metrics": {
+      "path": "/__prompt_toon/metrics",
+      "semantics": [
+        "Aggregate-only counters and process-local HMAC model buckets.",
+        "No request bodies or credential values.",
+        "Use with readiness and ownership proof; metrics alone are not activation proof."
+      ]
+    },
+    "ownership": {
+      "attests": [
+        "ownership_endpoint",
+        "instance_id",
+        "service_version",
+        "provider",
+        "upstream_url",
+        "policy_sha256",
+        "resident_binary_sha256",
+        "accepting",
+        "engine_available",
+        "upstream"
+      ],
+      "auth": "HMAC-SHA256 over a versioned canonical attestation plus the nonce, keyed by the local client token; the token is never sent to an unverified listener",
+      "path": "/__prompt_toon/ownership",
+      "purpose": "Challenge-response proof that the bound loopback port is the expected prompt-toon instance before clients are routed.",
+      "success": {
+        "auth_mode": "split",
+        "status": "owned"
+      }
+    },
+    "readiness": {
+      "path": "/__prompt_toon/ready",
+      "semantics": [
+        "HTTP 200 reports local readiness only after authenticated ownership has identified the listener.",
+        "upstream=unknown is valid before a provider request.",
+        "readiness alone is not provider reachability.",
+        "provider reachability is only established after an authenticated request path observes upstream=reachable."
+      ]
+    }
+  },
+  "host_ledger": {
+    "claim_boundary": "Each record is a host observation; the source contract contains no fleet health claims.",
+    "required_fields": [
+      "host",
+      "observed_at",
+      "service_health",
+      "active_binary",
+      "request_paths",
+      "shadow_decisions",
+      "rollback",
+      "policy_sha256"
+    ],
+    "schema_version": 1,
+    "sources": {
+      "active_binary": "doctor.adoption.gateways.*.ownership.payload.resident_binary_sha256, correlated with doctor.engines.chapel",
+      "policy_sha256": "doctor.adoption.policy.sha256",
+      "request_paths": "doctor.adoption.request_paths plus post-activation request counters; profile presence alone is not traffic proof",
+      "rollback": "client_request_paths.*.rollback",
+      "service_health": "doctor.adoption.gateways.*.readiness and ownership",
+      "shadow_decisions": "doctor.adoption.gateways.*.metrics.payload counters and quality"
+    },
+    "write_after_activation": true
+  },
+  "mode": "shadow",
+  "name": "prompt-toon-home-manager-consumption",
+  "policy": {
+    "delegation": {
+      "file": "policy/delegation.json",
+      "sha256": "40f94f040b848b4320605eca69dd905c00f31eddbfdd4a5c69136a17e3d25be1"
+    },
+    "io": {
+      "file": "policy/io.json",
+      "sha256": "b7738b760370d3a9e4e029a4731145eb975ac77aa1cd173673b751b134480655"
+    }
+  },
+  "safety": {
+    "activation_default": false,
+    "credential_files": {
+      "client_and_upstream_distinct": true,
+      "owner_only": true,
+      "regular_files": true,
+      "symlinks_allowed": false,
+      "values_never_enter_contract": true
+    },
+    "credentials": "placeholder-paths-only",
+    "host_mutation": false,
+    "local_client_token": {
+      "classification": "sensitive billed-relay capability",
+      "ownership_probe_sends_token": false,
+      "residual_trust": "Normal Claude/Codex requests use the token as a bearer credential, so loopback and same-user process isolation remain required.",
+      "rotate_after_ownership_failure": true
+    },
+    "model_pins": false,
+    "provider_calls": false,
+    "release": false
+  },
+  "schema_version": 2,
+  "services": [
+    {
+      "auth_mode": "split",
+      "command": [
+        "prompt-toon",
+        "gateway",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "8787",
+        "--upstream",
+        "https://api.anthropic.com",
+        "--policy",
+        "<prompt-toon-io-policy-json>",
+        "--ptoon",
+        "<ptoon-binary>",
+        "--client-token-file",
+        "<anthropic-client-token-file>",
+        "--upstream-token-file",
+        "<anthropic-upstream-token-file>",
+        "--require-ptoon",
+        "--require-split-auth"
+      ],
+      "environment": {
+        "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+        "QT_NUM_SHEPHERDS": "1",
+        "QT_NUM_WORKERS_PER_SHEPHERD": "2"
+      },
+      "id": "anthropic",
+      "listen": {
+        "host": "127.0.0.1",
+        "port": 8787
+      },
+      "protocol": "anthropic_messages",
+      "provider": "anthropic",
+      "reviewed_upstream_default": "https://api.anthropic.com"
+    },
+    {
+      "auth_mode": "split",
+      "command": [
+        "prompt-toon",
+        "responses-gateway",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "8788",
+        "--upstream",
+        "https://api.openai.com/v1",
+        "--policy",
+        "<prompt-toon-io-policy-json>",
+        "--ptoon",
+        "<ptoon-binary>",
+        "--client-token-file",
+        "<openai-client-token-file>",
+        "--upstream-token-file",
+        "<openai-upstream-token-file>",
+        "--require-ptoon",
+        "--require-split-auth"
+      ],
+      "environment": {
+        "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+        "QT_NUM_SHEPHERDS": "1",
+        "QT_NUM_WORKERS_PER_SHEPHERD": "2"
+      },
+      "id": "openai",
+      "listen": {
+        "host": "127.0.0.1",
+        "port": 8788
+      },
+      "protocol": "openai_responses",
+      "provider": "openai",
+      "reviewed_upstream_default": "https://api.openai.com/v1"
+    }
+  ],
+  "version": "0.3.0"
+}

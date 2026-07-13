@@ -43,6 +43,7 @@ sh_test(
         "tools/anthropic_gateway_harness_probe.py",
         "tools/openai_gateway_harness_probe.py",
         "//tools/packaging:gen_manifest.py",
+        "//tools/packaging:gen_home_manager_contract.py",
     ] + glob([
         "prompt_toon/**/*.py",
         "tests/**/*.py",
@@ -60,6 +61,9 @@ filegroup(
         "MODULE.bazel",
         "pyproject.toml",
         "packaging/manifest.json",
+        "packaging/home-manager.json",
+        "prompt_toon/adoption.py",
+        "prompt_toon/codex_harness.py",
         "prompt_toon/__init__.py",
         ":delegation_policy",
         ":skills",

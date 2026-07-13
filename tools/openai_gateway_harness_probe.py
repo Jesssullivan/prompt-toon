@@ -259,6 +259,7 @@ def _start_gateway(
         upstream=f"http://127.0.0.1:{upstream_port}/v1",
         max_request_bytes=policy.max_request_bytes,
         max_concurrent_requests=policy.max_concurrent_streams,
+        max_inflight_request_bytes=policy.max_inflight_request_bytes,
         protocol=OPENAI_PROTOCOL,
         max_total_requests=2,
     )

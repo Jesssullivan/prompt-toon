@@ -21,6 +21,17 @@ _PROVIDER_ROUTE_ENV = (
     "OPENAI_BASE_URL",
 )
 
+PROXY_ENV = (
+    "ALL_PROXY",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "all_proxy",
+    "https_proxy",
+    "http_proxy",
+)
+LOOPBACK_NO_PROXY_VALUES = ("127.0.0.1", "localhost", "::1")
+PROXY_BYPASS_CONFLICT = "proxy_without_loopback_bypass"
+
 _CHILD_ENV_ALLOWLIST = (
     "ALL_PROXY",
     "CURL_CA_BUNDLE",
@@ -62,12 +73,34 @@ def validate_loopback_gateway(value: str) -> str:
     if parts.path not in ("", "/"):
         raise ValueError("gateway URL must not contain a path")
     try:
-        loopback = ipaddress.ip_address(parts.hostname).is_loopback
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("gateway URL has an invalid port") from exc
+    if port is None:
+        port = 443 if parts.scheme == "https" else 80
+    if not 1 <= port <= 65535:
+        raise ValueError("gateway URL port must be in [1, 65535]")
+    host = parts.hostname.lower()
+    try:
+        address = ipaddress.ip_address(host)
+        loopback = address.is_loopback
+        host = address.compressed
     except ValueError:
-        loopback = parts.hostname == "localhost"
+        loopback = host == "localhost"
+        if loopback:
+            host = "127.0.0.1"
     if not loopback:
         raise ValueError("gateway URL must be loopback")
-    return value.rstrip("/")
+    authority = f"[{host}]" if ":" in host else host
+    return f"{parts.scheme}://{authority}:{port}"
+
+
+def loopback_proxy_bypass_configured(source: Mapping[str, str]) -> bool:
+    for key in ("NO_PROXY", "no_proxy"):
+        values = {part.strip() for part in source.get(key, "").split(",")}
+        if "*" not in values and not set(LOOPBACK_NO_PROXY_VALUES).issubset(values):
+            return False
+    return True
 
 
 def render_codex_profile(gateway_url: str, *, auth_mode: str) -> str:
@@ -121,6 +154,10 @@ def codex_profile(
         raise ValueError(f"unknown Codex profile mode {mode!r}")
     gateway = validate_loopback_gateway(gateway_url)
     conflicts = sorted(key for key in _PROVIDER_ROUTE_ENV if source.get(key))
+    proxy_environment = sorted(key for key in PROXY_ENV if source.get(key))
+    proxy_bypass = loopback_proxy_bypass_configured(source)
+    if proxy_environment and not proxy_bypass:
+        conflicts.append(PROXY_BYPASS_CONFLICT)
     return {
         "mode": "shadow",
         "gateway": gateway,
@@ -129,6 +166,8 @@ def codex_profile(
         "select_args": ["--profile", PROFILE_NAME],
         "auth_mode": auth_mode,
         "conflicts": conflicts,
+        "proxy_environment_present": proxy_environment,
+        "loopback_proxy_bypass_configured": proxy_bypass,
         "toml": render_codex_profile(gateway, auth_mode=auth_mode),
         "user_config_mutated": False,
     }
@@ -136,7 +175,7 @@ def codex_profile(
 
 def _with_loopback_no_proxy(env: dict[str, str], key: str) -> None:
     values = [part.strip() for part in env.get(key, "").split(",") if part.strip()]
-    for value in ("127.0.0.1", "localhost", "::1"):
+    for value in LOOPBACK_NO_PROXY_VALUES:
         if value not in values:
             values.append(value)
     env[key] = ",".join(values)
