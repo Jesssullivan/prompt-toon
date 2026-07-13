@@ -100,7 +100,8 @@ provider controls, remain unchanged. See `docs/linear.md` for C4a-d.
 - `just gateway-capacity` — scripted-loopback HTTP/SSE saturation over the
   real resident child; the remote parity derivation requires 64/64 streams for
   both providers, near-cap aggregate ingress residency, deterministic overload,
-  split auth, and bounded gateway/resident resources.
+  split auth, and process-isolated gateway/resident resource bounds. Scripted
+  clients and the upstream run outside the measured gateway process.
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
   redact-batch, stream + condense-run vs goldens, resident multiplex parity,
   64-stream RSS capacity, analyze vs the committed pinned baseline
