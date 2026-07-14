@@ -54,6 +54,36 @@ means the process is accepting requests and the resident engine is available;
 the separate `upstream` field is `unknown`, `reachable`, or `failed` based on
 the latest observed provider exchange. `HEAD /` is a local connectivity probe.
 
+Completed, identity-encoded Anthropic responses also contribute the following
+fixed-cardinality counters. Non-stream JSON observation is capped at 1 MiB;
+SSE telemetry is committed only after a terminated `message_stop` event.
+Truncated, malformed, compressed, or incomplete responses increment the
+existing telemetry-unavailable signal instead of contributing partial safety
+counts.
+
+For SSE, safety fields are read only from their documented event positions:
+the initial `message_start`, `fallback` blocks in `content_block_start`, and
+the final `message_delta` before `message_stop`. Unknown event types cannot
+contribute safety fields. Any data event after `message_stop` invalidates the
+observed copy while the original response bytes continue to the client.
+
+- `provider_refusal_responses` branches only on final
+  `stop_reason: "refusal"`, including normal HTTP 200 refusals.
+- `provider_refusal_category_{cyber,bio,frontier_llm,reasoning_extraction,other}`
+  assigns exactly one fixed bucket per refusal. Missing, null, malformed, and
+  future category values map to `other`; `stop_details.explanation` is never
+  retained.
+- `provider_fallback_transitions` counts documented `fallback` content blocks.
+- `provider_fallback_served_responses` requires both a
+  `usage.iterations[].type: "fallback_message"` entry and a final non-refusal
+  stop reason. A chain whose final model also refuses records its transitions
+  and refusal, but not a fallback-served response.
+
+These counters do not retain iteration text, explanations, or model names.
+Requested and returned models remain visible only through the existing
+process-local HMAC buckets. Observation never changes forwarded response bytes
+or the provider's fallback behavior.
+
 ## Operator flow
 
 The v0.2.0 release asset predates `ptoon serve` and cannot back this gateway.
@@ -210,3 +240,10 @@ The implementation follows the current provider contract:
   token-count endpoint is optional.
 - [API errors](https://platform.claude.com/docs/en/api/errors): status, JSON
   error body, `request-id`, and post-200 stream errors are preserved.
+- [Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback):
+  refusals are HTTP 200 responses, fallback boundaries are content blocks, and
+  `fallback_message` iterations distinguish a fallback-served response from a
+  chain that ultimately refuses.
+- [Streaming refusals](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/handle-streaming-refusals):
+  `stop_reason` and `stop_details` arrive in `message_delta`; `message_stop`
+  terminates the stream.
