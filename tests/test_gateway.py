@@ -33,6 +33,23 @@ from prompt_toon.gateway import (
 
 ROOT = Path(__file__).resolve().parent.parent
 POLICY_PATH = ROOT / "policy" / "io.json"
+REFUSAL_RESPONSE_BODY = (
+    b'{"id":"msg_refusal","type":"message","role":"assistant",'
+    b'"model":"claude-fable-fixture","content":[],"stop_reason":"refusal",'
+    b'"stop_details":{"type":"refusal","category":"cyber",'
+    b'"explanation":"fixture explanation must not enter metrics"},'
+    b'"usage":{"input_tokens":34,"output_tokens":0}}'
+)
+FALLBACK_RESPONSE_BODY = (
+    b'{"id":"msg_fallback","type":"message","role":"assistant",'
+    b'"model":"claude-fallback-fixture","content":['
+    b'{"type":"fallback","from":{"model":"claude-fable-fixture"},'
+    b'"to":{"model":"claude-fallback-fixture"}},'
+    b'{"type":"text","text":"fixture answer"}],"stop_reason":"end_turn",'
+    b'"stop_details":null,"usage":{"input_tokens":34,"output_tokens":3,'
+    b'"iterations":[{"type":"message","model":"claude-fable-fixture"},'
+    b'{"type":"fallback_message","model":"claude-fallback-fixture"}]}}'
+)
 
 
 def wait_for(predicate: Any, timeout: float = 2.0) -> bool:
@@ -177,6 +194,19 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response_body)
             return
+        if response_mode in ("refusal", "fallback"):
+            response_body = (
+                REFUSAL_RESPONSE_BODY
+                if response_mode == "refusal"
+                else FALLBACK_RESPONSE_BODY
+            )
+            self.send_response_only(200, "OK")
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_body)))
+            self.send_header("x-upstream-unknown", "preserved")
+            self.end_headers()
+            self.wfile.write(response_body)
+            return
         if response_mode == "sse":
             events = b"".join(
                 (
@@ -190,7 +220,10 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
                     b'data: {"type":"content_block_start","content_block":'
                     b'{"type":"fallback","to":{"model":"claude-fallback"}}}\n\n',
                     b"event: message_delta\n",
-                    b'data: {"type":"message_delta","usage":{"output_tokens":4}}\n\n',
+                    b'data: {"type":"message_delta","delta":{"stop_reason":'
+                    b'"end_turn","stop_details":null},"usage":{"output_tokens":4,'
+                    b'"iterations":[{"type":"message"},{"type":'
+                    b'"fallback_message","model":"claude-fallback"}]}}\n\n',
                     b"event: error\n",
                     b'data: {"type":"error","error":{"type":'
                     b'"overloaded_error","message":"Overloaded"}}\n\n',
@@ -414,6 +447,59 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertEqual(response_headers["request-id"], "req_fixture")
         self.assertEqual(response_headers["x-upstream-unknown"], "preserved")
 
+    def test_http_200_refusal_bytes_and_fixed_category_metrics_are_exact(
+        self,
+    ) -> None:
+        response = self._send(
+            self.gateway.server_port,
+            request_body(),
+            self._headers("refusal"),
+        )
+        self.assertEqual(response[0], 200)
+        self.assertEqual(response[2], REFUSAL_RESPONSE_BODY)
+        self.assertTrue(
+            wait_for(
+                lambda: self.metrics.snapshot()["counters"][
+                    "provider_refusal_responses"
+                ]
+                == 1
+            )
+        )
+        snapshot = self.metrics.snapshot()
+        counters = snapshot["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 1)
+        self.assertEqual(counters["provider_refusal_category_cyber"], 1)
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        serialized = json.dumps(snapshot)
+        self.assertNotIn("fixture explanation", serialized)
+        self.assertNotIn("claude-fable-fixture", serialized)
+
+    def test_http_200_fallback_bytes_transition_and_served_metrics_are_exact(
+        self,
+    ) -> None:
+        response = self._send(
+            self.gateway.server_port,
+            request_body(),
+            self._headers("fallback"),
+        )
+        self.assertEqual(response[0], 200)
+        self.assertEqual(response[2], FALLBACK_RESPONSE_BODY)
+        self.assertTrue(
+            wait_for(
+                lambda: self.metrics.snapshot()["counters"][
+                    "provider_fallback_served_responses"
+                ]
+                == 1
+            )
+        )
+        snapshot = self.metrics.snapshot()
+        counters = snapshot["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 0)
+        self.assertEqual(counters["provider_fallback_transitions"], 1)
+        self.assertEqual(counters["provider_fallback_served_responses"], 1)
+        self.assertNotIn("claude-fallback-fixture", json.dumps(snapshot))
+
     def test_sse_bytes_unknown_events_stream_errors_and_fallback_model_survive(
         self,
     ) -> None:
@@ -435,6 +521,10 @@ class GatewayProtocolTests(unittest.TestCase):
         self.assertEqual(snapshot["counters"]["provider_input_tokens"], 12)
         self.assertEqual(snapshot["counters"]["provider_output_tokens"], 4)
         self.assertEqual(snapshot["counters"]["sse_error_events"], 1)
+        self.assertEqual(snapshot["counters"]["provider_fallback_transitions"], 1)
+        self.assertEqual(
+            snapshot["counters"]["provider_fallback_served_responses"], 1
+        )
 
     def test_unsupported_transfer_coding_is_rejected_not_corrupted(self) -> None:
         response = self._send(
@@ -808,6 +898,193 @@ class GatewayBoundaryTests(unittest.TestCase):
         self.assertEqual(snapshot["models"]["returned"], {})
         self.assertEqual(snapshot["counters"]["provider_input_tokens"], 0)
         self.assertEqual(snapshot["counters"]["response_telemetry_unavailable"], 1)
+
+    def test_sse_message_delta_refusal_is_recorded_only_after_message_stop(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'event: message_start\ndata: {"type":"message_start","message":'
+            b'{"model":"claude-stream-fixture","usage":{"input_tokens":55}}}\n\n'
+            b'event: message_delta\ndata: {"type":"message_delta","delta":'
+            b'{"stop_reason":"refusal","stop_details":{"type":"refusal",'
+            b'"category":"reasoning_extraction","explanation":'
+            b'"unstable provider text"}},"usage":{"output_tokens":2}}\n\n'
+        )
+        self.assertEqual(
+            metrics.snapshot()["counters"]["provider_refusal_responses"], 0
+        )
+        observer.feed(
+            b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot["counters"]["provider_refusal_responses"], 1)
+        self.assertEqual(
+            snapshot["counters"][
+                "provider_refusal_category_reasoning_extraction"
+            ],
+            1,
+        )
+        self.assertNotIn("unstable provider text", json.dumps(snapshot))
+        self.assertNotIn("claude-stream-fixture", json.dumps(snapshot))
+
+    def test_malformed_json_fallback_envelope_contributes_no_telemetry(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "application/json")]
+        )
+        observer.feed(b'{"content":[{"type":"fallback"}]}')
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
+
+    def test_sse_without_final_delta_contributes_no_fallback_telemetry(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+            b'data: {"type":"content_block_start","content_block":'
+            b'{"type":"fallback","to":{"model":"claude-fallback"}}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
+
+    def test_unknown_sse_event_cannot_inject_fallback_fields(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+            b'data: {"type":"future_event","content_block":{"type":'
+            b'"fallback"},"usage":{"iterations":[{"type":'
+            b'"fallback_message"}]}}\n\n'
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"end_turn","stop_details":null},"usage":{"output_tokens":1}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters.get("response_telemetry_unavailable", 0), 0)
+
+    def test_post_stop_sse_event_invalidates_safety_telemetry(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"refusal","stop_details":{"category":"cyber"}},"usage":{}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"end_turn","stop_details":null},"usage":{"iterations":'
+            b'[{"type":"fallback_message"}]}}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
+
+    def test_refusal_categories_are_fixed_and_unknown_values_map_to_other(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        for category in (
+            "cyber",
+            "bio",
+            "frontier_llm",
+            "reasoning_extraction",
+            "new",
+        ):
+            observer = ResponseObserver(
+                metrics, 200, [("Content-Type", "application/json")]
+            )
+            observer.feed(
+                json.dumps(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-fixture",
+                        "content": [],
+                        "stop_reason": "refusal",
+                        "stop_details": {"type": "refusal", "category": category},
+                        "usage": {},
+                    }
+                ).encode("utf-8")
+            )
+            observer.finish()
+        counters = metrics.snapshot()["counters"]
+        category_counters = {
+            name: value
+            for name, value in counters.items()
+            if name.startswith("provider_refusal_category_")
+        }
+        self.assertEqual(
+            category_counters,
+            {
+                "provider_refusal_category_bio": 1,
+                "provider_refusal_category_cyber": 1,
+                "provider_refusal_category_frontier_llm": 1,
+                "provider_refusal_category_other": 1,
+                "provider_refusal_category_reasoning_extraction": 1,
+            },
+        )
+
+    def test_final_refusal_after_fallback_is_not_counted_as_fallback_served(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "application/json")]
+        )
+        observer.feed(
+            json.dumps(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-final-fixture",
+                    "content": [
+                        {
+                            "type": "fallback",
+                            "from": {"model": "claude-first-fixture"},
+                            "to": {"model": "claude-final-fixture"},
+                        }
+                    ],
+                    "stop_reason": "refusal",
+                    "stop_details": None,
+                    "usage": {"iterations": [{"type": "fallback_message"}]},
+                }
+            ).encode("utf-8")
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 1)
+        self.assertEqual(counters["provider_refusal_category_other"], 1)
+        self.assertEqual(counters["provider_fallback_transitions"], 1)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
 
     def test_stuck_shadow_future_times_out_and_quarantines_engine(self) -> None:
         metrics = GatewayMetrics()

@@ -152,7 +152,7 @@ changed, or that a clarification caused an observed route.
 
 ## Telemetry Contract
 
-Provider-free and shadow telemetry exposes only these fixed counters:
+Any future lexical analyzer may add only these fixed counters:
 
 - `lexical_segments_seen_total`
 - `lexical_segments_eligible_total`
@@ -163,17 +163,21 @@ Provider-free and shadow telemetry exposes only these fixed counters:
 - `lexical_noop_ambiguous_total`
 - `lexical_noop_unsupported_language_total`
 - `lexical_guard_failures_total`
-- `provider_requests_total`
-- `provider_responses_total`
-- `provider_refusal_responses_total`
-- `provider_refusal_cyber_total`
-- `provider_refusal_bio_total`
-- `provider_refusal_frontier_llm_total`
-- `provider_refusal_reasoning_extraction_total`
-- `provider_refusal_other_or_null_total`
-- `provider_fallback_transitions_total`
-- `provider_fallback_served_responses_total`
-- `provider_returned_model_unknown_total`
+
+The shadow gateway's current JSON metrics use the repository's existing
+counter naming convention. Its fixed provider-safety counters are:
+
+- `provider_refusal_responses`
+- `provider_refusal_category_cyber`
+- `provider_refusal_category_bio`
+- `provider_refusal_category_frontier_llm`
+- `provider_refusal_category_reasoning_extraction`
+- `provider_refusal_category_other`
+- `provider_fallback_transitions`
+- `provider_fallback_served_responses`
+
+Existing bounded request, response, usage, model-HMAC, and shadow-quality
+counters remain unchanged.
 
 Metrics carry no source text, candidate text, source IDs, paths, URLs, dynamic
 rule labels, or dynamic model labels. A deterministic manifest records the
