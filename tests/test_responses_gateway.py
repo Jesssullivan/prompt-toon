@@ -382,6 +382,96 @@ class ResponsesGatewayTests(unittest.TestCase):
         self.assertEqual(snapshot["counters"]["provider_cached_input_tokens"], 11)
         self.assertEqual(snapshot["counters"]["provider_reasoning_output_tokens"], 3)
 
+    def test_json_cache_write_tokens_aggregate_and_reject_malformed_values(self) -> None:
+        metrics = GatewayMetrics()
+        headers = [("Content-Type", "application/json")]
+        for cache_write_tokens in (5, 7, True, -1, 1.5, "13"):
+            with self.subTest(cache_write_tokens=cache_write_tokens):
+                observer = ResponseObserver(
+                    metrics, 200, headers, protocol=OPENAI_PROTOCOL
+                )
+                observer.feed(
+                    json.dumps(
+                        {
+                            "model": "private-model",
+                            "usage": {
+                                "input_tokens_details": {
+                                    "cache_write_tokens": cache_write_tokens
+                                }
+                            },
+                        }
+                    ).encode()
+                )
+                observer.finish()
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot["counters"]["provider_cache_write_tokens"], 12)
+        self.assertNotIn("private-model", json.dumps(snapshot))
+
+    def test_sse_cache_write_tokens_aggregate_and_reject_malformed_values(self) -> None:
+        metrics = GatewayMetrics()
+        headers = [("Content-Type", "text/event-stream")]
+        for cache_write_tokens in (11, 13, False, -1, 2.5, "29"):
+            with self.subTest(cache_write_tokens=cache_write_tokens):
+                observer = ResponseObserver(
+                    metrics, 200, headers, protocol=OPENAI_PROTOCOL
+                )
+                observer.feed(
+                    b"data: "
+                    + json.dumps(
+                        {
+                            "type": "response.completed",
+                            "response": {
+                                "model": "private-model",
+                                "usage": {
+                                    "input_tokens_details": {
+                                        "cache_write_tokens": cache_write_tokens
+                                    }
+                                },
+                            },
+                        }
+                    ).encode()
+                    + b"\n\n"
+                )
+                observer.finish()
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot["counters"]["provider_cache_write_tokens"], 24)
+        self.assertNotIn("private-model", json.dumps(snapshot))
+
+    def test_sse_usage_comes_only_from_completed_response_snapshot(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics,
+            200,
+            [("Content-Type", "text/event-stream")],
+            protocol=OPENAI_PROTOCOL,
+        )
+        for event in (
+            {
+                "type": "response.created",
+                "response": {
+                    "model": "nonterminal-model",
+                    "usage": {
+                        "input_tokens_details": {"cache_write_tokens": 9001}
+                    },
+                },
+            },
+            {
+                "type": "response.completed",
+                "response": {"model": "terminal-model", "usage": {}},
+            },
+        ):
+            observer.feed(b"data: " + json.dumps(event).encode() + b"\n\n")
+        observer.finish()
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot["counters"]["provider_cache_write_tokens"], 0)
+        self.assertEqual(list(snapshot["models"]["returned"].values()), [1])
+        serialized = json.dumps(snapshot)
+        self.assertNotIn("nonterminal-model", serialized)
+        self.assertNotIn("terminal-model", serialized)
+
     def test_managed_auth_replaces_local_bearer_before_upstream(self) -> None:
         local_token = "local-" + "r" * 40
         upstream_token = "openai-provider-fixture"
