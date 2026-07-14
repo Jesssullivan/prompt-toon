@@ -36,7 +36,10 @@ sh_test(
     srcs = ["tests/run_tests.sh"],
     data = [
         ".bazelrc.flywheel",
+        ".github/workflows/bazel-graph.yml",
+        ".github/workflows/build-and-test.yml",
         ".github/workflows/ci-flywheel.yml",
+        ".github/workflows/secrets-scan.yml",
         "Justfile",
         ":delegation_policy",
         ":skills",

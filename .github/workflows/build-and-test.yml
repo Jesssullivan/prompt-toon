@@ -2,7 +2,8 @@ name: Build and Test
 
 # M0 scaffold (TIN-1307 pattern): the full local gate (`just check` =
 # compile-check + secrets-scan + unittest suite + bazel-graph + bazel-test)
-# through the Nix devshell so CI == local.
+# through the Nix devshell so CI == local. The job runs on the fleet-managed GF
+# ARC substrate; GitHub-hosted billing is not part of the validation path.
 
 on:
   push:
@@ -22,7 +23,7 @@ jobs:
   check:
     name: just check (Nix devshell)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: tinyland-nix
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6

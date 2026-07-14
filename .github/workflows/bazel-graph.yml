@@ -1,7 +1,8 @@
 name: Bazel Graph
 
 # M0 scaffold (TIN-1307 pattern): module-graph integrity + lockfile drift
-# guard, mirroring the tinyland-goo shape.
+# guard, mirroring the tinyland-goo shape. Repository loading runs on the
+# fleet-managed GF ARC substrate, not a GitHub-hosted runner.
 
 on:
   push:
@@ -21,7 +22,7 @@ jobs:
   mod-graph:
     name: Bazel module-graph integrity
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: tinyland-nix
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
