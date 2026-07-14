@@ -21,6 +21,16 @@ dogfood *args:
 dogfood-corpus *args:
     cd {{root}} && PYTHONPATH={{root}} python3 -m prompt_toon corpus-report {{args}}
 
+# C4f.4: import caller-supplied usage/count and exact request artifacts into
+# a path-free hash-bound sidecar. The importer makes no provider request.
+provider-usage-import *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -B -m prompt_toon provider-usage-import {{args}}
+
+# Compare one raw-input and one condensed provider-usage sidecar. Cache reads
+# and writes remain separate; this makes no pricing or quality claim.
+provider-usage-compare *args:
+    cd {{root}} && PYTHONPATH={{root}} python3 -B -m prompt_toon provider-usage-compare {{args}}
+
 # C4f.2: generated synthetic fixtures evaluated against emitted artifacts.
 # Python is the local oracle; remote parity invokes this with --engine chapel.
 quality-fixtures *args:
