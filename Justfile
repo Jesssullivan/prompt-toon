@@ -221,6 +221,16 @@ flywheel-check *targets="//:ci_validation_suite":
 flywheel-executor-check *targets="//:ci_validation_suite":
     cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed {{targets}}
 
+# Force a fresh executor-backed test action and retain the Bazel process
+# summary for the GF enrollment/write-back gate.
+flywheel-executor-proof log target="//:ci_validation_suite":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{root}}
+    log="{{log}}"
+    execution_log="${log%.log}.execution.json"
+    GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --remote_accept_cached=false --nocache_test_results --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
+
 # TIN-2709 C2, pulled into C1: compile the ptoon Chapel binary on GF REAPI.
 # nix owns the chpl version (the executor image / devshell provides it); Bazel
 # owns the graph, cache, and remote execution. //src/ptoon:ptoon is
