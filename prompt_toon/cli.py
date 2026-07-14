@@ -32,6 +32,12 @@ from .dogfood import (
     build_efficiency_ledger,
     expand_spool_inputs,
 )
+from .provider_usage import (
+    ProviderUsageError,
+    build_provider_usage_comparison,
+    build_provider_usage_sidecar,
+    load_provider_usage_sidecar,
+)
 
 SECRET_PATTERNS = [
     re.compile(r"\b(?:sk|ghp|gho|github_pat|xox[baprs])-[-_A-Za-z0-9]{16,}\b"),
@@ -1181,6 +1187,33 @@ def command_corpus_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_provider_usage_import(args: argparse.Namespace) -> int:
+    try:
+        sidecar = build_provider_usage_sidecar(
+            ledger_path=args.ledger,
+            request_paths=args.requests,
+            usage_path=args.usage,
+            source=args.source,
+            variant=args.variant,
+            model_label=args.model_label,
+        )
+    except ProviderUsageError as exc:
+        raise SystemExit(str(exc)) from exc
+    write_json_to_stdout(sidecar)
+    return 0
+
+
+def command_provider_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        baseline = load_provider_usage_sidecar(args.baseline)
+        candidate = load_provider_usage_sidecar(args.candidate)
+        report = build_provider_usage_comparison(baseline, candidate)
+    except ProviderUsageError as exc:
+        raise SystemExit(str(exc)) from exc
+    write_json_to_stdout(report)
+    return 0
+
+
 def command_analyze(args: argparse.Namespace) -> int:
     # analyze has no normalize/redact/defang call sites today, but --engine
     # is still resolved here so an explicit --engine=chapel request fails
@@ -1425,6 +1458,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit schema-v2 efficiency.json files (1-50; 20 required to pass).",
     )
     corpus_report.set_defaults(func=command_corpus_report)
+
+    provider_usage_import = sub.add_parser(
+        "provider-usage-import",
+        help=(
+            "Hash-bind external exact usage to a dogfood ledger and complete "
+            "request bytes without making a provider request."
+        ),
+    )
+    provider_usage_import.add_argument("--ledger", required=True)
+    provider_usage_import.add_argument(
+        "--request",
+        dest="requests",
+        action="append",
+        required=True,
+        help=(
+            "Exact request body; repeat in provider request order only for "
+            "codex-jsonl."
+        ),
+    )
+    provider_usage_import.add_argument("--usage", required=True)
+    provider_usage_import.add_argument(
+        "--source",
+        required=True,
+        choices=[
+            "responses-json",
+            "responses-sse",
+            "responses-input-count",
+            "codex-jsonl",
+        ],
+    )
+    provider_usage_import.add_argument(
+        "--variant",
+        required=True,
+        help="raw_input or an exact handoff key from efficiency.json.",
+    )
+    provider_usage_import.add_argument(
+        "--model-label",
+        help=(
+            "Required for Codex JSONL and must match every request-declared "
+            "model; for Responses, must match the returned or request-declared "
+            "model when supplied."
+        ),
+    )
+    provider_usage_import.set_defaults(func=command_provider_usage_import)
+
+    provider_usage_compare = sub.add_parser(
+        "provider-usage-compare",
+        help="Compare hash-bound raw-input and condensed exact-usage sidecars.",
+    )
+    provider_usage_compare.add_argument("baseline")
+    provider_usage_compare.add_argument("candidate")
+    provider_usage_compare.set_defaults(func=command_provider_usage_compare)
 
     analyze = sub.add_parser(
         "analyze", help="Analyze JSON/JSONL for compact JSON vs TOON row encoding."

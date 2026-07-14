@@ -728,3 +728,27 @@ ledger-only reporter's promotion field. Adoption still requires a reviewed
 implementation/fixture/corpus binding and separately authorized provider
 evidence. Corpus-report or fixture success does not enable gateway policy or
 change the shadow gateways' provider-bound bytes.
+
+C4f.3 runs the real Chapel one-shot path at 1/8/32/64 documents under two
+Qthreads workers and proves ordered results, card/provenance integrity,
+summary/manifest counts, and repeat determinism. It is a correctness and
+queueing-shape gate, not a throughput benchmark; resident 64-stream capacity
+remains a separate long-lived-service proof. The release pin is Chapel 2.7.0,
+while TIN-2807 owns the reviewed upgrade to current Chapel 2.9.
+
+C4f.4 imports terminal Responses or Codex usage from explicitly supplied local
+artifacts. A path-free sidecar hashes the validated schema-v2 ledger, manifest,
+selected handoff artifacts, exact ordered request bytes, and usage bytes. The
+importer performs no provider IO, preserves unreported cache/output fields as
+unknown, and compares a raw-input baseline with a condensed candidate only when
+ledger, corpus, source class, and model match. Hash descriptors make drift
+detectable when the external artifacts are rehashed, but do not authenticate
+the caller-supplied provider pairing, prove quality, or convert token counts
+into a cost claim. Authorized collection and the representative 20-50-spool
+gate remain separate adoption evidence.
+
+The importer also accepts the exact object returned by the Responses
+`/v1/responses/input_tokens` endpoint. That source binds one complete request,
+derives the model label from that request, and leaves cache/output telemetry
+unknown; the endpoint call itself remains outside prompt-toon and separately
+authorized.
