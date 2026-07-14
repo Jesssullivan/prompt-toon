@@ -232,7 +232,17 @@ class CorpusReportTests(unittest.TestCase):
                 ]["count"],
                 10,
             )
-            self.assertEqual(report["quality_gate"]["promotion"], "blocked")
+            self.assertEqual(
+                report["quality_gate"],
+                {
+                    "promotion": "blocked",
+                    "status": "not-evaluated",
+                    "required_next": (
+                        "reviewed implementation/fixture/corpus binding plus "
+                        "separately authorized provider evidence"
+                    ),
+                },
+            )
             self.assertFalse(report["claim_boundary"]["raw_sources_read"])
             self.assertEqual(report["claim_boundary"]["provider_requests"], 0)
             self.assertNotIn(str(root), json.dumps(report, sort_keys=True))
