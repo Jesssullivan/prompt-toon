@@ -54,8 +54,12 @@ C4 online IO gateway:
   savings distinct from end-to-end synthesis-context savings. C4f.1 adds the
   schema-v2 corpus identity/card count and deterministic ledger-only reporter;
   C4f.2 adds a separate all-or-nothing synthetic artifact-quality gate for
-  constraint recall, open questions, redaction, and provenance. The fixture
-  pass does not attest arbitrary corpus ledgers or provider-visible quality.
+  constraint recall, open questions, redaction, and provenance; C4f.3 gates the
+  real Chapel one-shot path at 1/8/32/64 documents without making a throughput
+  claim; C4f.4 imports externally produced exact counts or terminal usage into
+  path-free, request/artifact-hash-bound sidecars without provider IO. These
+  gates do not attest arbitrary corpus ledgers, authenticate an external
+  provider pairing, or prove provider-visible quality.
 - `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
   current 2.9 docs inform review but do not rewrite artifact provenance.
 

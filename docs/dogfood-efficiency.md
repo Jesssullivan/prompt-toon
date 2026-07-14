@@ -40,7 +40,10 @@ The default `--engine auto` behavior is observable:
   `coforall` semantics create a distinct task for each iteration and wait for
   all child tasks, so the CLI keeps the production document ceiling rather
   than permitting an unbounded fan-in. See the
-  [Chapel 2.9 task-parallel specification](https://chapel-lang.org/docs/language/spec/task-parallelism-and-synchronization.html).
+  [Chapel 2.7 `coforall` guide](https://chapel-lang.org/docs/2.7/users-guide/taskpar/coforall.html)
+  for the pinned compiler and the
+  [current task-parallel specification](https://chapel-lang.org/docs/language/spec/task-parallelism-and-synchronization.html)
+  used for forward review. TIN-2807 owns the compiler upgrade to 2.9.
 - `python`: the sequential parity oracle was used because `ptoon` was absent.
   The ledger records the fallback; it is never presented as Chapel evidence.
   It enforces the same input ceilings but has no wall-clock withholding
@@ -177,6 +180,63 @@ or unlock the corpus reporter's promotion field. Adoption still needs a
 reviewed binding between an implementation/fixture revision and representative
 corpus evidence, followed by separately authorized provider evidence.
 
+## Exact Usage Imports
+
+C4f.4 imports already-produced exact counts or terminal usage without contacting
+a provider. Keep the complete request bodies and the Responses count, terminal
+Response, or Codex JSONL artifact in an access-controlled local path, then
+generate one sidecar per variant:
+
+```sh
+just provider-usage-import \
+  --ledger path/to/run/efficiency.json \
+  --request path/to/raw-request.json \
+  --usage path/to/raw-response.json \
+  --source responses-json \
+  --variant raw_input > raw.provider-usage.json
+
+just provider-usage-import \
+  --ledger path/to/run/efficiency.json \
+  --request path/to/condensed-request.json \
+  --usage path/to/condensed-response.json \
+  --source responses-json \
+  --variant summary_only > summary.provider-usage.json
+
+just provider-usage-compare \
+  raw.provider-usage.json summary.provider-usage.json
+```
+
+Repeat `--request` only with `codex-jsonl`, in provider request order, when one
+observed Codex turn made multiple Responses requests; the checked ceiling is
+256 request artifacts, 16 MiB each and 64 MiB in aggregate. `responses-json`
+accepts one terminal Response object, `responses-sse` requires one request and
+exactly one terminal `response.completed` event, and `codex-jsonl` requires
+exactly one completed turn plus an explicit `--model-label` matching every
+request-declared model. Codex JSONL input is separately bounded at 64 MiB so
+long tool loops remain measurable without permitting unbounded reads.
+
+For a separately authorized call to `/v1/responses/input_tokens`, use
+`responses-input-count` with the exact single request payload and returned
+`response.input_tokens` object. Its model label comes from the request and all
+cache/output fields remain unknown. The importer opens only explicitly named
+regular files through bounded no-follow reads. It hashes raw bytes without JSON
+reserialization and emits no filesystem paths, request content, response
+content, timestamps, or provider credentials.
+
+The sidecar binds the schema-v2 ledger, corpus identity, manifest, selected
+handoff artifacts, ordered request sequence, and usage artifact. Missing cache
+or output fields remain `null`; they are never inferred as zero. Comparison
+requires the same ledger, corpus, source class, and model, with a `raw_input`
+baseline and a non-raw candidate. It reports exact input-token change and cache
+reads/writes separately, but no dollar cost or quality score.
+
+These are caller-supplied external artifacts. The descriptors make drift
+detectable when the artifacts are rehashed, but they do not authenticate that a
+provider saw the request or that the request semantically contains the named
+handoff. The importer itself records zero provider requests. Provider-backed
+collection remains separately authorized, and deterministic quality/corpus
+gates remain independent.
+
 ## Token Claim Boundary
 
 The local estimator counts ASCII word runs and individual non-whitespace
@@ -194,12 +254,13 @@ only under an explicit authorization and budget; `dogfood` never invokes it.
 GPT-5.6 also reports prompt-cache reads as `cached_tokens` and writes as
 `cache_write_tokens`; cache writes and reads have different economics. Exact
 prefix reuse depends on preserving stable prompt order and cache controls.
-Future authorized imports must therefore bind all three counts to the complete
-request artifact and keep stable authority-bearing prefixes before variable
-condensed context. Fewer lexical pieces or request bytes alone is not a net
-provider-cost proof. See the current
+Terminal usage imports therefore bind total input, cache-read, and cache-write
+counts when reported; input-count artifacts deliberately leave cache telemetry
+unknown. Keep stable authority-bearing prefixes before variable condensed
+context. Fewer lexical pieces or request bytes alone is not a net provider-cost
+proof. See the current
 [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
-and [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching).
+and [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching#requirements).
 
 The optional `--mythos-route` and `--model-label` fields are caller-observed
 session labels. They are not proof that a provider routed a request to that
