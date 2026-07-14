@@ -1,13 +1,9 @@
-name: Flywheel Lanes
+name: Flywheel Executor
 
-# TIN-2704: GloriousFlywheel two-tier lanes (TIN-2287 goo pattern, adapted
-# for a PRIVATE personal repo). Both lanes are dormant until the operator
-# arms the repo variables AND the jesssullivan-infra overlay carries the
-# repo-scoped ARC anchor + token-exchange allowlist entry:
-#   - vars.FLYWHEEL_ENABLED='true'          → cache lane (skip-green until then)
-#   - vars.FLYWHEEL_EXECUTOR_ENABLED='true' → executor lane (never required)
-# Endpoint-free by contract: endpoints arrive from the ARC runner env; the
-# vendored scripts default to the public exchange front door only.
+# TIN-2704: required-ready Linux validation on the pooled GloriousFlywheel
+# substrate. This workflow remains variable-gated until the repo-scoped ARC
+# registration anchor and GF consumer row are live. Branch protection moves
+# only after one counted executor proof passes.
 
 on:
   push:
@@ -23,31 +19,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  # (A) Cache-first lane: shared-cache-backed, read-only uploads.
-  flywheel-cache:
-    name: Flywheel cache-first (shared-cache-backed)
-    runs-on: tinyland-nix
-    timeout-minutes: 20
-    if: ${{ vars.FLYWHEEL_ENABLED == 'true' }}
-    env:
-      GF_BAZEL_SUBSTRATE_MODE: shared-cache-backed
-      GF_BAZEL_REMOTE_UPLOAD: 'false'
-      GF_FLYWHEEL_PROFILE_STATE: shared-cache-backed
-    steps:
-      - uses: actions/checkout@v6
-      - uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-      - name: Flywheel doctor
-        run: nix develop --command just flywheel-doctor
-      - name: Flywheel cache-first remote check
-        run: nix develop --command just flywheel-check
+env:
+  # Immutable GF source for the profile tools and authoritative process parser.
+  GF_CORE_REV: d0c244319f496f8f35ea12741a2168b7a0dab4cc
 
-  # (B) Executor-backed RBE proof lane. NON-REQUIRED, double-gated.
-  flywheel-executor:
-    name: Flywheel executor-backed RBE (proof lane; non-required)
+jobs:
+  executor:
+    name: Flywheel executor-backed validation
     if: >-
       vars.FLYWHEEL_EXECUTOR_ENABLED == 'true' &&
       (github.event_name != 'pull_request' ||
@@ -56,47 +34,83 @@ jobs:
       contents: read
       id-token: write
     runs-on: tinyland-nix
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-      - name: Require executor-backed GloriousFlywheel lane
+
+      - name: Install pinned GloriousFlywheel profile tools
+        id: gf
         run: |
           set -euo pipefail
-          if [ -z "${BAZEL_REMOTE_CACHE:-}" ]; then
-            echo "::error::BAZEL_REMOTE_CACHE is missing. This job must run on the in-cluster GloriousFlywheel ARC lane."
+          ref="github:tinyland-inc/GloriousFlywheel/${GF_CORE_REV}"
+          tools="$(nix --option access-tokens "" build --no-link --print-out-paths "${ref}#gloriousflywheel-profile-tools")"
+          source_path="$(nix --option access-tokens "" eval --raw --impure --expr "(builtins.getFlake \"${ref}\").outPath")"
+          for tool in flywheel-github-oidc-profile gf-reapi-credhelper flywheel-verify gloriousflywheel-bazel; do
+            test -x "${tools}/bin/${tool}" || {
+              echo "::error::${tool} missing from pinned GF profile tools"
+              exit 1
+            }
+          done
+          echo "bin=${tools}/bin" >> "${GITHUB_OUTPUT}"
+          echo "source=${source_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Require the in-cluster executor front door
+        run: |
+          set -euo pipefail
+          test -n "${BAZEL_REMOTE_EXECUTOR:-}" || {
+            echo "::error::BAZEL_REMOTE_EXECUTOR is missing from the ARC profile"
             exit 1
-          fi
-          if [ -z "${BAZEL_REMOTE_EXECUTOR:-}" ]; then
-            echo "::error::BAZEL_REMOTE_EXECUTOR is missing. Refusing to run as shared-cache local work on an RBE-named lane."
+          }
+          test -n "${GF_REAPI_TOKEN_EXCHANGE_ENDPOINT:-}" || {
+            echo "::error::GF_REAPI_TOKEN_EXCHANGE_ENDPOINT is missing from the ARC profile"
             exit 1
-          fi
-          echo "GF_BAZEL_SUBSTRATE_MODE=executor-backed" >> "$GITHUB_ENV"
-          echo "GF_BAZEL_REMOTE_EXECUTION_PLATFORM=${GF_BAZEL_REMOTE_EXECUTION_PLATFORM:-gloriousflywheel-rbe-linux-x86_64}" >> "$GITHUB_ENV"
-      - name: Mint GloriousFlywheel REAPI token
+          }
+
+      - name: Mint short-lived GF executor profile
+        id: mint
         env:
           GF_REAPI_TOKEN_EXCHANGE_TTL: 45m
-          GF_REAPI_TOKEN_EXCHANGE_URL: ${{ vars.GF_REAPI_TOKEN_EXCHANGE_URL }}
-        run: nix develop --command bash scripts/mint-gf-reapi-token-from-exchange.sh
-      - name: Validate executor-backed attachment
-        run: nix develop --command bash scripts/cache-attachment-contract.sh --strict
-      - name: Remote check + test (executor-backed RBE)
-        run: nix develop --command just flywheel-executor-check
-      # TIN-2708/2709: the real payload — compile the ptoon Chapel binary on
-      # GF REAPI (Bazel-drives-chpl). //src/ptoon:ptoon is target_compatible_with
-      # linux and its ChapelCompile action is spawn_strategy=remote with no local
-      # fallback, so this step ONLY succeeds by executing chpl on the executor.
-      #
-      # PROBE (continue-on-error): the remote action resolves `chpl` from the
-      # worker env (use_default_shell_env — "nix owns the toolchain version").
-      # This step therefore also measures whether the tinyland-nix RBE worker
-      # image ships chpl. If it does not, the honest fix is a hermetic
-      # rules_nixpkgs chpl toolchain (C3, TIN-2710) — NOT a red non-required
-      # lane. The mint/cache/executor-check steps above are the REAPI plumbing
-      # proof; this step is the toolchain-readiness signal on top of it.
-      - name: Compile ptoon on GF REAPI (Bazel-drives-chpl) [probe]
-        continue-on-error: true
-        run: nix develop --command just flywheel-chapel
+        run: |
+          set -euo pipefail
+          "${{ steps.gf.outputs.bin }}/flywheel-github-oidc-profile" --endpoint "${GF_REAPI_TOKEN_EXCHANGE_ENDPOINT}" --request executor --ttl "${GF_REAPI_TOKEN_EXCHANGE_TTL}" --frontdoor-endpoint "${BAZEL_REMOTE_EXECUTOR}" --credential-helper-bin "${{ steps.gf.outputs.bin }}/gf-reapi-credhelper" --renew-background --renew-log "${RUNNER_TEMP}/gf-reapi-token-renewer.log" --github-output "${GITHUB_OUTPUT}"
+
+      - name: Validate profile and force remote execution
+        id: proof
+        run: |
+          set -euo pipefail
+          source "${{ steps.mint.outputs.profile_file }}"
+          export PATH="${{ steps.gf.outputs.bin }}:${PATH}"
+          "${{ steps.gf.outputs.bin }}/flywheel-verify"
+          log="${RUNNER_TEMP}/prompt-toon-rbe.log"
+          nix develop --command just flywheel-executor-proof "${log}"
+          echo "log=${log}" >> "${GITHUB_OUTPUT}"
+
+      - name: Require counted remote processes
+        env:
+          GF_SOURCE: ${{ steps.gf.outputs.source }}
+          PROOF_LOG: ${{ steps.proof.outputs.log }}
+        run: |
+          set -euo pipefail
+          nix develop --command python3 - "${GF_SOURCE}/scripts/gf-reapi-proof-result.py" "${PROOF_LOG}" <<'PY'
+          import importlib.util
+          import sys
+          from pathlib import Path
+
+          parser_path, log_path = map(Path, sys.argv[1:3])
+          spec = importlib.util.spec_from_file_location("gf_reapi_proof_result", parser_path)
+          if spec is None or spec.loader is None:
+              raise SystemExit(f"cannot load GF proof parser: {parser_path}")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          process_line, counts = module.parse_process_counts(
+              log_path.read_text(encoding="utf-8")
+          )
+          print(process_line)
+          print(f"GF remote processes: {counts['remote_processes']}")
+          if counts["remote_processes"] <= 0:
+              raise SystemExit("executor proof did not record any remote processes")
+          PY

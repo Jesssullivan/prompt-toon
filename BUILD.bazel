@@ -35,6 +35,9 @@ sh_test(
     name = "unit_tests",
     srcs = ["tests/run_tests.sh"],
     data = [
+        ".bazelrc.flywheel",
+        ".github/workflows/ci-flywheel.yml",
+        "Justfile",
         ":delegation_policy",
         ":skills",
         # TIN-2706: tests/test_manifest.py regenerates the manifest in-sandbox.
@@ -46,6 +49,7 @@ sh_test(
         "tools/openai_gateway_harness_probe.py",
         "tools/quality_runner.py",
         "tools/service_parity.py",
+        "tinyland.repo.json",
         "//tools/packaging:gen_manifest.py",
         "//tools/packaging:gen_home_manager_contract.py",
     ] + glob([
