@@ -11,6 +11,7 @@ on:
       - "packaging/manifest.json"
       - "prompt_toon/**"
       - "src/ptoon/**"
+      - "tools/one_shot_count_matrix.py"
       - "tools/service_parity.py"
   workflow_dispatch:
 
