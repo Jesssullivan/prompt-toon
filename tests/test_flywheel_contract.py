@@ -64,6 +64,18 @@ class FlywheelContractTest(unittest.TestCase):
             (ROOT / "scripts" / "mint-gf-reapi-token-from-exchange.sh").exists()
         )
 
+    def test_required_legacy_checks_use_the_gf_runner(self) -> None:
+        for workflow_name in (
+            "bazel-graph.yml",
+            "build-and-test.yml",
+            "secrets-scan.yml",
+        ):
+            workflow = (
+                ROOT / ".github" / "workflows" / workflow_name
+            ).read_text(encoding="utf-8")
+            self.assertIn("runs-on: tinyland-nix", workflow)
+            self.assertNotIn("runs-on: ubuntu-latest", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
