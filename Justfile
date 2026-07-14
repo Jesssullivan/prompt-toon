@@ -87,7 +87,7 @@ bazel-graph:
     cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
 
 bazel-test:
-    cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test //...
+    cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
 
 check: compile-check secrets-scan test quality-fixtures bazel-graph bazel-test
 

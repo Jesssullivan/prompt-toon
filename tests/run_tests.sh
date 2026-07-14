@@ -14,4 +14,9 @@ if [[ -n "${TEST_SRCDIR:-}" ]]; then
 fi
 
 export PYTHONPATH="${PWD}${PYTHONPATH:+:${PYTHONPATH}}"
-exec python3 -m unittest discover -s tests -p 'test_*.py'
+test_python="${PROMPT_TOON_TEST_PYTHON:-python3}"
+if ! "$test_python" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+  echo "prompt-toon tests require Python 3.11 or newer" >&2
+  exit 1
+fi
+exec "$test_python" -m unittest discover -s tests -p 'test_*.py'
