@@ -174,8 +174,10 @@
             assert "serve" in caps.get("features", [])
             PY
             ${lib.optionalString pkgs.stdenv.isDarwin ''
-              echo "== native Darwin resident serve round trip =="
+              echo "== native Darwin one-shot document-count matrix =="
               export PROMPT_TOON_PTOON="$PWD/ptoon"
+              python3 tools/one_shot_count_matrix.py
+              echo "== native Darwin resident serve round trip =="
               python3 tools/service_parity.py
               echo "== native Darwin offline dogfood round trip =="
               PYTHONPATH="$PWD" python3 -m unittest \
@@ -258,6 +260,8 @@
             python3 tools/batch_parity.py | tee parity-batch.md
             echo "== stream parity (condense-batch cards == python oracle cards) =="
             python3 tools/stream_parity.py | tee parity-stream.md
+            echo "== one-shot Chapel document-count matrix (ordered 1/8/32/64 fan-in) =="
+            python3 tools/one_shot_count_matrix.py | tee one-shot-count-matrix.md
             echo "== resident service parity (multiplexed serve == one-shot condense) =="
             python3 tools/service_parity.py | tee parity-service.md
             echo "== resident service capacity (64 streams, bounded RSS) =="
@@ -277,7 +281,7 @@
           installPhase = ''
             runHook preInstall
             mkdir -p $out
-            cp quality-python.json quality-chapel.json parity-functions.md parity-condense.md parity-batch.md parity-stream.md parity-service.md capacity-service.md capacity-gateway.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
+            cp quality-python.json quality-chapel.json parity-functions.md parity-condense.md parity-batch.md parity-stream.md one-shot-count-matrix.md parity-service.md capacity-service.md capacity-gateway.md parity-analyze.md hook-canary.md engine-tests.txt full-suite.txt $out/ 2>/dev/null || true
             runHook postInstall
           '';
         };
