@@ -976,8 +976,8 @@ def build_corpus_report(raw_paths: list[str]) -> dict[str, Any]:
             "promotion": "blocked",
             "status": "not-evaluated",
             "required_next": (
-                "C4f.2 deterministic constraint, open-question, redaction, and "
-                "provenance fixtures"
+                "reviewed implementation/fixture/corpus binding plus separately "
+                "authorized provider evidence"
             ),
         },
     }
