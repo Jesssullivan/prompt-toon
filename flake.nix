@@ -298,11 +298,17 @@
               cp -R ${lib.escapeShellArg ".agents/skills/${skill}"} "$out/share/prompt-toon/skills/"
             '') manifest.skills}
             cp -R policy "$out/share/prompt-toon/policy"
+            cat > "$out/lib/prompt-toon-launcher.py" <<EOF
+            import runpy
+            import sys
+
+            sys.path.insert(0, "$out/lib/prompt-toon")
+            runpy.run_module("prompt_toon", run_name="__main__", alter_sys=True)
+            EOF
             cat > "$out/bin/prompt-toon" <<EOF
             #!${pkgs.bash}/bin/bash
-            export PYTHONPATH="$out/lib/prompt-toon''${PYTHONPATH:+:''${PYTHONPATH}}"
-            export PROMPT_TOON_IO_POLICY="''${PROMPT_TOON_IO_POLICY:-$out/share/prompt-toon/policy/io.json}"
-            exec ${pkgs.python3}/bin/python -m prompt_toon "\$@"
+            export PROMPT_TOON_IO_POLICY="\''${PROMPT_TOON_IO_POLICY:-$out/share/prompt-toon/policy/io.json}"
+            exec ${pkgs.python3}/bin/python -I "$out/lib/prompt-toon-launcher.py" "\$@"
             EOF
             chmod +x "$out/bin/prompt-toon"
             runHook postInstall
@@ -311,6 +317,32 @@
           installCheckPhase = ''
             runHook preInstallCheck
             test "$("$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
+            shadow_dir="$(mktemp -d)"
+            mkdir -p "$shadow_dir/prompt_toon"
+            : > "$shadow_dir/prompt_toon/__init__.py"
+            printf 'print("checkout-shadow")\n' > "$shadow_dir/prompt_toon/__main__.py"
+            poison_path="$shadow_dir/python-env"
+            mkdir -p "$poison_path"
+            printf 'raise SystemExit("sitecustomize loaded")\n' > "$poison_path/sitecustomize.py"
+            user_site="$(PYTHONUSERBASE="$shadow_dir/userbase" ${pkgs.python3}/bin/python -c 'import site; print(site.getusersitepackages())')"
+            mkdir -p "$user_site"
+            cp "$poison_path/sitecustomize.py" "$user_site/sitecustomize.py"
+            (
+              cd "$shadow_dir"
+              test "$(PYTHONPATH="$poison_path" PYTHONUSERBASE="$shadow_dir/userbase" "$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
+            )
+            runtime_policy="$shadow_dir/runtime-policy.json"
+            cp "$out/share/prompt-toon/policy/io.json" "$runtime_policy"
+            PROMPT_TOON_IO_POLICY="$runtime_policy" "$out/bin/prompt-toon" doctor --timeout 0 > "$shadow_dir/doctor.json"
+            ${pkgs.python3}/bin/python - "$runtime_policy" "$shadow_dir/doctor.json" <<'PY'
+            import json
+            import sys
+
+            with open(sys.argv[2], encoding="utf-8") as handle:
+                doctor = json.load(handle)
+            assert doctor["adoption"]["policy"]["path"] == sys.argv[1]
+            assert doctor["adoption"]["policy"]["available"] is True
+            PY
             "$out/bin/prompt-toon" corpus-report --help >/dev/null
             "$out/bin/prompt-toon" provider-usage-import --help >/dev/null
             "$out/bin/prompt-toon" provider-usage-compare --help >/dev/null
