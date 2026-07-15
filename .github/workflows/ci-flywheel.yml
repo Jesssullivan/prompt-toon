@@ -89,7 +89,7 @@ jobs:
           nix develop --command just flywheel-executor-proof "${log}"
           echo "log=${log}" >> "${GITHUB_OUTPUT}"
 
-      - name: Require counted remote processes
+      - name: Require counted remote execution and cache reuse
         env:
           GF_SOURCE: ${{ steps.gf.outputs.source }}
           PROOF_LOG: ${{ steps.proof.outputs.log }}
@@ -111,6 +111,9 @@ jobs:
           )
           print(process_line)
           print(f"GF remote processes: {counts['remote_processes']}")
+          print(f"GF remote cache hits: {counts['remote_cache_hits']}")
           if counts["remote_processes"] <= 0:
               raise SystemExit("executor proof did not record any remote processes")
+          if counts["remote_cache_hits"] <= 0:
+              raise SystemExit("executor proof did not record any remote cache hits")
           PY

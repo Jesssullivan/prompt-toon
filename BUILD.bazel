@@ -31,6 +31,17 @@ filegroup(
     ],
 )
 
+# A real, deterministic consumer action for the GF enrollment gate. The
+# two-pass executor proof builds this from isolated output bases: the warm pass
+# executes it remotely, and the measured pass must reuse its remote result
+# while the test actions themselves execute because test-result caching is off.
+genrule(
+    name = "gf_cache_probe",
+    srcs = ["packaging/manifest.json"],
+    outs = ["gf-cache-probe.json"],
+    cmd = "cp $(location packaging/manifest.json) $@",
+)
+
 sh_test(
     name = "unit_tests",
     srcs = ["tests/run_tests.sh"],
@@ -42,6 +53,7 @@ sh_test(
         ".github/workflows/secrets-scan.yml",
         "Justfile",
         ":delegation_policy",
+        ":gf_cache_probe",
         ":skills",
         # TIN-2706: tests/test_manifest.py regenerates the manifest in-sandbox.
         ":manifest_srcs",

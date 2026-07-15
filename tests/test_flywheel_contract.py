@@ -41,6 +41,7 @@ class FlywheelContractTest(unittest.TestCase):
             'nix --option access-tokens "" eval --raw --impure',
             "gf-reapi-proof-result.py",
             'counts["remote_processes"] <= 0',
+            'counts["remote_cache_hits"] <= 0',
         ):
             self.assertIn(required, workflow)
         for required in (
@@ -48,6 +49,8 @@ class FlywheelContractTest(unittest.TestCase):
             "--remote_accept_cached=false",
             "--nocache_test_results",
             "--execution_log_json_file=",
+            "warm-output",
+            "measured-output",
         ):
             self.assertIn(required, recipes)
         for forbidden in (
@@ -75,6 +78,12 @@ class FlywheelContractTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn("runs-on: tinyland-nix", workflow)
             self.assertNotIn("runs-on: ubuntu-latest", workflow)
+
+    def test_executor_proof_has_a_deterministic_cacheable_action(self) -> None:
+        build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
+        self.assertIn('name = "gf_cache_probe"', build)
+        self.assertIn('srcs = ["packaging/manifest.json"]', build)
+        self.assertIn('":gf_cache_probe"', build)
 
 
 if __name__ == "__main__":

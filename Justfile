@@ -221,15 +221,26 @@ flywheel-check *targets="//:ci_validation_suite":
 flywheel-executor-check *targets="//:ci_validation_suite":
     cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed {{targets}}
 
-# Force a fresh executor-backed test action and retain the Bazel process
-# summary for the GF enrollment/write-back gate.
+# Warm a deterministic consumer action through remote execution, then use an
+# isolated output base for the measured pass. Test-result caching remains off,
+# so the measured summary must contain both remote cache reuse and remote test
+# execution for the GF enrollment/write-back gate.
 flywheel-executor-proof log target="//:ci_validation_suite":
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{root}}
     log="{{log}}"
+    warm_log="${log%.log}.warm.log"
     execution_log="${log%.log}.execution.json"
-    GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --remote_accept_cached=false --nocache_test_results --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
+    warm_execution_log="${log%.log}.warm.execution.json"
+    warm_output_base="${log%.log}.warm-output"
+    measured_output_base="${log%.log}.measured-output"
+    if ! BAZEL_OUTPUT_BASE="${warm_output_base}" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --remote_accept_cached=false --nocache_test_results --execution_log_json_file="${warm_execution_log}" "{{target}}" >"${warm_log}" 2>&1; then
+      cat "${warm_log}" >&2
+      exit 1
+    fi
+    echo "GF warm pass completed; measuring remote execution plus cache reuse"
+    BAZEL_OUTPUT_BASE="${measured_output_base}" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --nocache_test_results --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
 
 # TIN-2709 C2, pulled into C1: compile the ptoon Chapel binary on GF REAPI.
 # nix owns the chpl version (the executor image / devshell provides it); Bazel
