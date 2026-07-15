@@ -1,5 +1,5 @@
 {
-  description = "prompt-toon: local agent research condenser with measured TOON support";
+  description = "prompt-toon: harness-to-model streaming IO middleware with bounded Chapel transforms";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
