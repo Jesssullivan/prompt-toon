@@ -358,12 +358,16 @@ class ManifestTests(unittest.TestCase):
     def test_installed_launcher_isolates_imports_and_preserves_policy_override(self):
         flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
         self.assertIn('/bin/python -I "$out/lib/prompt-toon-launcher.py"', flake)
-        self.assertIn('runpy.run_module("prompt_toon"', flake)
+        self.assertIn(
+            'runpy.run_module("prompt_toon", run_name="__main__", alter_sys=True)',
+            flake,
+        )
         self.assertNotIn('export PYTHONPATH="$out/lib/prompt-toon', flake)
         self.assertIn("prompt_toon/__init__.py", flake)
         self.assertIn("sitecustomize.py", flake)
         self.assertIn('printf \'print("checkout-shadow")', flake)
         self.assertIn('cd "$shadow_dir"', flake)
+        self.assertIn('cp "$out/share/prompt-toon/policy/io.json"', flake)
         self.assertIn('PROMPT_TOON_IO_POLICY="$runtime_policy"', flake)
 
 
