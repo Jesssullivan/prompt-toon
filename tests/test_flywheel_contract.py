@@ -84,6 +84,23 @@ class FlywheelContractTest(unittest.TestCase):
             self.assertIn("runs-on: tinyland-nix", workflow)
             self.assertNotIn("runs-on: ubuntu-latest", workflow)
 
+    def test_darwin_pr_lane_is_definition_only_until_native_rbe_exists(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "native-darwin.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("name: Darwin Definition", workflow)
+        self.assertIn("runs-on: tinyland-nix", workflow)
+        self.assertIn(
+            "nix eval --raw .#packages.aarch64-darwin.ptoon.drvPath", workflow
+        )
+        for forbidden in (
+            "macos-15",
+            "nix build",
+            "Require native Apple Silicon",
+            "Build and run native smoke gates",
+        ):
+            self.assertNotIn(forbidden, workflow)
+
     def test_executor_proof_has_a_deterministic_cacheable_action(self) -> None:
         build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
         self.assertIn('name = "gf_cache_probe"', build)
