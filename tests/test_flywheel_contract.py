@@ -40,8 +40,10 @@ class FlywheelContractTest(unittest.TestCase):
             "flywheel-verify",
             'nix --option access-tokens "" eval --raw --impure',
             "gf-reapi-proof-result.py",
+            "REQUIRE_CACHE_REUSE",
+            "github.event_name == 'push'",
             'counts["remote_processes"] <= 0',
-            'counts["remote_cache_hits"] <= 0',
+            'require_cache_reuse and counts["remote_cache_hits"] <= 0',
         ):
             self.assertIn(required, workflow)
         for required in (
@@ -49,6 +51,8 @@ class FlywheelContractTest(unittest.TestCase):
             "--remote_accept_cached=false",
             "--nocache_test_results",
             "--execution_log_json_file=",
+            "mktemp -d",
+            "forced-output",
             "warm-output",
             "measured-output",
         ):
@@ -58,6 +62,7 @@ class FlywheelContractTest(unittest.TestCase):
             "ubuntu-latest",
             "cache-attachment-contract.sh",
             "mint-gf-reapi-token-from-exchange.sh",
+            "workflow_dispatch",
         ):
             self.assertNotIn(forbidden, workflow)
 

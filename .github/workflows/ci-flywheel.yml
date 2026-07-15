@@ -10,7 +10,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +21,9 @@ concurrency:
 env:
   # Immutable GF source for the profile tools and authoritative process parser.
   GF_CORE_REV: d0c244319f496f8f35ea12741a2168b7a0dab4cc
+  # PR executor tokens are deliberately action-cache read-only. Only the
+  # attested default-branch identity may warm and prove reusable cache value.
+  REQUIRE_CACHE_REUSE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   executor:
@@ -78,7 +80,7 @@ jobs:
           set -euo pipefail
           "${{ steps.gf.outputs.bin }}/flywheel-github-oidc-profile" --endpoint "${GF_REAPI_TOKEN_EXCHANGE_ENDPOINT}" --request executor --ttl "${GF_REAPI_TOKEN_EXCHANGE_TTL}" --frontdoor-endpoint "${BAZEL_REMOTE_EXECUTOR}" --credential-helper-bin "${{ steps.gf.outputs.bin }}/gf-reapi-credhelper" --renew-background --renew-log "${RUNNER_TEMP}/gf-reapi-token-renewer.log" --github-output "${GITHUB_OUTPUT}"
 
-      - name: Validate profile and force remote execution
+      - name: Validate profile and run the event-appropriate proof
         id: proof
         run: |
           set -euo pipefail
@@ -86,10 +88,11 @@ jobs:
           export PATH="${{ steps.gf.outputs.bin }}:${PATH}"
           "${{ steps.gf.outputs.bin }}/flywheel-verify"
           log="${RUNNER_TEMP}/prompt-toon-rbe.log"
-          nix develop --command just flywheel-executor-proof "${log}"
+          nix develop --command just flywheel-executor-proof \
+            "${log}" "//:ci_validation_suite" "${REQUIRE_CACHE_REUSE}"
           echo "log=${log}" >> "${GITHUB_OUTPUT}"
 
-      - name: Require counted remote execution and cache reuse
+      - name: Require counted execution and trusted-main cache reuse
         env:
           GF_SOURCE: ${{ steps.gf.outputs.source }}
           PROOF_LOG: ${{ steps.proof.outputs.log }}
@@ -97,6 +100,7 @@ jobs:
           set -euo pipefail
           nix develop --command python3 - "${GF_SOURCE}/scripts/gf-reapi-proof-result.py" "${PROOF_LOG}" <<'PY'
           import importlib.util
+          import os
           import sys
           from pathlib import Path
 
@@ -114,6 +118,7 @@ jobs:
           print(f"GF remote cache hits: {counts['remote_cache_hits']}")
           if counts["remote_processes"] <= 0:
               raise SystemExit("executor proof did not record any remote processes")
-          if counts["remote_cache_hits"] <= 0:
+          require_cache_reuse = os.environ.get("REQUIRE_CACHE_REUSE") == "true"
+          if require_cache_reuse and counts["remote_cache_hits"] <= 0:
               raise SystemExit("executor proof did not record any remote cache hits")
           PY
