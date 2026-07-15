@@ -88,9 +88,19 @@ jobs:
           export PATH="${{ steps.gf.outputs.bin }}:${PATH}"
           "${{ steps.gf.outputs.bin }}/flywheel-verify"
           log="${RUNNER_TEMP}/prompt-toon-rbe.log"
+          : > "${log}"
+          echo "log=${log}" >> "${GITHUB_OUTPUT}"
           nix develop --command just flywheel-executor-proof \
             "${log}" "//:ci_validation_suite" "${REQUIRE_CACHE_REUSE}"
-          echo "log=${log}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload executor proof log
+        if: always() && steps.proof.outputs.log != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: prompt-toon-rbe-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.proof.outputs.log }}
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Require counted execution and trusted-main cache reuse
         env:
