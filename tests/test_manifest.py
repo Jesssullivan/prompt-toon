@@ -355,6 +355,17 @@ class ManifestTests(unittest.TestCase):
             or "capacity-gateway.md" in release_surface
         )
 
+    def test_installed_launcher_isolates_imports_and_preserves_policy_override(self):
+        flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+        self.assertIn('/bin/python -I "$out/lib/prompt-toon-launcher.py"', flake)
+        self.assertIn('runpy.run_module("prompt_toon"', flake)
+        self.assertNotIn('export PYTHONPATH="$out/lib/prompt-toon', flake)
+        self.assertIn("prompt_toon/__init__.py", flake)
+        self.assertIn("sitecustomize.py", flake)
+        self.assertIn('printf \'print("checkout-shadow")', flake)
+        self.assertIn('cd "$shadow_dir"', flake)
+        self.assertIn('PROMPT_TOON_IO_POLICY="$runtime_policy"', flake)
+
 
 if __name__ == "__main__":
     unittest.main()
