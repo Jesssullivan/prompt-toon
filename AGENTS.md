@@ -1,9 +1,13 @@
 # Repository Instructions
 
-This repository is `prompt-toon`: a private local tool and skill surface for
-agent research condensation. It stages wide/deep research outputs into durable,
-provenance-preserving summaries and uses TOON only as an opt-in, measured leaf
-format for flat uniform rows.
+This repository is `prompt-toon`: standalone, low-level streaming IO middleware
+between local agent harnesses and remote model providers. Python owns provider
+HTTP, authentication, and streaming pass-through; one resident Chapel process
+owns bounded transforms over typed, provenance-bearing variable context.
+Offline research condensation and the agent skill are supported surfaces, not
+the whole-product definition. TOON remains an opt-in, measured leaf format for
+flat uniform rows. `prompt-enqueue` and unrelated queue products are outside
+this repository's product and dependency boundaries.
 
 ## Entrypoints
 
@@ -61,8 +65,8 @@ format for flat uniform rows.
 
 ## Linear
 
-- Initiative: Prompt TOON Agent Spool
-- Project: prompt-toon local research condenser
+- Initiative: Prompt TOON Streaming IO Middleware
+- Project: prompt-toon streaming IO middleware
 - Bootstrap issue: TIN-2691
 - Related constraints: TIN-2494, TIN-2524, TIN-2554
 

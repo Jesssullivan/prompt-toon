@@ -1,14 +1,14 @@
 # Linear Map
 
-Initiative: Prompt TOON Agent Spool
+Initiative: Prompt TOON Streaming IO Middleware
 
 - ID: `47641b08-44bc-4bac-956d-0dd8f8f88dad`
-- URL: https://linear.app/tinyland/initiative/prompt-toon-agent-spool-8b0b1b850a52
+- URL: https://linear.app/tinyland/initiative/prompt-toon-streaming-io-middleware-8b0b1b850a52
 
-Project: prompt-toon local research condenser
+Project: prompt-toon streaming IO middleware
 
 - ID: `6c824bb3-4e8f-4a7b-9092-2638ed945c54`
-- URL: https://linear.app/tinyland/project/prompt-toon-local-research-condenser-6ca57e460046
+- URL: https://linear.app/tinyland/project/prompt-toon-streaming-io-middleware-6ca57e460046
 
 Issues:
 
