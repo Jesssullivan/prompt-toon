@@ -172,7 +172,9 @@ The canonical report contains fixture/case IDs, counts, engine identity, and
 failure codes only. It has no timestamp, absolute path, raw fixture content,
 provider request, or timing. Local `just check` runs the Python oracle. The
 remote Linux parity derivation runs both Python and Chapel, while native remote
-Darwin repeats the Chapel gate without local `chpl` iteration.
+Darwin repeats the Chapel gate in the attended release lane without local
+`chpl` iteration. The pull-request Darwin definition check does not claim this
+native artifact proof.
 
 An `offline-fixture-pass` proves this fixed transform regression suite only. It
 does not attest arbitrary self-reported corpus ledgers, prove SWE task quality,
