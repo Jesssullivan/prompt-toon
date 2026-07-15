@@ -44,12 +44,16 @@ class FlywheelContractTest(unittest.TestCase):
             "github.event_name == 'push'",
             'counts["remote_processes"] <= 0',
             'require_cache_reuse and counts["remote_cache_hits"] <= 0',
+            "name: Upload executor proof log",
+            "if: always() && steps.proof.outputs.log != ''",
+            "uses: actions/upload-artifact@v7",
         ):
             self.assertIn(required, workflow)
         for required in (
             "flywheel-executor-proof",
             "--remote_accept_cached=false",
             "--nocache_test_results",
+            "--test_output=errors",
             "--execution_log_json_file=",
             "mktemp -d",
             "forced-output",
