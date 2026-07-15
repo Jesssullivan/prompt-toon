@@ -302,7 +302,7 @@
             #!${pkgs.bash}/bin/bash
             export PYTHONPATH="$out/lib/prompt-toon''${PYTHONPATH:+:''${PYTHONPATH}}"
             export PROMPT_TOON_IO_POLICY="''${PROMPT_TOON_IO_POLICY:-$out/share/prompt-toon/policy/io.json}"
-            exec ${pkgs.python3}/bin/python -m prompt_toon "\$@"
+            exec ${pkgs.python3}/bin/python -P -m prompt_toon "\$@"
             EOF
             chmod +x "$out/bin/prompt-toon"
             runHook postInstall
@@ -311,6 +311,14 @@
           installCheckPhase = ''
             runHook preInstallCheck
             test "$("$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
+            shadow="$TMPDIR/prompt-toon-cwd-shadow"
+            mkdir -p "$shadow/prompt_toon"
+            printf '%s\n' '__version__ = "cwd-shadow"' > "$shadow/prompt_toon/__init__.py"
+            printf '%s\n' 'from . import __version__; print(f"prompt-toon {__version__}")' > "$shadow/prompt_toon/__main__.py"
+            (
+              cd "$shadow"
+              test "$("$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
+            )
             "$out/bin/prompt-toon" corpus-report --help >/dev/null
             "$out/bin/prompt-toon" provider-usage-import --help >/dev/null
             "$out/bin/prompt-toon" provider-usage-compare --help >/dev/null
