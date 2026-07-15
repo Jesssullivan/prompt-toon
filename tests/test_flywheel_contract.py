@@ -111,6 +111,15 @@ class FlywheelContractTest(unittest.TestCase):
         self.assertIn('srcs = ["packaging/manifest.json"]', build)
         self.assertIn('":gf_cache_probe"', build)
 
+    def test_remote_test_runfiles_include_subprocess_and_manifest_imports(self) -> None:
+        build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
+        self.assertIn('"flake.nix"', build)
+        self.assertIn('"hooks/post_tool_condense.py"', build)
+        manifest_start = build.index('name = "manifest_srcs"')
+        manifest_end = build.index("test_suite(", manifest_start)
+        manifest_block = build[manifest_start:manifest_end]
+        self.assertIn('glob(["prompt_toon/**/*.py"])', manifest_block)
+
 
 if __name__ == "__main__":
     unittest.main()
