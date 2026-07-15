@@ -46,9 +46,11 @@ C4 online IO gateway:
 - `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile;
   exact-byte HTTP/SSE, opaque remote compaction, and real-CLI loopback proof;
   provider-backed canary waits on a filesystem-confined tool sandbox.
-- `TIN-2791` C4d: native remote Linux/Darwin package proof, split-auth managed
-  gateway contract, actual-state doctor/host-ledger schema, then a separate
-  Home Manager consumption and attended shadow rollout.
+- `TIN-2791` C4d: native Linux package proof, a Darwin definition check plus
+  attended interim release realization (durable native CI is blocked by
+  `TIN-2542`), split-auth managed gateway contract, actual-state
+  doctor/host-ledger schema, then Home Manager consumption and attended shadow
+  rollout.
 - `TIN-2819` C4e: provider-free durable-spool dogfood command and
   claim-bounded prompt-efficiency ledger; exact provider counts and live
   synthesis crossover remain separately authorized experiments.

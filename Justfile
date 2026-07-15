@@ -221,6 +221,37 @@ flywheel-check *targets="//:ci_validation_suite":
 flywheel-executor-check *targets="//:ci_validation_suite":
     cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed {{targets}}
 
+# PR identities are read-only and prove execution with one forced pass. Trusted
+# main pushes warm a deterministic consumer action, then use a second isolated
+# output base to prove both remote cache reuse and uncached test execution.
+flywheel-executor-proof log target="//:ci_validation_suite" require_cache_reuse="false":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{root}}
+    log="{{log}}"
+    require_cache_reuse="{{require_cache_reuse}}"
+    case "${require_cache_reuse}" in
+      true|false) ;;
+      *) echo "require_cache_reuse must be true or false" >&2; exit 2 ;;
+    esac
+    proof_root="$(mktemp -d "${TMPDIR:-/tmp}/prompt-toon-rbe.XXXXXX")"
+    trap 'rm -rf "${proof_root}"' EXIT
+    execution_log="${proof_root}/execution.json"
+    if [[ "${require_cache_reuse}" == "false" ]]; then
+      BAZEL_OUTPUT_BASE="${proof_root}/forced-output" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --remote_accept_cached=false --nocache_test_results --test_output=errors --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
+      exit 0
+    fi
+    warm_log="${proof_root}/warm.log"
+    warm_execution_log="${proof_root}/warm.execution.json"
+    warm_output_base="${proof_root}/warm-output"
+    measured_output_base="${proof_root}/measured-output"
+    if ! BAZEL_OUTPUT_BASE="${warm_output_base}" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --remote_accept_cached=false --nocache_test_results --test_output=errors --execution_log_json_file="${warm_execution_log}" "{{target}}" >"${warm_log}" 2>&1; then
+      cat "${warm_log}" >&2
+      exit 1
+    fi
+    echo "GF warm pass completed; measuring remote execution plus cache reuse"
+    BAZEL_OUTPUT_BASE="${measured_output_base}" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --nocache_test_results --test_output=errors --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
+
 # TIN-2709 C2, pulled into C1: compile the ptoon Chapel binary on GF REAPI.
 # nix owns the chpl version (the executor image / devshell provides it); Bazel
 # owns the graph, cache, and remote execution. //src/ptoon:ptoon is

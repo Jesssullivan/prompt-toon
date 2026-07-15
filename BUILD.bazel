@@ -31,11 +31,33 @@ filegroup(
     ],
 )
 
+# A real, deterministic consumer action for the GF enrollment gate. The
+# two-pass executor proof builds this from isolated output bases: the warm pass
+# executes it remotely, and the measured pass must reuse its remote result
+# while the test actions themselves execute because test-result caching is off.
+genrule(
+    name = "gf_cache_probe",
+    srcs = ["packaging/manifest.json"],
+    outs = ["gf-cache-probe.json"],
+    cmd = "cp $(location packaging/manifest.json) $@",
+)
+
 sh_test(
     name = "unit_tests",
     srcs = ["tests/run_tests.sh"],
     data = [
+        ".bazelrc.flywheel",
+        ".github/workflows/bazel-graph.yml",
+        ".github/workflows/build-and-test.yml",
+        ".github/workflows/ci-flywheel.yml",
+        ".github/workflows/native-darwin.yml",
+        ".github/workflows/secrets-scan.yml",
+        "BUILD.bazel",
+        "flake.nix",
+        "hooks/post_tool_condense.py",
+        "Justfile",
         ":delegation_policy",
+        ":gf_cache_probe",
         ":skills",
         # TIN-2706: tests/test_manifest.py regenerates the manifest in-sandbox.
         ":manifest_srcs",
@@ -46,6 +68,7 @@ sh_test(
         "tools/openai_gateway_harness_probe.py",
         "tools/quality_runner.py",
         "tools/service_parity.py",
+        "tinyland.repo.json",
         "//tools/packaging:gen_manifest.py",
         "//tools/packaging:gen_home_manager_contract.py",
     ] + glob([
@@ -63,15 +86,12 @@ filegroup(
     name = "manifest_srcs",
     srcs = [
         "MODULE.bazel",
-        "pyproject.toml",
-        "packaging/manifest.json",
         "packaging/home-manager.json",
-        "prompt_toon/adoption.py",
-        "prompt_toon/codex_harness.py",
-        "prompt_toon/__init__.py",
+        "packaging/manifest.json",
+        "pyproject.toml",
         ":delegation_policy",
         ":skills",
-    ],
+    ] + glob(["prompt_toon/**/*.py"]),
 )
 
 test_suite(
