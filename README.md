@@ -1,10 +1,17 @@
 # prompt-toon
 
-Private local tool and agent skill for safe research condensation.
+Low-level streaming IO middleware between local agent harnesses and remote
+model APIs, with provenance-preserving context optimization.
 
-`prompt-toon` turns noisy subagent/research output into a durable handoff:
-`summary.md`, `source-cards.jsonl`, and `manifest.json`. It is deterministic by
-default: no LLM call, no network call, no hidden transport change.
+The opt-in online gateways keep provider HTTP, authentication, and streaming
+pass-through in Python while one resident Chapel process owns bounded concurrent
+transforms over typed variable-context segments. Authority-bearing instructions,
+approval state, tool schemas, and provider controls are not transformed.
+
+Offline research condensation is one supported transform and dogfood workflow:
+`prompt-toon` turns noisy subagent/research output into `summary.md`,
+`source-cards.jsonl`, and `manifest.json`. That path is deterministic by default:
+no LLM call, no network call, and no hidden transport change.
 
 Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` process
 (native remote-built Nix outputs) owns normalize/redact/defang, the coforall
