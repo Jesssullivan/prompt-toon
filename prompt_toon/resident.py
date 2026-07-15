@@ -36,7 +36,7 @@ _MAX_DECIMAL_DIGITS = 20
 _MAX_POLICY_VALUE = 2_147_483_647
 _STDERR_LIMIT = 64 * 1024
 _ERROR_BODY_LIMIT = 64 * 1024
-_CAPS_TIMEOUT_SECONDS = 5
+_CAPS_TIMEOUT_SECONDS = 15
 
 CondenseRunResult = tuple[list[dict[str, Any]], str, dict[str, Any]]
 

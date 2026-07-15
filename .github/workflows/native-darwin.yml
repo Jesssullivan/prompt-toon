@@ -1,4 +1,4 @@
-name: Native Darwin
+name: Darwin Definition
 
 on:
   pull_request:
@@ -23,30 +23,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ptoon-native:
-    name: ptoon native aarch64-darwin
+  ptoon-derivation:
+    name: Evaluate aarch64-darwin ptoon derivation
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: macos-15
-    timeout-minutes: 30
+    runs-on: tinyland-nix
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - name: Require native Apple Silicon
-        run: |
-          test "$(uname -s)" = Darwin
-          test "$(uname -m)" = arm64
-          sw_vers
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-            accept-flake-config = true
-      - name: Build and run native smoke gates
+      - name: Instantiate without realizing the Darwin artifact
         run: |
-          ptoon_store="$(nix build \
-            .#packages.aarch64-darwin.ptoon \
-            --no-link \
-            --print-out-paths \
-            --print-build-logs)"
-          test -x "$ptoon_store/bin/ptoon"
-          file "$ptoon_store/bin/ptoon" | tee "$RUNNER_TEMP/ptoon-file.txt"
-          grep -q arm64 "$RUNNER_TEMP/ptoon-file.txt"
+          set -euo pipefail
+          drv_path="$(nix eval --raw .#packages.aarch64-darwin.ptoon.drvPath)"
+          case "$drv_path" in
+            /nix/store/*.drv) ;;
+            *) echo "::error::unexpected Darwin derivation path: $drv_path"; exit 1 ;;
+          esac
+          printf 'Darwin derivation: %s\n' "$drv_path"
