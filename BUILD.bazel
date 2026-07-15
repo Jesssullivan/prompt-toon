@@ -52,6 +52,7 @@ sh_test(
         ".github/workflows/ci-flywheel.yml",
         ".github/workflows/native-darwin.yml",
         ".github/workflows/secrets-scan.yml",
+        "BUILD.bazel",
         "Justfile",
         ":delegation_policy",
         ":gf_cache_probe",
