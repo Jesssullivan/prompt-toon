@@ -303,7 +303,7 @@
             import sys
 
             sys.path.insert(0, "$out/lib/prompt-toon")
-            runpy.run_module("prompt_toon", run_name="__main__")
+            runpy.run_module("prompt_toon", run_name="__main__", alter_sys=True)
             EOF
             cat > "$out/bin/prompt-toon" <<EOF
             #!${pkgs.bash}/bin/bash
@@ -332,6 +332,7 @@
               test "$(PYTHONPATH="$poison_path" PYTHONUSERBASE="$shadow_dir/userbase" "$out/bin/prompt-toon" --version)" = "prompt-toon ${manifest.version}"
             )
             runtime_policy="$shadow_dir/runtime-policy.json"
+            cp "$out/share/prompt-toon/policy/io.json" "$runtime_policy"
             PROMPT_TOON_IO_POLICY="$runtime_policy" "$out/bin/prompt-toon" doctor --timeout 0 > "$shadow_dir/doctor.json"
             ${pkgs.python3}/bin/python - "$runtime_policy" "$shadow_dir/doctor.json" <<'PY'
             import json
@@ -340,6 +341,7 @@
             with open(sys.argv[2], encoding="utf-8") as handle:
                 doctor = json.load(handle)
             assert doctor["adoption"]["policy"]["path"] == sys.argv[1]
+            assert doctor["adoption"]["policy"]["available"] is True
             PY
             "$out/bin/prompt-toon" corpus-report --help >/dev/null
             "$out/bin/prompt-toon" provider-usage-import --help >/dev/null
