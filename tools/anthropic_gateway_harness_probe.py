@@ -7,7 +7,6 @@ import argparse
 import http.client
 import http.server
 import json
-import os
 import sys
 import tempfile
 import threading
@@ -21,6 +20,7 @@ from prompt_toon.claude_harness import (
     build_claude_command,
     build_claude_env,
     claude_profile,
+    default_claude_bin,
     run_claude,
 )
 from prompt_toon.gateway import (
@@ -294,7 +294,7 @@ def _start_gateway(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--claude-bin", default=os.environ.get("CLAUDE_BIN", "claude"))
+    parser.add_argument("--claude-bin", default=default_claude_bin())
     parser.add_argument("--model", default="claude-sonnet-4-6")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument(
