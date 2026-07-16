@@ -1,4 +1,43 @@
-# Walking-skeleton Chapel build rule (see defs.bzl). Load via
-# `//tools/bazel/chapel:defs.bzl`. No targets here yet; the rule is consumed by
-# //src/ptoon:ptoon. rules_chapel extraction to the tinyland bazel-registry is C3.
-exports_files(["defs.bzl"])
+load(":toolchain.bzl", "chapel_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "defs.bzl",
+    "toolchain.bzl",
+])
+
+toolchain_type(
+    name = "toolchain_type",
+)
+
+# C1/C2 compatibility bridge. The GF Linux worker image owns the pinned chpl
+# runtime today; wrapping that lookup in a platform-constrained toolchain makes
+# the dependency explicit in analysis and prevents it from resolving for
+# Darwin. TIN-2949/TIN-2710 replace this implementation with a declared
+# rules_nixpkgs compiler closure, not another PATH wrapper.
+sh_binary(
+    name = "chpl_from_path",
+    srcs = ["chpl_from_path.sh"],
+)
+
+chapel_toolchain(
+    name = "linux_environmental_impl",
+    chpl = ":chpl_from_path",
+    hermetic = False,
+    identity = "gf-linux-executor-environmental-chpl-transition",
+)
+
+toolchain(
+    name = "linux_environmental_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    toolchain = ":linux_environmental_impl",
+    toolchain_type = ":toolchain_type",
+)
