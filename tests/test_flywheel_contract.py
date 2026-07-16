@@ -45,10 +45,13 @@ class FlywheelContractTest(unittest.TestCase):
             'counts["remote_processes"] <= 0',
             'require_cache_reuse and counts["remote_cache_hits"] <= 0',
             "name: Compile ptoon through the GF Chapel toolchain",
-            "nix develop --command just flywheel-chapel //src/ptoon:ptoon",
+            "nix develop --command just flywheel-chapel-proof",
+            "CHAPEL_EXECUTION_LOG:",
+            "tools/bazel/assert_execution_log.py",
+            "steps.chapel.outputs.execution_log",
             "CHAPEL_LOG:",
             'chapel_counts["remote_processes"] <= 0',
-            'chapel_counts["remote_cache_hits"] <= 0',
+            "Chapel build did not record remote execution",
             "name: Upload executor proof log",
             "steps.proof.outputs.log != '' || steps.chapel.outputs.log != ''",
             "uses: actions/upload-artifact@v7",
@@ -64,6 +67,13 @@ class FlywheelContractTest(unittest.TestCase):
             "forced-output",
             "warm-output",
             "measured-output",
+            "flywheel-chapel-proof",
+            "chapel-output",
+            "--spawn_strategy=remote",
+            "--remote_local_fallback=false",
+            "--target //src/ptoon:ptoon",
+            "--mnemonic ChapelCompile",
+            "gf.platform=gloriousflywheel-rbe-linux-x86_64",
         ):
             self.assertIn(required, recipes)
         for forbidden in (
@@ -85,6 +95,13 @@ class FlywheelContractTest(unittest.TestCase):
             config,
         )
         self.assertIn("build:executor-backed --remote_local_fallback=false", config)
+
+    def test_chapel_action_is_bound_and_non_cacheable_until_hermetic(self) -> None:
+        rule = (ROOT / "tools" / "bazel" / "chapel" / "defs.bzl").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('execution_requirements = {} if toolchain.hermetic else {"no-cache": "1"}', rule)
+        self.assertIn("toolchain = _CHAPEL_TOOLCHAIN_TYPE", rule)
 
     def test_stale_vendored_attachment_scripts_are_absent(self) -> None:
         self.assertFalse((ROOT / "scripts" / "cache-attachment-contract.sh").exists())

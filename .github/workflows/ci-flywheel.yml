@@ -100,9 +100,12 @@ jobs:
           source "${{ steps.mint.outputs.profile_file }}"
           export PATH="${{ steps.gf.outputs.bin }}:${PATH}"
           log="${RUNNER_TEMP}/prompt-toon-chapel-rbe.log"
+          execution_log="${RUNNER_TEMP}/prompt-toon-chapel-execution.json"
           : > "${log}"
+          : > "${execution_log}"
           echo "log=${log}" >> "${GITHUB_OUTPUT}"
-          nix develop --command just flywheel-chapel //src/ptoon:ptoon 2>&1 | tee "${log}"
+          echo "execution_log=${execution_log}" >> "${GITHUB_OUTPUT}"
+          nix develop --command just flywheel-chapel-proof "${log}" "${execution_log}"
 
       - name: Upload executor proof log
         if: always() && (steps.proof.outputs.log != '' || steps.chapel.outputs.log != '')
@@ -112,16 +115,23 @@ jobs:
           path: |
             ${{ steps.proof.outputs.log }}
             ${{ steps.chapel.outputs.log }}
+            ${{ steps.chapel.outputs.execution_log }}
           if-no-files-found: error
           retention-days: 7
 
       - name: Require counted execution, Chapel attachment, and trusted-main cache reuse
         env:
+          CHAPEL_EXECUTION_LOG: ${{ steps.chapel.outputs.execution_log }}
           CHAPEL_LOG: ${{ steps.chapel.outputs.log }}
           GF_SOURCE: ${{ steps.gf.outputs.source }}
           PROOF_LOG: ${{ steps.proof.outputs.log }}
         run: |
           set -euo pipefail
+          nix develop --command python3 tools/bazel/assert_execution_log.py \
+            "${CHAPEL_EXECUTION_LOG}" \
+            --target //src/ptoon:ptoon \
+            --mnemonic ChapelCompile \
+            --platform-property gf.platform=gloriousflywheel-rbe-linux-x86_64
           nix develop --command python3 - "${GF_SOURCE}/scripts/gf-reapi-proof-result.py" "${PROOF_LOG}" <<'PY'
           import importlib.util
           import os
@@ -150,13 +160,8 @@ jobs:
           print(chapel_process_line)
           print(f"GF Chapel remote processes: {chapel_counts['remote_processes']}")
           print(f"GF Chapel remote cache hits: {chapel_counts['remote_cache_hits']}")
-          if (
-              chapel_counts["remote_processes"] <= 0
-              and chapel_counts["remote_cache_hits"] <= 0
-          ):
-              raise SystemExit(
-                  "Chapel build recorded neither remote execution nor a remote cache hit"
-              )
+          if chapel_counts["remote_processes"] <= 0:
+              raise SystemExit("Chapel build did not record remote execution")
 
           require_cache_reuse = os.environ.get("REQUIRE_CACHE_REUSE") == "true"
           if require_cache_reuse and counts["remote_cache_hits"] <= 0:

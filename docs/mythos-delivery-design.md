@@ -540,9 +540,11 @@ the binary, `auto` falls open to Python when the binary is absent.
   note: https://chapel-lang.org/docs/technotes/libraries.html and
   https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
 - These are the current language references, not compiler provenance. The
-  locked `chapel-nix` input still reports Chapel 2.7.0; remote derivation names
-  and `flake.lock` are the build truth until a separately reviewed toolchain
-  upgrade lands. Do not claim a 2.9-built artifact from this revision.
+  locked source's Nix package metadata says 2.7.0, while a remote-only
+  `chpl --version` observation reports 2.8.0 pre-release. The exact
+  `flake.lock` revision and both identities remain build truth until a
+  separately reviewed upgrade lands. Do not claim a 2.7.0- or 2.9-built
+  artifact from this revision.
 - Bazel current platform/compatibility, `manual` tag, `run_shell`, and
   remote-execution rule guidance:
   https://bazel.build/extending/platforms,
@@ -750,8 +752,10 @@ C4f.3 runs the real Chapel one-shot path at 1/8/32/64 documents under two
 Qthreads workers and proves ordered results, card/provenance integrity,
 summary/manifest counts, and repeat determinism. It is a correctness and
 queueing-shape gate, not a throughput benchmark; resident 64-stream capacity
-remains a separate long-lived-service proof. The release pin is Chapel 2.7.0,
-while TIN-2807 owns the reviewed upgrade to current Chapel 2.9.
+remains a separate long-lived-service proof. The release pin is the exact
+Chapel source revision, whose Nix package metadata says 2.7.0 while the
+compiler reports 2.8.0 pre-release. TIN-2807 owns provenance reconciliation
+and the reviewed upgrade to current Chapel 2.9.
 
 C4f.4 imports terminal Responses or Codex usage from explicitly supplied local
 artifacts. A path-free sidecar hashes the validated schema-v3 or legacy-v2

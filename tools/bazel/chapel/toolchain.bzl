@@ -20,7 +20,12 @@ ChapelToolchainInfo = provider(
 def _chapel_toolchain_impl(ctx):
     runtime_sets = [ctx.attr.chpl[DefaultInfo].files]
     for target in ctx.attr.runtime_files:
-        runtime_sets.append(target[DefaultInfo].files)
+        default_info = target[DefaultInfo]
+        runtime_sets.extend([
+            default_info.files,
+            default_info.default_runfiles.files,
+            default_info.data_runfiles.files,
+        ])
 
     info = ChapelToolchainInfo(
         chpl = ctx.attr.chpl[DefaultInfo].files_to_run,

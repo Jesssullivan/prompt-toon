@@ -14,8 +14,9 @@ toolchain_type(
 # C1/C2 compatibility bridge. The GF Linux worker image owns the pinned chpl
 # runtime today; wrapping that lookup in a platform-constrained toolchain makes
 # the dependency explicit in analysis and prevents it from resolving for
-# Darwin. TIN-2949/TIN-2710 replace this implementation with a declared
-# rules_nixpkgs compiler closure, not another PATH wrapper.
+# Darwin. Its actions are non-cacheable because the ambient compiler is absent
+# from the action key. TIN-2949/TIN-2710 replace this implementation with a
+# declared rules_nixpkgs compiler closure, not another PATH wrapper.
 sh_binary(
     name = "chpl_from_path",
     srcs = ["chpl_from_path.sh"],

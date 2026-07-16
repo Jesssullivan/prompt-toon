@@ -14,10 +14,10 @@ load("//tools/bazel/chapel:defs.bzl", "chapel_binary")
 package(default_visibility = ["//visibility:public"])
 
 config_setting(
-    name = "darwin_aarch64_target",
+    name = "linux_x86_64_target",
     constraint_values = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:osx",
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
     ],
 )
 
@@ -42,15 +42,15 @@ chapel_binary(
     main = "Main.chpl",
     module_paths = ["src/ptoon"],
     require_hermetic_toolchain = select({
-        ":darwin_aarch64_target": True,
-        "//conditions:default": False,
+        ":linux_x86_64_target": False,
+        "//conditions:default": True,
     }),
     # Per Bazel's common-definitions docs, `manual` excludes this from wildcard
     # target expansion (`//...`, `:all`, etc.). That keeps this OUT of local
     # wildcard build+test on EVERY platform -- including x86_64-linux CI, where
     # it is otherwise compatible and `bazel test //...` would try to run
     # ChapelCompile locally (chpl: not found). It is built ONLY when named
-    # explicitly, i.e. by `just flywheel-chapel //src/ptoon:ptoon` on the GF
+    # explicitly, i.e. by the fixed `just flywheel-chapel` proof on the GF
     # REAPI executor lane.
     tags = ["manual"],
 )
