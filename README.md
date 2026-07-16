@@ -61,12 +61,14 @@ The run writes `summary.md`, authoritative `source-cards.jsonl`,
 `manifest.json`, optional `source-cards.toon`, and `efficiency.json` under the
 state directory. Token figures are explicitly labeled lexical estimates, not
 provider usage or billing telemetry. A separate whole-handoff gate prevents a
-TOON-vs-JSONL win from being presented as an end-to-end prompt win. See
-`docs/dogfood-efficiency.md`.
+TOON-vs-JSONL win from being presented as an end-to-end prompt win, and fails
+closed when a size-eligible handoff drops a recognized critical constraint or
+open question. See `docs/dogfood-efficiency.md`.
 Add `--mythos-route` or `--model-label` only when the caller observed those
 values; neither option proves delegation or provider routing.
 
-Aggregate explicit schema-v2 ledgers without reopening source material:
+Aggregate explicit schema-v3 or legacy schema-v2 ledgers without reopening
+source material:
 
 ```sh
 just dogfood-corpus path/to/run-*/efficiency.json
