@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .codex_harness import (
     LOOPBACK_NO_PROXY_VALUES,
@@ -69,6 +70,18 @@ _CHILD_ENV_ALLOWLIST = (
 
 def validate_loopback_url(value: str) -> str:
     return validate_loopback_gateway(value)
+
+
+def default_claude_bin(
+    *,
+    source: Mapping[str, str] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str:
+    env = os.environ if source is None else source
+    explicit = env.get("CLAUDE_BIN")
+    if explicit:
+        return explicit
+    return which("claude-api") or "claude"
 
 
 def claude_route_conflicts(source: Mapping[str, str]) -> list[str]:

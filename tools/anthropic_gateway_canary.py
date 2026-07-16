@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from prompt_toon.claude_harness import (
     build_claude_command,
     build_claude_env,
+    default_claude_bin,
     run_claude,
     validate_loopback_url,
 )
@@ -140,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=os.environ.get("ANTHROPIC_CANARY_MAX_BUDGET_USD"),
     )
-    parser.add_argument("--claude-bin", default=os.environ.get("CLAUDE_BIN", "claude"))
+    parser.add_argument("--claude-bin", default=default_claude_bin())
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--policy", default=default_io_policy_path())
     parser.add_argument("--ptoon")
