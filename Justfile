@@ -97,34 +97,42 @@ bazel-graph:
     cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
 
 # TIN-2949: analysis-only platform/toolchain proof. This runs no Chapel action:
-# Linux must resolve the transitional GF toolchain, while Darwin must fail
-# closed until a declared hermetic compiler is registered.
+# Linux must resolve the transitional GF toolchain without caching its ambient
+# compiler result, while Darwin must fail closed until a declared hermetic
+# compiler is registered.
 bazel-chapel-toolchain-contract:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{root}}
     output_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}"
     bazel=(bazelisk --output_user_root="${output_root}")
+    linux_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-linux-toolchain.XXXXXX")"
+    darwin_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-toolchain.XXXXXX")"
+    trap 'rm -f "${linux_log}" "${darwin_log}"' EXIT
     "${bazel[@]}" cquery \
       --platforms=//tools/bazel/platforms:linux_x86_64 \
       --extra_execution_platforms=//tools/bazel/platforms:linux_x86_64 \
       //src/ptoon:ptoon >/dev/null
-    log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-toolchain.XXXXXX")"
-    trap 'rm -f "${log}"' EXIT
+    "${bazel[@]}" aquery \
+      --platforms=//tools/bazel/platforms:linux_x86_64 \
+      --extra_execution_platforms=//tools/bazel/platforms:linux_x86_64 \
+      --output=text \
+      'mnemonic(ChapelCompile, //src/ptoon:ptoon)' >"${linux_log}"
+    grep -F "ExecutionInfo: {no-cache: 1}" "${linux_log}" >/dev/null
     set +e
     "${bazel[@]}" cquery \
       --platforms=//tools/bazel/platforms:darwin_aarch64 \
       --extra_execution_platforms=//tools/bazel/platforms:darwin_aarch64 \
-      //src/ptoon:ptoon >"${log}" 2>&1
+      //src/ptoon:ptoon >"${darwin_log}" 2>&1
     rc=$?
     set -e
     if [[ ${rc} -eq 0 ]]; then
       echo "Darwin Chapel analysis unexpectedly resolved without a reviewed toolchain" >&2
       exit 1
     fi
-    grep -F "No matching toolchains found for types:" "${log}" >/dev/null
-    grep -F "//tools/bazel/chapel:toolchain_type" "${log}" >/dev/null
-    echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux resolved; Darwin failed closed)"
+    grep -F "No matching toolchains found for types:" "${darwin_log}" >/dev/null
+    grep -F "//tools/bazel/chapel:toolchain_type" "${darwin_log}" >/dev/null
+    echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux non-cacheable; Darwin failed closed)"
 
 bazel-test:
     cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
@@ -282,10 +290,44 @@ flywheel-executor-proof log target="//:ci_validation_suite" require_cache_reuse=
     echo "GF warm pass completed; measuring remote execution plus cache reuse"
     BAZEL_OUTPUT_BASE="${measured_output_base}" GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel test --config=executor-backed --nocache_test_results --test_output=errors --execution_log_json_file="${execution_log}" "{{target}}" 2>&1 | tee "${log}"
 
-# TIN-2709/TIN-2949: compile ptoon through the registered Linux Chapel
-# toolchain on GF REAPI. Darwin resolves no compiler until its hermetic
-# toolchain and external execution platform are proved. The executor lane also
-# fails closed (--remote_local_fallback=false) if BAZEL_REMOTE_EXECUTOR is not
-# armed.
-flywheel-chapel *targets="//src/ptoon:ptoon":
-    cd {{root}} && GF_BAZEL_SUBSTRATE_MODE=executor-backed GF_BAZEL_REMOTE_UPLOAD=false gloriousflywheel-bazel build --config=executor-backed {{targets}}
+# TIN-2709/TIN-2949: fixed, action-level proof for the registered Linux Chapel
+# toolchain on GF REAPI. The environmental bridge is deliberately non-cacheable;
+# this gate requires a fresh remote ChapelCompile and retains its execution JSON.
+flywheel-chapel-proof log execution_log:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{root}}
+    log="{{log}}"
+    execution_log="{{execution_log}}"
+    proof_root="$(mktemp -d "${TMPDIR:-/tmp}/prompt-toon-chapel-rbe.XXXXXX")"
+    trap 'rm -rf "${proof_root}"' EXIT
+    mkdir -p "$(dirname "${log}")" "$(dirname "${execution_log}")"
+    : >"${log}"
+    : >"${execution_log}"
+    BAZEL_OUTPUT_BASE="${proof_root}/chapel-output" \
+      GF_BAZEL_SUBSTRATE_MODE=executor-backed \
+      GF_BAZEL_REMOTE_UPLOAD=false \
+      gloriousflywheel-bazel build \
+        --config=executor-backed \
+        --remote_accept_cached=false \
+        --execution_log_json_file="${execution_log}" \
+        --spawn_strategy=remote \
+        --remote_local_fallback=false \
+        //src/ptoon:ptoon 2>&1 | tee "${log}"
+    python3 tools/bazel/assert_execution_log.py \
+      "${execution_log}" \
+      --target //src/ptoon:ptoon \
+      --mnemonic ChapelCompile \
+      --platform-property gf.platform=gloriousflywheel-rbe-linux-x86_64
+
+# Operator convenience wrapper for the same fixed proof. Artifacts persist in
+# a stable temporary directory unless PROMPT_TOON_CHAPEL_PROOF_DIR overrides it.
+flywheel-chapel:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    proof_dir="${PROMPT_TOON_CHAPEL_PROOF_DIR:-${TMPDIR:-/tmp}/prompt-toon-chapel-proof}"
+    mkdir -p "${proof_dir}"
+    just flywheel-chapel-proof \
+      "${proof_dir}/chapel-rbe.log" \
+      "${proof_dir}/chapel-execution.json"
+    printf 'Chapel proof artifacts: %s\n' "${proof_dir}"

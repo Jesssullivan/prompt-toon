@@ -129,7 +129,7 @@ x86_64-linux ELF:
 
 ```sh
 just build-ptoon      # or: make build-ptoon   — nix remote builder (cache-first)
-just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-backed)
+just flywheel-chapel  #      make bazel-ptoon   — fixed, uncached Bazel proof on GF REAPI
 ```
 
 - **nix remote builder** (current release substrate):
@@ -142,9 +142,11 @@ just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-
   explicitly transitional GF worker-runtime bridge. Darwin has a distinct
   execution platform but no registered compiler, so analysis fails closed
   until TIN-2949 supplies a declared hermetic toolchain; it cannot fall through
-  to a developer-host `chpl`. `just bazel-chapel-toolchain-contract` proves
-  both analysis outcomes without running a compile action. The executor lane
-  also keeps `--remote_local_fallback=false`.
+  to a developer-host `chpl`. Environmental Linux compiles are non-cacheable
+  because the ambient compiler is not part of their action key. `just
+  bazel-chapel-toolchain-contract` proves both analysis outcomes without
+  running a compile action. The executor lane also keeps
+  `--remote_local_fallback=false`.
 
 ## Primary references checked 2026-07-16
 

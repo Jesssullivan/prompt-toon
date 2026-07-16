@@ -48,12 +48,14 @@ def _chapel_binary_impl(ctx):
         arguments = [args],
         env = toolchain.env,
         executable = toolchain.chpl,
+        execution_requirements = {} if toolchain.hermetic else {"no-cache": "1"},
         inputs = depset(
             direct = [ctx.file.main] + ctx.files.srcs + ctx.files.data,
             transitive = [toolchain.files],
         ),
         outputs = [out],
         tools = [toolchain.chpl],
+        toolchain = _CHAPEL_TOOLCHAIN_TYPE,
         use_default_shell_env = not toolchain.hermetic,
         mnemonic = "ChapelCompile",
         progress_message = "chpl[%s] --fast %s -> %s" % (

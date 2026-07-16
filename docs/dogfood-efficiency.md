@@ -40,10 +40,12 @@ The default `--engine auto` behavior is observable:
   `coforall` semantics create a distinct task for each iteration and wait for
   all child tasks, so the CLI keeps the production document ceiling rather
   than permitting an unbounded fan-in. See the
-  [Chapel 2.7 `coforall` guide](https://chapel-lang.org/docs/2.7/users-guide/taskpar/coforall.html)
-  for the pinned compiler and the
+  [current `coforall` guide](https://chapel-lang.org/docs/users-guide/taskpar/coforall.html)
+  and the
   [current task-parallel specification](https://chapel-lang.org/docs/language/spec/task-parallelism-and-synchronization.html)
-  used for forward review. TIN-2807 owns the compiler upgrade to 2.9.
+  used for forward review. The exact locked source has 2.7.0 Nix package
+  metadata but reports 2.8.0 pre-release; TIN-2807 owns reconciliation and the
+  reviewed compiler upgrade to 2.9.
 - `python`: the sequential parity oracle was used because `ptoon` was absent.
   The ledger records the fallback; it is never presented as Chapel evidence.
   It enforces the same input ceilings but has no wall-clock withholding
