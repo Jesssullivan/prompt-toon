@@ -14,11 +14,12 @@ import sys
 import tempfile
 import time
 import unicodedata
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from . import __version__
 from .corpus import CorpusLedgerError, build_corpus_report
@@ -337,6 +338,108 @@ def extract_constraints(cards: list[SourceCard]) -> list[SourceCard]:
 
 def extract_open_questions(cards: list[SourceCard]) -> list[SourceCard]:
     return [card for card in cards if OPEN_QUESTION_RE.search(f"{card.claim}\n{card.evidence}")]
+
+
+def _dogfood_handoff_recall_counts(
+    items: list[dict[str, Any]],
+    cards: list[SourceCard],
+    *,
+    toon_selected: bool,
+    defanger: Callable[[str], str],
+) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """Count source-line occurrences retained by each emitted handoff."""
+
+    handoff_names = ["summary_only", "summary_plus_authoritative_cards"]
+    if toon_selected:
+        handoff_names.append("summary_plus_toon_compact_view")
+    kinds = ("critical_constraints", "open_questions")
+    recognized = {kind: 0 for kind in kinds}
+    retained = {
+        name: {kind: 0 for kind in kinds}
+        for name in handoff_names
+    }
+    summary_slots: dict[str, Counter[tuple[str, str, str]]] = {}
+    for kind, selected_cards in (
+        ("critical_constraints", extract_constraints(cards)[:24]),
+        ("open_questions", extract_open_questions(cards)[:16]),
+    ):
+        # Summary claims are model-facing and defanged. Do not call a changed
+        # claim an exact retention merely because its pre-defang card matched.
+        summary_slots[kind] = Counter(
+            (card.source, card.sha256, card.claim)
+            for card in selected_cards
+            if defanger(card.claim) == card.claim
+        )
+
+    toon_slots = {
+        kind: Counter((card.source, card.sha256, card.claim) for card in cards)
+        for kind in kinds
+    }
+
+    lines_by_source: dict[tuple[str, str], list[str]] = {}
+    normalized_items: list[tuple[dict[str, Any], str, list[str]]] = []
+    for item in items:
+        digest = hashlib.sha256(item["bytes"]).hexdigest()
+        normalized, _ = redact_text(item["text"])
+        lines = normalized.splitlines()
+        lines_by_source.setdefault((item["source"], digest), lines)
+        normalized_items.append((item, digest, lines))
+
+    # Credit at most one occurrence per card and recall class. This prevents a
+    # single evidence window from satisfying repeated adjacent source lines.
+    authoritative_slots = {kind: Counter() for kind in kinds}
+    recognizers = {
+        "critical_constraints": CRITICAL_RE,
+        "open_questions": OPEN_QUESTION_RE,
+    }
+    for card in cards:
+        lines = lines_by_source.get((card.source, card.sha256), [])
+        evidence_lines = {line.strip() for line in card.evidence.splitlines()}
+        candidates = {kind: [] for kind in kinds}
+        for line_number in range(card.line_start, card.line_end + 1):
+            if not 1 <= line_number <= len(lines):
+                continue
+            line_text = lines[line_number - 1].strip()
+            if line_text and line_text in evidence_lines:
+                key = (card.source, card.sha256, line_number, line_text)
+                claim_match = clean_claim(lines[line_number - 1]) == card.claim
+                for kind, pattern in recognizers.items():
+                    if pattern.search(line_text):
+                        candidates[kind].append((not claim_match, line_number, key))
+        for kind in kinds:
+            if candidates[kind]:
+                _, _, key = min(candidates[kind])
+                authoritative_slots[kind][key] += 1
+
+    for item, digest, lines in normalized_items:
+        source = item["source"]
+        for line_number, line in enumerate(lines, start=1):
+            line_text = line.strip()
+            if not line_text:
+                continue
+            line_kinds = []
+            if CRITICAL_RE.search(line_text):
+                line_kinds.append("critical_constraints")
+            if OPEN_QUESTION_RE.search(line_text):
+                line_kinds.append("open_questions")
+            if not line_kinds:
+                continue
+            full_claim = clean_claim(line, limit=max(len(line) + 1, 221))
+            claim_key = (source, digest, full_claim)
+            authoritative_key = (source, digest, line_number, line_text)
+            for kind in line_kinds:
+                recognized[kind] += 1
+                if summary_slots[kind][claim_key] > 0:
+                    retained["summary_only"][kind] += 1
+                    summary_slots[kind][claim_key] -= 1
+                if authoritative_slots[kind][authoritative_key] > 0:
+                    retained["summary_plus_authoritative_cards"][kind] += 1
+                    authoritative_slots[kind][authoritative_key] -= 1
+                if toon_selected and toon_slots[kind][claim_key] > 0:
+                    retained["summary_plus_toon_compact_view"][kind] += 1
+                    toon_slots[kind][claim_key] -= 1
+
+    return recognized, retained
 
 
 def card_line(card: SourceCard, engine: SimpleNamespace) -> str:
@@ -1079,6 +1182,12 @@ def _run_dogfood_to_directory(
     engine_finished = time.perf_counter()
     _write_condense_artifacts(out_dir, cards, summary, manifest, toon_text)
     run_finished = time.perf_counter()
+    recognized_anchors, retained_anchors = _dogfood_handoff_recall_counts(
+        items,
+        cards,
+        toon_selected=toon_text is not None,
+        defanger=engine.defang_text,
+    )
 
     ledger = build_efficiency_ledger(
         run_id=args.id,
@@ -1102,6 +1211,8 @@ def _run_dogfood_to_directory(
         mythos_route=mythos_route,
         model_label=model_label,
         token_counter=rough_token_count,
+        recognized_anchors=recognized_anchors,
+        retained_anchors_by_handoff=retained_anchors,
     )
     write_json(out_dir / "efficiency.json", ledger)
     return ledger
@@ -1455,7 +1566,10 @@ def build_parser() -> argparse.ArgumentParser:
     corpus_report.add_argument(
         "ledgers",
         nargs="+",
-        help="Explicit schema-v2 efficiency.json files (1-50; 20 required to pass).",
+        help=(
+            "Explicit schema-v3 or legacy schema-v2 efficiency.json files "
+            "(1-50; 20 required to pass)."
+        ),
     )
     corpus_report.set_defaults(func=command_corpus_report)
 

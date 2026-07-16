@@ -11,6 +11,9 @@ from prompt_toon.cli import main
 from prompt_toon.corpus import CorpusLedgerError, build_corpus_report
 from prompt_toon.dogfood import (
     DOGFOOD_LEDGER_SCHEMA_VERSION,
+    HANDOFF_RECALL_CLAIM_BOUNDARY,
+    HANDOFF_RECALL_METHOD,
+    LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION,
     LEXICAL_ESTIMATOR_ID,
     LEXICAL_ESTIMATOR_PATTERN,
     build_corpus_identity,
@@ -46,7 +49,7 @@ def _ledger(
         ]
     )
     return {
-        "schema_version": DOGFOOD_LEDGER_SCHEMA_VERSION,
+        "schema_version": LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION,
         "run_id": f"run-{index}",
         "generated_at": "IGNORED",
         "corpus_identity": corpus_identity,
@@ -224,6 +227,10 @@ class CorpusReportTests(unittest.TestCase):
             )
             self.assertEqual(
                 by_engine["python"]["rates"]["handoff_pass"],
+                {"denominator": 10, "numerator": 0, "rate": 0.0},
+            )
+            self.assertEqual(
+                by_engine["python"]["rates"]["legacy_unmeasured"],
                 {"denominator": 10, "numerator": 10, "rate": 1.0},
             )
             self.assertEqual(
@@ -387,6 +394,110 @@ class CorpusReportTests(unittest.TestCase):
             self.assertEqual(report["corpus_gate"]["ledgers"], 2)
             self.assertEqual(report["corpus_gate"]["unique_spools"], 1)
             self.assertEqual(len(report["cohorts"]), 2)
+
+    def test_measured_recall_is_validated_and_isolated_from_legacy_v2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = _ledger(1)
+            measured = json.loads(json.dumps(legacy))
+            measured["run_id"] = "measured-recall"
+            measured["schema_version"] = DOGFOOD_LEDGER_SCHEMA_VERSION
+            measured["handoff_recall"] = {
+                "claim_boundary": HANDOFF_RECALL_CLAIM_BOUNDARY,
+                "handoffs": {
+                    "summary_only": {
+                        "retained": {
+                            "critical_constraints": 0,
+                            "open_questions": 0,
+                        },
+                        "retained_total": 0,
+                        "status": "recall-loss",
+                    },
+                    "summary_plus_authoritative_cards": {
+                        "retained": {
+                            "critical_constraints": 1,
+                            "open_questions": 0,
+                        },
+                        "retained_total": 1,
+                        "status": "pass",
+                    },
+                },
+                "method": HANDOFF_RECALL_METHOD,
+                "recognized": {
+                    "critical_constraints": 1,
+                    "open_questions": 0,
+                    "total": 1,
+                },
+                "source_text_recorded": False,
+            }
+            measured["handoff_decision"].update(
+                {
+                    "eligible_handoffs": [],
+                    "gate": "recall-loss",
+                    "recommended_handoff": None,
+                    "savings_eligible_handoffs": ["summary_only"],
+                }
+            )
+            paths = self._write_ledgers(root, [legacy, measured])
+
+            report = build_corpus_report(paths)
+            self.assertEqual(report["corpus_gate"]["unique_spools"], 1)
+            self.assertEqual(len(report["cohorts"]), 2)
+            self.assertEqual(
+                report["handoff_recall_gate"],
+                {
+                    "legacy_unmeasured_ledgers": 1,
+                    "measured_ledgers": 1,
+                    "recall_loss_ledgers": 1,
+                    "scope": (
+                        "recognized critical-constraint and open-question line "
+                        "recall; not semantic-equivalence or task-quality proof"
+                    ),
+                },
+            )
+            self.assertEqual(
+                {cohort["key"]["handoff_recall"] for cohort in report["cohorts"]},
+                {HANDOFF_RECALL_METHOD, "legacy-unmeasured-v2"},
+            )
+
+            missing_recall = json.loads(json.dumps(legacy))
+            missing_recall["schema_version"] = DOGFOOD_LEDGER_SCHEMA_VERSION
+            missing_path = self._write_ledgers(root, [missing_recall])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "requires handoff_recall"):
+                build_corpus_report([missing_path])
+
+            hybrid = json.loads(json.dumps(measured))
+            hybrid["schema_version"] = LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION
+            hybrid_path = self._write_ledgers(root, [hybrid])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "legacy-unmeasured"):
+                build_corpus_report([hybrid_path])
+
+            null_hybrid = json.loads(json.dumps(legacy))
+            null_hybrid["handoff_recall"] = None
+            null_hybrid_path = self._write_ledgers(root, [null_hybrid])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "legacy-unmeasured"):
+                build_corpus_report([null_hybrid_path])
+
+            extra_field = json.loads(json.dumps(measured))
+            extra_field["handoff_recall"]["source_text"] = "must not survive"
+            extra_field_path = self._write_ledgers(root, [extra_field])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "unexpected keys"):
+                build_corpus_report([extra_field_path])
+
+            changed_boundary = json.loads(json.dumps(measured))
+            changed_boundary["handoff_recall"]["claim_boundary"] = (
+                "semantic equivalence proven"
+            )
+            changed_boundary_path = self._write_ledgers(root, [changed_boundary])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "claim_boundary"):
+                build_corpus_report([changed_boundary_path])
+
+            measured["handoff_recall"]["handoffs"][
+                "summary_plus_authoritative_cards"
+            ]["retained"]["critical_constraints"] = 2
+            tampered_path = self._write_ledgers(root, [measured])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "exceeds recognized"):
+                build_corpus_report([tampered_path])
 
     def test_document_permutations_do_not_inflate_unique_spools(self):
         with tempfile.TemporaryDirectory() as tmp:

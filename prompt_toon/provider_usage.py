@@ -405,7 +405,7 @@ def _parse_codex_jsonl(
 
 
 def _load_ledger(path: str | Path) -> tuple[dict[str, Any], str]:
-    # corpus owns schema-v2 integrity. Its reader is re-used rather than copied.
+    # corpus owns supported dogfood-ledger integrity; reuse it rather than copy it.
     try:
         data = _read_bounded(path, limit=MAX_LEDGER_BYTES, label="ledger")
         ledger = _mapping(_load_json(data, "ledger"), "ledger")
@@ -420,7 +420,7 @@ def _load_ledger(path: str | Path) -> tuple[dict[str, Any], str]:
     except (CorpusLedgerError, ProviderUsageError) as exc:
         if isinstance(exc, ProviderUsageError):
             raise
-        raise ProviderUsageError("ledger does not satisfy schema-v2 integrity") from exc
+        raise ProviderUsageError("ledger does not satisfy dogfood schema integrity") from exc
 
 
 def _verified_ledger_artifact(
