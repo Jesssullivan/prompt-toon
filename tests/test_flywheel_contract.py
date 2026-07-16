@@ -44,8 +44,13 @@ class FlywheelContractTest(unittest.TestCase):
             "github.event_name == 'push'",
             'counts["remote_processes"] <= 0',
             'require_cache_reuse and counts["remote_cache_hits"] <= 0',
+            "name: Compile ptoon through the GF Chapel toolchain",
+            "nix develop --command just flywheel-chapel //src/ptoon:ptoon",
+            "CHAPEL_LOG:",
+            'chapel_counts["remote_processes"] <= 0',
+            'chapel_counts["remote_cache_hits"] <= 0',
             "name: Upload executor proof log",
-            "if: always() && steps.proof.outputs.log != ''",
+            "steps.proof.outputs.log != '' || steps.chapel.outputs.log != ''",
             "uses: actions/upload-artifact@v7",
         ):
             self.assertIn(required, workflow)
@@ -69,6 +74,17 @@ class FlywheelContractTest(unittest.TestCase):
             "workflow_dispatch",
         ):
             self.assertNotIn(forbidden, workflow)
+
+    def test_executor_profile_pins_the_linux_target_and_execution_platform(self) -> None:
+        config = (ROOT / ".bazelrc.flywheel").read_text(encoding="utf-8")
+        platform = "//tools/bazel/platforms:linux_x86_64"
+        self.assertIn(f"build:executor-backed --host_platform={platform}", config)
+        self.assertIn(f"build:executor-backed --platforms={platform}", config)
+        self.assertIn(
+            f"build:executor-backed --extra_execution_platforms={platform}",
+            config,
+        )
+        self.assertIn("build:executor-backed --remote_local_fallback=false", config)
 
     def test_stale_vendored_attachment_scripts_are_absent(self) -> None:
         self.assertFalse((ROOT / "scripts" / "cache-attachment-contract.sh").exists())

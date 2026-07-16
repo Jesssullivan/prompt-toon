@@ -671,14 +671,18 @@ presence or readiness with traffic/provider reachability. The deterministic
 host-ledger fields; activation is false and the IO policy remains locked.
 
 Platform delivery is native remote: x86_64-linux retains exhaustive byte
-parity and the 64-session HTTP/SSE gate; aarch64-darwin builds with local jobs
-disabled and runs native caps, normalization, and resident round-trip smoke.
-Native-surface pull requests instantiate the Darwin derivation on a GF-managed
-Linux runner without realizing it; that is definition proof, not native
-artifact proof. Attended releases use the remote Nix builder path as an interim
-gate. Durable native CI remains blocked on TIN-2542's
-`gloriousflywheel-rbe-darwin-aarch64` executor and signing custody. Linux
-Bazel/GF REAPI stays Linux-only. See `docs/home-manager-adoption.md`.
+parity and the 64-session HTTP/SSE gate; aarch64-darwin must run native caps,
+normalization, resident round-trip, and offline quality smoke. Native-surface
+pull requests instantiate the Darwin derivation on a GF-managed Linux runner
+without realizing it; that is definition proof, not native artifact proof.
+TIN-2542 established the separate
+`gloriousflywheel-rbe-darwin-aarch64` contract. TIN-2949 now owns its
+still-missing endpoint, declared hermetic Chapel toolchain, native artifact
+proof, and deliberate bridge to the Nix-closure release format. The Bazel
+target has a mandatory toolchain boundary and fails Darwin analysis closed
+until that compiler is registered. No accepted remote Apple Silicon worker
+currently exists, so `just release 0.3.0` remains blocked rather than compiling
+on Neo. See `docs/home-manager-adoption.md`.
 
 ### C4e offline measurement contract
 
