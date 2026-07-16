@@ -13,6 +13,7 @@ from prompt_toon.claude_harness import (
     build_claude_command,
     build_claude_env,
     claude_profile,
+    default_claude_bin,
     parse_claude_stream,
     run_claude,
     validate_loopback_url,
@@ -20,6 +21,25 @@ from prompt_toon.claude_harness import (
 
 
 class ClaudeHarnessTests(unittest.TestCase):
+    def test_default_binary_prefers_explicit_then_api_preserving_wrapper(self) -> None:
+        self.assertEqual(
+            default_claude_bin(
+                source={"CLAUDE_BIN": "/custom/claude"},
+                which=lambda _: "/managed/claude-api",
+            ),
+            "/custom/claude",
+        )
+        self.assertEqual(
+            default_claude_bin(
+                source={},
+                which=lambda name: "/managed/claude-api"
+                if name == "claude-api"
+                else None,
+            ),
+            "/managed/claude-api",
+        )
+        self.assertEqual(default_claude_bin(source={}, which=lambda _: None), "claude")
+
     def test_loopback_validation_rejects_remote_credentials_and_query(self) -> None:
         self.assertEqual(
             validate_loopback_url("http://127.0.0.1:8787/"),
