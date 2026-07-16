@@ -696,11 +696,18 @@ Mythos route/model labels. It records zero provider requests and never presents
 local estimates as context-window or billing truth. Exact GPT request counts
 require the complete payload and the separately authorized Responses input
 token count endpoint. TOON remains a non-authoritative compact view because it
-omits evidence and source hashes.
+omits evidence and source hashes. A recommendation must also retain every
+source-line occurrence recognized by the existing critical-constraint and
+open-question classifiers; one card cannot satisfy repeated occurrences, and
+text changed by a safety transform is not credited as exact retention. The
+ledger stores category counts, never anchor text. A lossy smallest handoff is
+skipped for a larger retaining handoff, or the recommendation fails closed with
+`recall-loss`. This is classifier-line recall, not semantic equivalence or
+task-quality proof.
 
 ### C4f corpus evidence contract
 
-`prompt-toon corpus-report` accepts only explicit schema-v2
+`prompt-toon corpus-report` accepts explicit schema-v3 or legacy schema-v2
 `efficiency.json` files. Each ledger carries an artifact-derived card count and
 a recomputable, path-free identity over ordered input hashes, trust tiers, and
 byte counts plus an order-insensitive diversity key. Replays within one cohort,
@@ -712,9 +719,13 @@ cross-plane timing blends.
 The corpus gate requires 20 unique spools within a 50-ledger cap. Nearest-rank
 distributions and weighted aggregates remain separate, as do format-local TOON
 rates and whole-handoff pass rates. Engine, execution shape, budget mode,
-policy thresholds, and card limits form distinct cohorts. Withheld and
-zero-token runs count toward operational outcomes but not economics. C4f.1
-reports self-attested optimization evidence with promotion blocked. C4f.2 adds
+policy thresholds, card limits, and recall method form distinct cohorts.
+Schema-v3 requires recall evidence. Pre-recall schema-v2 ledgers remain readable
+only as isolated `legacy-unmeasured-v2` evidence and never contribute a
+handoff-pass result; ambiguous v2/v3 hybrids fail closed.
+Withheld and zero-token runs count toward
+operational outcomes but not economics. C4f.1 reports self-attested optimization
+evidence with promotion blocked. C4f.2 adds
 a separate generated synthetic suite that requires 100% constraint and
 open-question recall, exclusion of untrusted imperatives from authority-bearing
 sections, zero secret-fragment leakage, exact clean-claim retention, and exact
@@ -739,8 +750,9 @@ remains a separate long-lived-service proof. The release pin is Chapel 2.7.0,
 while TIN-2807 owns the reviewed upgrade to current Chapel 2.9.
 
 C4f.4 imports terminal Responses or Codex usage from explicitly supplied local
-artifacts. A path-free sidecar hashes the validated schema-v2 ledger, manifest,
-selected handoff artifacts, exact ordered request bytes, and usage bytes. The
+artifacts. A path-free sidecar hashes the validated schema-v3 or legacy-v2
+ledger, manifest, selected handoff artifacts, exact ordered request bytes, and
+usage bytes. The
 importer performs no provider IO, preserves unreported cache/output fields as
 unknown, and compares a raw-input baseline with a condensed candidate only when
 ledger, corpus, source class, and model match. Hash descriptors make drift

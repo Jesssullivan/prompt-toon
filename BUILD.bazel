@@ -44,6 +44,7 @@ genrule(
 
 sh_test(
     name = "unit_tests",
+    size = "large",
     srcs = ["tests/run_tests.sh"],
     data = [
         ".bazelrc.flywheel",
