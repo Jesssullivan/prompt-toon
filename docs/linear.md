@@ -64,7 +64,11 @@ C4 online IO gateway:
   claim; C4f.4 imports externally produced exact counts or terminal usage into
   path-free, request/artifact-hash-bound sidecars without provider IO. These
   gates do not attest arbitrary corpus ledgers, authenticate an external
-  provider pairing, or prove provider-visible quality.
+  provider pairing, or prove provider-visible quality. `TIN-2925` adds a
+  content-free per-handoff classifier-line recall gate so token savings cannot
+  recommend a handoff that drops recognized constraints or open questions;
+  schema-v3 requires the gate, while schema-v2 remains isolated as
+  legacy-unmeasured evidence.
 - `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
   current 2.9 docs inform review but do not rewrite artifact provenance.
 

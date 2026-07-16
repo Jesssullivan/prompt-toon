@@ -11,7 +11,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from prompt_toon.cli import SourceCard, choose_card_format, main, rough_token_count
+from prompt_toon.cli import (
+    SourceCard,
+    choose_card_format,
+    defang_text,
+    main,
+    rough_token_count,
+)
 from prompt_toon.dogfood import (
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_DOCUMENTS,
@@ -90,7 +96,8 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(result["provider_requests"], 0)
             self.assertEqual(result["engine"], "python")
             self.assertIn(
-                result["handoff_gate"], {"pass", "below-threshold", "withheld"}
+                result["handoff_gate"],
+                {"pass", "below-threshold", "recall-loss", "withheld"},
             )
 
             ledger = json.loads((out_dir / "efficiency.json").read_text())
@@ -174,9 +181,182 @@ class DogfoodTests(unittest.TestCase):
             self.assertIn("summary_plus_authoritative_cards", ledger["handoffs"])
             decision = ledger["handoff_decision"]
             self.assertEqual(decision["minimum_token_estimate_savings"], 0.2)
-            self.assertIn(decision["gate"], {"pass", "below-threshold", "withheld"})
+            self.assertIn(
+                decision["gate"],
+                {"pass", "below-threshold", "recall-loss", "withheld"},
+            )
             if decision["gate"] == "below-threshold":
                 self.assertIsNone(decision["recommended_handoff"])
+
+    def test_handoff_recommendation_fails_closed_on_recognized_recall_loss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text(
+                "# Release readiness\n"
+                "Deployment MUST preserve provenance.\n"
+                "Open question: which operator owns rollback?\n"
+                + ("Background context without a policy marker.\n" * 500),
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "1",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            recall = ledger["handoff_recall"]
+            self.assertFalse(recall["source_text_recorded"])
+            self.assertEqual(
+                recall["recognized"],
+                {"critical_constraints": 1, "open_questions": 1, "total": 2},
+            )
+            self.assertEqual(
+                recall["handoffs"]["summary_only"]["status"], "recall-loss"
+            )
+            self.assertEqual(
+                recall["handoffs"]["summary_plus_authoritative_cards"][
+                    "retained"
+                ],
+                {"critical_constraints": 1, "open_questions": 0},
+            )
+            decision = ledger["handoff_decision"]
+            self.assertTrue(decision["savings_eligible_handoffs"])
+            self.assertEqual(decision["eligible_handoffs"], [])
+            self.assertEqual(decision["gate"], "recall-loss")
+            self.assertIsNone(decision["recommended_handoff"])
+
+    def test_recall_gate_can_choose_larger_authoritative_handoff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text(
+                "# Release readiness\n"
+                "Deployment MUST preserve provenance.\n"
+                + ("Background context without a policy marker.\n" * 500),
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "1",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            recall = ledger["handoff_recall"]["handoffs"]
+            self.assertEqual(recall["summary_only"]["status"], "recall-loss")
+            self.assertEqual(
+                recall["summary_plus_authoritative_cards"]["status"], "pass"
+            )
+            self.assertEqual(ledger["handoff_decision"]["gate"], "pass")
+            self.assertEqual(
+                ledger["handoff_decision"]["recommended_handoff"],
+                "summary_plus_authoritative_cards",
+            )
+
+    def test_summary_recall_does_not_credit_a_defanged_claim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text(
+                "Deployment MUST use https://example.test/runbook.\n"
+                + ("Background context without a policy marker.\n" * 500),
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "1",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            recall = ledger["handoff_recall"]["handoffs"]
+            self.assertEqual(recall["summary_only"]["status"], "recall-loss")
+            self.assertEqual(
+                recall["summary_plus_authoritative_cards"]["status"], "pass"
+            )
+            self.assertNotIn(
+                "summary_only", ledger["handoff_decision"]["eligible_handoffs"]
+            )
+            summary = (out_dir / "summary.md").read_text(encoding="utf-8")
+            self.assertNotIn("https://example.test", summary)
+            self.assertIn("hxxps://example.test", summary)
+
+    def test_one_card_cannot_satisfy_repeated_source_occurrences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text(
+                "Deployment MUST preserve provenance.\n"
+                + "Deployment MUST preserve provenance.\n"
+                + ("More background context without a policy marker.\n" * 500),
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "1",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            self.assertEqual(
+                ledger["handoff_recall"]["recognized"]["critical_constraints"],
+                2,
+            )
+            for recall in ledger["handoff_recall"]["handoffs"].values():
+                self.assertEqual(recall["retained"]["critical_constraints"], 1)
+                self.assertEqual(recall["status"], "recall-loss")
+            self.assertEqual(ledger["handoff_decision"]["gate"], "recall-loss")
+            self.assertIsNone(ledger["handoff_decision"]["recommended_handoff"])
 
     def test_chapel_engine_uses_full_batch_condense_surface(self):
         class FakeChapel:
@@ -236,7 +416,9 @@ class DogfoodTests(unittest.TestCase):
             source = root / "input.md"
             source.write_text("Provenance MUST remain attached.\n", encoding="utf-8")
             backend = FakeChapel()
-            engine = SimpleNamespace(name="chapel", backend=backend)
+            engine = SimpleNamespace(
+                name="chapel", backend=backend, defang_text=defang_text
+            )
             with mock.patch("prompt_toon.cli.resolve_engine", return_value=engine):
                 with redirect_stdout(io.StringIO()):
                     self.assertEqual(
@@ -299,6 +481,20 @@ class DogfoodTests(unittest.TestCase):
                 mythos_route=None,
                 model_label=None,
                 token_counter=rough_token_count,
+                recognized_anchors={
+                    "critical_constraints": 0,
+                    "open_questions": 0,
+                },
+                retained_anchors_by_handoff={
+                    "summary_only": {
+                        "critical_constraints": 0,
+                        "open_questions": 0,
+                    },
+                    "summary_plus_authoritative_cards": {
+                        "critical_constraints": 0,
+                        "open_questions": 0,
+                    },
+                },
             )
             self.assertEqual(ledger["handoff_decision"]["gate"], "withheld")
             self.assertEqual(ledger["handoff_decision"]["eligible_handoffs"], [])
@@ -364,7 +560,11 @@ class DogfoodTests(unittest.TestCase):
             source = root / "input.md"
             source.write_text("must remain private\n", encoding="utf-8")
             out_dir = root / "out"
-            engine = SimpleNamespace(name="chapel", backend=WithholdingChapel())
+            engine = SimpleNamespace(
+                name="chapel",
+                backend=WithholdingChapel(),
+                defang_text=defang_text,
+            )
             with mock.patch("prompt_toon.cli.resolve_engine", return_value=engine):
                 with redirect_stdout(io.StringIO()):
                     self.assertEqual(
@@ -428,6 +628,20 @@ class DogfoodTests(unittest.TestCase):
                 mythos_route=None,
                 model_label=None,
                 token_counter=len,
+                recognized_anchors={
+                    "critical_constraints": 0,
+                    "open_questions": 0,
+                },
+                retained_anchors_by_handoff={
+                    "summary_only": {
+                        "critical_constraints": 0,
+                        "open_questions": 0,
+                    },
+                    "summary_plus_authoritative_cards": {
+                        "critical_constraints": 0,
+                        "open_questions": 0,
+                    },
+                },
             )
             self.assertEqual(
                 ledger["handoffs"]["summary_only"][

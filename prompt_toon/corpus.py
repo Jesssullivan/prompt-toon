@@ -13,6 +13,10 @@ from typing import Any, Iterable
 
 from .dogfood import (
     DOGFOOD_LEDGER_SCHEMA_VERSION,
+    HANDOFF_RECALL_CLAIM_BOUNDARY,
+    HANDOFF_RECALL_KINDS,
+    HANDOFF_RECALL_METHOD,
+    LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION,
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_CARDS_PER_DOCUMENT,
     MAX_DOGFOOD_DOCUMENTS,
@@ -22,7 +26,7 @@ from .dogfood import (
 )
 
 
-CORPUS_REPORT_SCHEMA_VERSION = 1
+CORPUS_REPORT_SCHEMA_VERSION = 2
 MIN_CORPUS_SPOOLS = 20
 MAX_CORPUS_LEDGERS = 50
 MAX_LEDGER_BYTES = 1_000_000
@@ -181,9 +185,13 @@ def _sha256(value: Any, field: str) -> str:
 
 def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     schema_version = _integer(ledger.get("schema_version"), "schema_version")
-    if schema_version != DOGFOOD_LEDGER_SCHEMA_VERSION:
+    if schema_version not in {
+        LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION,
+        DOGFOOD_LEDGER_SCHEMA_VERSION,
+    }:
         raise CorpusLedgerError(
             "ledger schema_version must be "
+            f"{LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION} or "
             f"{DOGFOOD_LEDGER_SCHEMA_VERSION}; regenerate older dogfood ledgers"
         )
     claim = _mapping(ledger.get("claim_boundary"), "claim_boundary")
@@ -292,7 +300,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         _integer(limits.get("documents"), "spool.limits.documents", minimum=1)
         != MAX_DOGFOOD_DOCUMENTS
     ):
-        raise CorpusLedgerError("spool.limits.documents does not match schema v2")
+        raise CorpusLedgerError("spool.limits.documents does not match the schema")
     input_bytes_per_document = _integer(
         limits.get("input_bytes_per_document"),
         "spool.limits.input_bytes_per_document",
@@ -300,7 +308,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     )
     if input_bytes_per_document != MAX_DOGFOOD_INPUT_BYTES:
         raise CorpusLedgerError(
-            "spool.limits.input_bytes_per_document does not match schema v2"
+            "spool.limits.input_bytes_per_document does not match the schema"
         )
     aggregate_input_bytes = _integer(
         limits.get("aggregate_input_bytes"),
@@ -309,10 +317,10 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     )
     if aggregate_input_bytes != MAX_DOGFOOD_REQUEST_BYTES:
         raise CorpusLedgerError(
-            "spool.limits.aggregate_input_bytes does not match schema v2"
+            "spool.limits.aggregate_input_bytes does not match the schema"
         )
     if documents > MAX_DOGFOOD_DOCUMENTS or input_bytes > aggregate_input_bytes:
-        raise CorpusLedgerError("spool values exceed the schema-v2 input limits")
+        raise CorpusLedgerError("spool values exceed the supported input limits")
     if any(item["bytes"] > input_bytes_per_document for item in ordered_inputs):
         raise CorpusLedgerError(
             "corpus identity contains an input above the per-document byte limit"
@@ -323,7 +331,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         minimum=1,
     )
     if cards_per_document > MAX_DOGFOOD_CARDS_PER_DOCUMENT:
-        raise CorpusLedgerError("spool.limits.cards_per_document exceeds schema v2")
+        raise CorpusLedgerError("spool.limits.cards_per_document exceeds the schema")
     if emitted_cards > documents * cards_per_document:
         raise CorpusLedgerError("spool.emitted_cards exceeds the configured card limit")
     if spool.get("raw_inputs_copied") is not False:
@@ -363,7 +371,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     )
     if chapel_budget_ms != MAX_DOGFOOD_BUDGET_MS:
         raise CorpusLedgerError(
-            "spool.limits.chapel_wall_clock_budget_ms does not match schema v2"
+            "spool.limits.chapel_wall_clock_budget_ms does not match the schema"
         )
 
     toon = _mapping(ledger.get("toon"), "toon")
@@ -526,9 +534,112 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
             "tokens_estimate": token_count,
         }
 
+    recall_measured = "handoff_recall" in ledger
+    if schema_version == DOGFOOD_LEDGER_SCHEMA_VERSION and not recall_measured:
+        raise CorpusLedgerError("schema-v3 ledger requires handoff_recall")
+    if schema_version == LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION and recall_measured:
+        raise CorpusLedgerError("schema-v2 ledger must remain legacy-unmeasured")
+    recall_statuses: dict[str, str]
+    recognized_anchors = 0
+    if recall_measured:
+        recall = _mapping(ledger.get("handoff_recall"), "handoff_recall")
+        if set(recall) != {
+            "claim_boundary",
+            "handoffs",
+            "method",
+            "recognized",
+            "source_text_recorded",
+        }:
+            raise CorpusLedgerError("handoff_recall has unexpected keys")
+        if recall.get("method") != HANDOFF_RECALL_METHOD:
+            raise CorpusLedgerError("handoff_recall.method is unsupported")
+        if recall.get("source_text_recorded") is not False:
+            raise CorpusLedgerError("handoff_recall.source_text_recorded must remain false")
+        if recall.get("claim_boundary") != HANDOFF_RECALL_CLAIM_BOUNDARY:
+            raise CorpusLedgerError("handoff_recall.claim_boundary is unsupported")
+        recognized = _mapping(recall.get("recognized"), "handoff_recall.recognized")
+        if set(recognized) != {*HANDOFF_RECALL_KINDS, "total"}:
+            raise CorpusLedgerError("handoff_recall.recognized has unexpected keys")
+        recognized_counts = {
+            kind: _integer(
+                recognized.get(kind), f"handoff_recall.recognized.{kind}"
+            )
+            for kind in HANDOFF_RECALL_KINDS
+        }
+        recognized_anchors = _integer(
+            recognized.get("total"), "handoff_recall.recognized.total"
+        )
+        if recognized_anchors != sum(recognized_counts.values()):
+            raise CorpusLedgerError("handoff_recall recognized total does not match")
+        recall_handoffs = _mapping(
+            recall.get("handoffs"), "handoff_recall.handoffs"
+        )
+        if set(recall_handoffs) != set(expected_handoffs):
+            raise CorpusLedgerError(
+                "handoff_recall.handoffs does not match the emitted handoffs"
+            )
+        recall_statuses = {}
+        for name in expected_handoffs:
+            handoff_recall = _mapping(
+                recall_handoffs.get(name), f"handoff_recall.handoffs.{name}"
+            )
+            if set(handoff_recall) != {"retained", "retained_total", "status"}:
+                raise CorpusLedgerError(
+                    f"handoff_recall.handoffs.{name} has unexpected keys"
+                )
+            retained = _mapping(
+                handoff_recall.get("retained"),
+                f"handoff_recall.handoffs.{name}.retained",
+            )
+            if set(retained) != set(HANDOFF_RECALL_KINDS):
+                raise CorpusLedgerError(
+                    f"handoff_recall.handoffs.{name}.retained has unexpected keys"
+                )
+            retained_counts = {
+                kind: _integer(
+                    retained.get(kind),
+                    f"handoff_recall.handoffs.{name}.retained.{kind}",
+                )
+                for kind in HANDOFF_RECALL_KINDS
+            }
+            if any(
+                retained_counts[kind] > recognized_counts[kind]
+                for kind in HANDOFF_RECALL_KINDS
+            ):
+                raise CorpusLedgerError(
+                    f"handoff_recall.handoffs.{name} exceeds recognized anchors"
+                )
+            retained_total = _integer(
+                handoff_recall.get("retained_total"),
+                f"handoff_recall.handoffs.{name}.retained_total",
+            )
+            if retained_total != sum(retained_counts.values()):
+                raise CorpusLedgerError(
+                    f"handoff_recall.handoffs.{name} retained total does not match"
+                )
+            expected_status = (
+                "not-applicable"
+                if recognized_anchors == 0
+                else "pass"
+                if retained_counts == recognized_counts
+                else "recall-loss"
+            )
+            if handoff_recall.get("status") != expected_status:
+                raise CorpusLedgerError(
+                    f"handoff_recall.handoffs.{name}.status does not match counts"
+                )
+            recall_statuses[name] = expected_status
+        recall_cohort = HANDOFF_RECALL_METHOD
+    else:
+        recall_statuses = {name: "legacy-unmeasured" for name in expected_handoffs}
+        recall_cohort = "legacy-unmeasured-v2"
+
     decision = _mapping(ledger.get("handoff_decision"), "handoff_decision")
     gate = decision.get("gate")
-    if gate not in {"pass", "below-threshold", "withheld"}:
+    valid_gates = {"pass", "below-threshold", "withheld"}
+    if recall_measured:
+        valid_gates.add("recall-loss")
+    if gate not in valid_gates:
         raise CorpusLedgerError("handoff_decision.gate is invalid")
     min_handoff_savings = _number(
         decision.get("minimum_token_estimate_savings"),
@@ -540,13 +651,29 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         raise CorpusLedgerError("withheld documents require a withheld handoff gate")
     if not withheld_documents and gate == "withheld":
         raise CorpusLedgerError("withheld handoff gate requires a withheld document")
-    eligible_handoffs = sorted(
+    savings_eligible_handoffs = sorted(
         name
         for name, measurement in handoff_metrics.items()
         if input_tokens > 0
         and (input_tokens - measurement["tokens_estimate"]) / input_tokens
         >= min_handoff_savings
     )
+    if recall_measured:
+        if decision.get("savings_eligible_handoffs") != savings_eligible_handoffs:
+            raise CorpusLedgerError(
+                "handoff_decision.savings_eligible_handoffs does not match exact counts"
+            )
+        eligible_handoffs = [
+            name
+            for name in savings_eligible_handoffs
+            if recall_statuses[name] != "recall-loss"
+        ]
+    else:
+        if "savings_eligible_handoffs" in decision:
+            raise CorpusLedgerError(
+                "legacy handoff decision cannot claim measured recall eligibility"
+            )
+        eligible_handoffs = savings_eligible_handoffs
     expected_best = min(
         handoff_metrics,
         key=lambda name: handoff_metrics[name]["tokens_estimate"],
@@ -559,7 +686,12 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         if eligible_handoffs
         else None
     )
-    expected_gate = "pass" if expected_recommended is not None else "below-threshold"
+    if expected_recommended is not None:
+        expected_gate = "pass"
+    elif recall_measured and savings_eligible_handoffs:
+        expected_gate = "recall-loss"
+    else:
+        expected_gate = "below-threshold"
     if withheld_documents:
         eligible_handoffs = []
         expected_best = None
@@ -588,6 +720,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
             "chapel_wall_clock_budget_ms": chapel_budget_ms,
             "engine_resolved": engine_resolved,
             "execution_shape": shape,
+            "handoff_recall": recall_cohort,
             "minimum_handoff_savings": min_handoff_savings,
             "minimum_toon_savings": min_toon_savings,
         },
@@ -658,7 +791,10 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
         },
         "flags": {
             "economics_eligible": not withheld_documents and input_tokens > 0,
-            "handoff_pass": gate == "pass",
+            "handoff_pass": recall_measured and gate == "pass",
+            "legacy_unmeasured": not recall_measured,
+            "recall_loss": gate == "recall-loss",
+            "recall_measured": recall_measured,
             "toon_eligible": toon_eligible,
             "toon_selected": toon_selected,
             "withheld": withheld_documents > 0,
@@ -806,6 +942,9 @@ def _cohort_report(
         },
         "rates": {
             "handoff_pass": _rate(records, "handoff_pass"),
+            "legacy_unmeasured": _rate(records, "legacy_unmeasured"),
+            "recall_loss": _rate(records, "recall_loss"),
+            "recall_measured": _rate(records, "recall_measured"),
             "toon_eligible": _rate(records, "toon_eligible"),
             "toon_selected": _rate(records, "toon_selected"),
             "withheld": _rate(records, "withheld"),
@@ -969,6 +1108,21 @@ def build_corpus_report(raw_paths: list[str]) -> dict[str, Any]:
             for record in records
         ],
         "percentile_method": "nearest-rank",
+        "handoff_recall_gate": {
+            "legacy_unmeasured_ledgers": sum(
+                not record["flags"]["recall_measured"] for record in records
+            ),
+            "measured_ledgers": sum(
+                record["flags"]["recall_measured"] for record in records
+            ),
+            "recall_loss_ledgers": sum(
+                record["flags"]["recall_loss"] for record in records
+            ),
+            "scope": (
+                "recognized critical-constraint and open-question line recall; "
+                "not semantic-equivalence or task-quality proof"
+            ),
+        },
         "cohorts": [
             _cohort_report(cohort_keys[key], cohorts[key]) for key in sorted(cohorts)
         ],

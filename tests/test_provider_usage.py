@@ -9,7 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from prompt_toon.dogfood import build_efficiency_ledger
+from prompt_toon.dogfood import (
+    LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION,
+    build_efficiency_ledger,
+)
 from prompt_toon.provider_usage import (
     MAX_REQUEST_BYTES,
     MAX_REQUESTS,
@@ -62,6 +65,20 @@ def _ledger_directory(root: Path) -> Path:
         mythos_route=None,
         model_label=None,
         token_counter=lambda text: len(text),
+        recognized_anchors={
+            "critical_constraints": 0,
+            "open_questions": 0,
+        },
+        retained_anchors_by_handoff={
+            "summary_only": {
+                "critical_constraints": 0,
+                "open_questions": 0,
+            },
+            "summary_plus_authoritative_cards": {
+                "critical_constraints": 0,
+                "open_questions": 0,
+            },
+        },
     )
     _write(output / "efficiency.json", json.dumps(ledger).encode("utf-8"))
     assert summary.exists() and cards.exists() and manifest.exists()
@@ -167,6 +184,30 @@ class ProviderUsageTests(unittest.TestCase):
             )
             self.assertEqual(sidecar["claim_boundary"]["cost_claim"], "none")
             self.assertEqual(sidecar["claim_boundary"]["quality_claim"], "none")
+
+    def test_legacy_v2_ledger_remains_importable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = _ledger_directory(root)
+            ledger_path = run / "efficiency.json"
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+            ledger["schema_version"] = LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION
+            ledger.pop("handoff_recall")
+            ledger["handoff_decision"].pop("savings_eligible_handoffs")
+            ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+            request = _write(root / "request.json", b'{"model":"legacy-v2"}')
+            usage = _write(root / "usage.json", _responses_json(model="legacy-v2"))
+
+            sidecar = build_provider_usage_sidecar(
+                ledger_path=ledger_path,
+                request_paths=[request],
+                usage_path=usage,
+                source="responses-json",
+                variant="raw_input",
+                model_label=None,
+            )
+
+            self.assertEqual(sidecar["model"]["label"], "legacy-v2")
 
     def test_responses_input_count_binds_one_complete_request(self) -> None:
         request = b'{"model":"gpt-5.6","input":"condensed context"}'
