@@ -15,6 +15,7 @@ import unittest
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from prompt_toon.adoption import gateway_doctor_status
 from prompt_toon.engine import EngineError
@@ -44,8 +45,7 @@ FALLBACK_RESPONSE_BODY = (
     b'{"id":"msg_fallback","type":"message","role":"assistant",'
     b'"model":"claude-fallback-fixture","content":['
     b'{"type":"fallback","from":{"model":"claude-fable-fixture"},'
-    b'"to":{"model":"claude-fallback-fixture"},"trigger":'
-    b'{"type":"refusal","category":"cyber"}},'
+    b'"to":{"model":"claude-fallback-fixture"}},'
     b'{"type":"text","text":"fixture answer"}],"stop_reason":"end_turn",'
     b'"stop_details":null,"usage":{"input_tokens":34,"output_tokens":3,'
     b'"iterations":[{"type":"message","model":"claude-fable-fixture",'
@@ -974,7 +974,7 @@ class GatewayBoundaryTests(unittest.TestCase):
                         {
                             "type": "fallback",
                             "from": {"model": "claude-fixture"},
-                            "to": {"model": "claude-fallback"},
+                            "to": {},
                         }
                     ],
                     "stop_reason": "end_turn",
@@ -1031,6 +1031,26 @@ class GatewayBoundaryTests(unittest.TestCase):
         self.assertEqual(counters["provider_fallback_transitions"], 0)
         self.assertEqual(counters["provider_fallback_served_responses"], 0)
         self.assertEqual(counters.get("response_telemetry_unavailable", 0), 0)
+
+    def test_malformed_sse_event_invalidates_anthropic_telemetry(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+            b"data: {not-json}\n\n"
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"refusal","stop_details":{"type":"refusal","category":'
+            b'"cyber"}},"usage":{"output_tokens":1}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 0)
+        self.assertEqual(counters["provider_input_tokens"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
 
     def test_message_start_usage_cannot_spoof_fallback_served(self) -> None:
         metrics = GatewayMetrics()
@@ -1149,6 +1169,54 @@ class GatewayBoundaryTests(unittest.TestCase):
                 "provider_refusal_category_reasoning_extraction": 1,
             },
         )
+
+    def test_malformed_refusal_details_cannot_claim_a_fixed_category(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "application/json")]
+        )
+        observer.feed(
+            json.dumps(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-fixture",
+                    "content": [],
+                    "stop_reason": "refusal",
+                    "stop_details": {"type": "future", "category": "cyber"},
+                    "usage": {},
+                }
+            ).encode("utf-8")
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_refusal_responses"], 1)
+        self.assertEqual(counters["provider_refusal_category_cyber"], 0)
+        self.assertEqual(counters["provider_refusal_category_other"], 1)
+
+    def test_sse_content_block_tracking_is_bounded(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        with patch("prompt_toon.gateway._MAX_OBSERVED_CONTENT_BLOCKS", 1):
+            observer.feed(
+                b'data: {"type":"message_start","message":{"model":'
+                b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+                b'data: {"type":"content_block_start","index":0,'
+                b'"content_block":{"type":"text","text":"first"}}\n\n'
+                b'data: {"type":"content_block_stop","index":0}\n\n'
+                b'data: {"type":"content_block_start","index":1,'
+                b'"content_block":{"type":"text","text":"second"}}\n\n'
+                b'data: {"type":"message_delta","delta":{"stop_reason":'
+                b'"end_turn","stop_details":null},"usage":{"output_tokens":1}}\n\n'
+                b'data: {"type":"message_stop"}\n\n'
+            )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertLessEqual(len(observer._sse_seen_content_blocks), 1)
+        self.assertEqual(counters["provider_input_tokens"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
 
     def test_final_refusal_after_fallback_is_not_counted_as_fallback_served(
         self,
