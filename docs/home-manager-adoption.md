@@ -104,7 +104,7 @@ notarized, or stapled application or installer.
 This decision is distribution-specific, not a claim that software without a
 Developer ID identity is universally exempt from macOS security controls.
 Apple's
-[Developer ID guidance](https://developer.apple.com/developer-id/) scopes that
+[Developer ID guidance](https://developer.apple.com/support/developer-id/) scopes that
 program to software distributed outside the Mac App Store, especially apps,
 plug-ins, and installer packages, while
 [Apple Platform Security](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web)
@@ -122,8 +122,12 @@ pre-release. The exact lock revision and both observed identities are artifact
 provenance; this source does not claim 2.7.0- or 2.9-built binaries.
 
 GitHub release artifacts are complete `nix-store --export` closure archives,
-not raw executables. Verify the release tag and detached manifest signature
-against the release-note signing fingerprint before trusting its digests.
+not raw executables. The reviewed OpenPGP trust anchor is
+`packaging/release-signers.json`, backed by the public key in
+`packaging/release-signing-key.asc`; the release lane refuses any other secret
+key. Verify the signed tag and detached manifest signature against that pinned
+full fingerprint before trusting artifact digests. GitHub release notes repeat
+the fingerprint for convenience but are not the trust root.
 Import a closure with `nix-store --import`; its platform target and archive
 digest are recorded in manifest schema v2, together with the SHA-256 of its
 `bin/ptoon` entrypoint. Raw executables are linked to their Nix-store runtime

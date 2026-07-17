@@ -203,6 +203,13 @@
           doInstallCheck = pkgs.stdenv.isDarwin;
           installCheckPhase = ''
             runHook preInstallCheck
+            echo "== native Darwin final architecture =="
+            native_archs="$(/usr/bin/lipo -archs "$out/bin/ptoon")"
+            printf '%s\n' "$native_archs"
+            if [ "$native_archs" != "arm64" ]; then
+              echo "ERROR: ptoon must be a native arm64 Mach-O, got: $native_archs" >&2
+              exit 1
+            fi
             echo "== native Darwin final ad-hoc signature =="
             signature_details="$(
               /usr/bin/codesign --display --verbose=4 "$out/bin/ptoon" 2>&1
@@ -221,7 +228,7 @@
               echo "ERROR: ptoon unexpectedly carries an identity-signing authority" >&2
               exit 1
             fi
-            echo "OK: final ptoon has a valid ad-hoc Apple Silicon code signature"
+            echo "OK: final ptoon is native arm64 with a valid ad-hoc Apple Silicon code signature"
             runHook postInstallCheck
           '';
         };
