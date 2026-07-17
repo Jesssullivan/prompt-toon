@@ -35,6 +35,10 @@ Issues:
 - `TIN-2708` C1 `ptoon` binary behind `--engine=chapel` (subprocess pivot from the original shared-library plan) + parity runner + Bazel-drives-chpl skeleton on GF REAPI; quickchpl property source is advisory until pinned/wired.
 - `TIN-2709` C2 ptoon streaming: `coforall` batch entrypoint, cache parity, full Bazel executor lane.
 - `TIN-2710` C3 flip to ptoon + rules_chapel extraction/registry publication + brew/rpm lanes.
+- `TIN-2776` Residual strict TOON round-trip/depth coverage and `Toon.chpl`
+  exposure; backlog and not a production-gateway dependency.
+- `TIN-2777` Completed v0.2.0 fleet packaging/install ledger; it does not prove
+  the C4 gateway request path.
 
 C4 online IO gateway:
 
@@ -46,11 +50,14 @@ C4 online IO gateway:
 - `TIN-2794` C4c: Codex Responses gateway adapter and user-level profile;
   exact-byte HTTP/SSE, opaque remote compaction, and real-CLI loopback proof;
   provider-backed canary waits on a filesystem-confined tool sandbox.
-- `TIN-2791` C4d: native Linux package proof, a Darwin definition check plus
-  attended interim release realization (durable native CI is blocked by
-  `TIN-2542`), split-auth managed gateway contract, actual-state
-  doctor/host-ledger schema, then Home Manager consumption and attended shadow
-  rollout.
+- `TIN-2791` C4d: native Linux package proof, Darwin definition check,
+  split-auth managed gateway contract, actual-state doctor/host-ledger schema,
+  release consumption, and attended shadow rollout.
+- `TIN-2949` C4d.1: commission the physical GF Darwin REAPI worker, prove the
+  native Mach-O artifact, bridge it to the closure-stamped manifest, and
+  publish v0.3.0 without local Chapel compilation.
+- `TIN-2954` C4d.2: completed source delivery of the disabled-by-default lab
+  Home Manager consumer. This is not a host activation or traffic claim.
 - `TIN-2819` C4e: provider-free durable-spool dogfood command and
   claim-bounded prompt-efficiency ledger; exact provider counts and live
   synthesis crossover remain separately authorized experiments.
@@ -72,6 +79,9 @@ C4 online IO gateway:
 - `TIN-2807`: reconcile the locked Chapel source's version provenance and
   upgrade to current 2.9. The Nix package metadata says 2.7.0, while remote
   `chpl --version` reports 2.8.0 pre-release; neither may be rewritten as 2.9.
+- `TIN-2956` C4g: production default flip for ordinary native Claude and Codex
+  harness invocations, gated on release/rollout, provider canaries, corpus
+  evidence, and explicit policy promotion.
 
 Related prior work:
 
