@@ -89,6 +89,24 @@ retains exhaustive byte parity and the 64-stream capacity gate. A release's
 Darwin derivation additionally runs native `caps`, normalization, and
 resident-service round-trip checks.
 
+The v0.3 Darwin deliverable is an unsigned CLI distributed as a complete Nix
+closure, not an `.app`, `.pkg`, or disk image. Its release gates are the tagged
+flake, native execution, Mach-O architecture, closure and entrypoint digests,
+an OpenPGP-signed Git tag, and a detached OpenPGP signature over the stamped
+manifest. Apple Developer ID signing, notarization, and stapling are therefore
+not v0.3 prerequisites. Those controls become mandatory only for a future
+target that explicitly claims a Gatekeeper-facing signed, notarized, or
+stapled application or installer.
+
+This decision is distribution-specific, not a claim that unsigned software is
+universally exempt from macOS security controls. Apple's
+[Developer ID guidance](https://developer.apple.com/developer-id/) scopes that
+program to software distributed outside the Mac App Store, especially apps,
+plug-ins, and installer packages, while
+[Apple Platform Security](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web)
+describes Gatekeeper's broader downloaded-software checks. Revisit this gate if
+prompt-toon moves beyond an operator-controlled Nix install path.
+
 The implementation is reviewed against current Chapel 2.9 documentation. The
 locked source revision is nevertheless older and internally inconsistent: its
 Nix package metadata says 2.7.0, while remote `chpl --version` reports 2.8.0
@@ -96,7 +114,9 @@ pre-release. The exact lock revision and both observed identities are artifact
 provenance; this source does not claim 2.7.0- or 2.9-built binaries.
 
 GitHub release artifacts are complete `nix-store --export` closure archives,
-not raw executables. Import one with `nix-store --import`; its platform target
-and archive digest are recorded in manifest schema v2, together with the
-SHA-256 of its `bin/ptoon` entrypoint. Raw executables are linked to
-their Nix-store runtime closure and are not portable standalone assets.
+not raw executables. Verify the release tag and detached manifest signature
+against the release-note signing fingerprint before trusting its digests.
+Import a closure with `nix-store --import`; its platform target and archive
+digest are recorded in manifest schema v2, together with the SHA-256 of its
+`bin/ptoon` entrypoint. Raw executables are linked to their Nix-store runtime
+closure and are not portable standalone assets.

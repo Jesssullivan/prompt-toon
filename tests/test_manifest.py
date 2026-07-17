@@ -338,7 +338,16 @@ class ManifestTests(unittest.TestCase):
             '--with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon"',
             '--with-wheel "$wheel"',
             '"$stage/ptoon-aarch64-darwin.nar" "$wheel"',
-            '"$stage/manifest-$tag.json"',
+            'manifest="$stage/manifest-$tag.json"',
+            'signing_fingerprint="$(gpg --batch --with-colons',
+            'nix-store --query --requisites "$linux_ptoon_store" | sort',
+            'nix-store --query --requisites "$darwin_ptoon_store" | sort',
+            'git tag -s -u "$signing_key"',
+            'git verify-tag "$tag"',
+            'gpg --local-user "$signing_key" --armor --detach-sign',
+            'gpg --verify "$manifest.asc" "$manifest"',
+            '"$manifest" "$manifest.asc"',
+            'OpenPGP signer: $signing_fingerprint',
         ):
             with self.subTest(required=required):
                 self.assertIn(required, justfile)
