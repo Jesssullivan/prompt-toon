@@ -54,6 +54,55 @@ means the process is accepting requests and the resident engine is available;
 the separate `upstream` field is `unknown`, `reachable`, or `failed` based on
 the latest observed provider exchange. `HEAD /` is a local connectivity probe.
 
+Completed, identity-encoded Anthropic responses also contribute the following
+fixed-cardinality counters. Non-stream JSON observation is capped at 1 MiB;
+each SSE line is capped at 256 KiB, each assembled event at 1 MiB, and
+content-block tracking at 4096 indices. SSE telemetry is committed only after
+a terminated `message_stop` event. Truncated, malformed, compressed,
+over-limit, or incomplete responses increment the existing
+telemetry-unavailable signal instead of contributing partial safety counts.
+
+For SSE, safety fields are read only from their documented event positions:
+the initial `message_start`, `fallback` blocks in `content_block_start`, and
+the final `message_delta` before `message_stop`. Unknown event types cannot
+contribute safety fields. Any data event after `message_stop` invalidates the
+observed copy while the original response bytes continue to the client.
+Content-block indices must be unique and every start must be paired with a
+stop before the final delta; fallback blocks additionally require schema-valid
+`from` and `to` objects and carry no deltas. The current public response
+example omits `trigger`; when a newer SDK-schema response includes one, it must
+be a valid refusal trigger.
+
+- `provider_refusal_responses` branches only on final
+  `stop_reason: "refusal"`, including normal HTTP 200 refusals.
+- `provider_refusal_category_{cyber,bio,frontier_llm,reasoning_extraction,other}`
+  assigns exactly one fixed bucket per refusal. Missing, null, malformed, and
+  future category values map to `other`; `stop_details.explanation` is never
+  retained.
+- `provider_fallback_transitions` counts schema-valid `fallback` content blocks.
+- `provider_fallback_served_responses` requires both a
+  schema-valid `usage.iterations[].type: "fallback_message"` entry in the
+  final response usage and a final non-refusal stop reason. A chain whose final
+  model also refuses records its transitions and refusal, but not a
+  fallback-served response.
+
+Fallback blocks and `fallback_message` iteration usage belong to Anthropic's
+beta Messages schema. The server-side form is selected by
+`server-side-fallback-2026-06-01`. The official SDK also offers client-side
+refusal-fallback middleware on `?beta=true` requests using
+`fallback-credit-2026-06-01`, but that middleware runs above the HTTP gateway:
+prompt-toon sees the individual provider exchanges, not the combined response
+the SDK later synthesizes for the application. The gateway does not add either
+beta, choose a fallback chain, redeem credits, retry, or infer a client-side
+handoff. It passes the caller's `anthropic-beta` header unchanged and records
+fallback counters only from a complete server-emitted response that matches
+the documented shape.
+
+These counters do not retain iteration text, explanations, or model names.
+Requested and returned models remain visible only through the existing
+process-local HMAC buckets. Observation never changes forwarded response bytes
+or the provider's fallback behavior.
+
 ## Operator flow
 
 The v0.2.0 release asset predates `ptoon serve` and cannot back this gateway.
@@ -214,3 +263,15 @@ The implementation follows the current provider contract:
   token-count endpoint is optional.
 - [API errors](https://platform.claude.com/docs/en/api/errors): status, JSON
   error body, `request-id`, and post-200 stream errors are preserved.
+- [Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback):
+  refusals are HTTP 200 responses, fallback boundaries are content blocks, and
+  `fallback_message` iterations distinguish a fallback-served response from a
+  chain that ultimately refuses.
+- [Streaming refusals](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/handle-streaming-refusals):
+  `stop_reason` and `stop_details` arrive in `message_delta`; `message_stop`
+  terminates the stream.
+- [Official Python SDK fallback middleware](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/lib/middleware/_fallbacks.py)
+  and [fallback block type](https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/beta/beta_fallback_block.py):
+  fallback retries are beta-only; SDK-side synthesis occurs above this gateway,
+  while server-emitted blocks and final iteration usage form its observable
+  wire contract.

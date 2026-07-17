@@ -58,6 +58,7 @@ _MAX_CHUNK_LINE_BYTES = 128
 _MAX_TRAILER_BYTES = 64 * 1024
 _MAX_OBSERVED_RESPONSE_BYTES = 1024 * 1024
 _MAX_SSE_LINE_BYTES = 256 * 1024
+_MAX_OBSERVED_CONTENT_BLOCKS = 4096
 _MAX_MODEL_CARDINALITY = 32
 _MAX_CORRELATION_ID_BYTES = 1024
 _MAX_AUTH_TOKEN_BYTES = 8192
@@ -104,6 +105,21 @@ _USAGE_FIELDS = (
     "cache_write_tokens",
     "reasoning_output_tokens",
     "total_tokens",
+)
+_REFUSAL_CATEGORIES = (
+    "cyber",
+    "bio",
+    "frontier_llm",
+    "reasoning_extraction",
+)
+_PROVIDER_SAFETY_COUNTERS = (
+    "provider_refusal_responses",
+    "provider_fallback_transitions",
+    "provider_fallback_served_responses",
+    *(
+        f"provider_refusal_category_{category}"
+        for category in (*_REFUSAL_CATEGORIES, "other")
+    ),
 )
 
 
@@ -519,6 +535,7 @@ def parse_response_for_shadow(body: bytes, policy: GatewayPolicy) -> ParsedMessa
     docs: list[dict[str, str]] = []
     selected_bytes = 0
     truncated_docs = 0
+    text_ordinal = 0
     for item in inputs:
         if not isinstance(item, dict) or item.get("type") != "function_call_output":
             continue
@@ -530,13 +547,15 @@ def parse_response_for_shadow(body: bytes, policy: GatewayPolicy) -> ParsedMessa
             continue
         source, trust_tier = classified
         link = hashlib.sha256(call_id.encode("utf-8")).hexdigest()[:16]
-        for text_index, text in enumerate(_response_output_texts(item.get("output"))):
+        for text in _response_output_texts(item.get("output")):
+            current_ordinal = text_ordinal
+            text_ordinal += 1
             if len(docs) >= policy.max_documents_per_request:
                 truncated_docs += 1
                 continue
             docs.append(
                 {
-                    "source": f"openai:{source}:{link}:{text_index}",
+                    "source": f"openai:{source}:{link}:{current_ordinal}",
                     "trust_tier": trust_tier,
                     "body": text,
                 }
@@ -562,7 +581,9 @@ class GatewayMetrics:
             raise ValueError("model hash key must contain at least 16 bytes")
         self._lock = threading.Lock()
         self._model_hash_key = key
-        self._counters: Counter[str] = Counter()
+        self._counters: Counter[str] = Counter(
+            {name: 0 for name in _PROVIDER_SAFETY_COUNTERS}
+        )
         self._quality: Counter[str] = Counter()
         self._requested_models: Counter[str] = Counter()
         self._returned_models: Counter[str] = Counter()
@@ -640,6 +661,10 @@ class GatewayMetrics:
         usage: dict[str, int],
         stream_errors: int,
         telemetry_available: bool,
+        refusal_response: bool = False,
+        refusal_category: str | None = None,
+        fallback_transitions: int = 0,
+        fallback_served: bool = False,
     ) -> None:
         with self._lock:
             self._counters["upstream_responses"] += 1
@@ -653,6 +678,19 @@ class GatewayMetrics:
                 self._record_model(self._returned_models, returned_model)
             for field in _USAGE_FIELDS:
                 self._counters[f"provider_{field}"] += usage.get(field, 0)
+            if refusal_response:
+                self._counters["provider_refusal_responses"] += 1
+                category = (
+                    refusal_category
+                    if refusal_category in _REFUSAL_CATEGORIES
+                    else "other"
+                )
+                self._counters[f"provider_refusal_category_{category}"] += 1
+            self._counters["provider_fallback_transitions"] += max(
+                0, fallback_transitions
+            )
+            if fallback_served:
+                self._counters["provider_fallback_served_responses"] += 1
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -910,7 +948,18 @@ class ResponseObserver:
         self._usage: dict[str, int] = {}
         self._stream_errors = 0
         self._sse_complete = False
+        self._sse_message_started = False
+        self._sse_final_delta_observed = False
+        self._sse_protocol_invalid = False
+        self._sse_open_content_blocks: set[int] = set()
+        self._sse_seen_content_blocks: set[int] = set()
+        self._sse_fallback_blocks: set[int] = set()
         self._json_parsed = False
+        self._stop_reason_observed = False
+        self._refusal_response = False
+        self._refusal_category: str | None = None
+        self._fallback_transitions = 0
+        self._fallback_message_seen = False
 
     def abort(self) -> None:
         self._enabled = False
@@ -918,6 +967,17 @@ class ResponseObserver:
         self._line_buffer.clear()
         self._event_data.clear()
         self._event_bytes = 0
+        self._sse_message_started = False
+        self._sse_final_delta_observed = False
+        self._sse_protocol_invalid = False
+        self._sse_open_content_blocks.clear()
+        self._sse_seen_content_blocks.clear()
+        self._sse_fallback_blocks.clear()
+        self._stop_reason_observed = False
+        self._refusal_response = False
+        self._refusal_category = None
+        self._fallback_transitions = 0
+        self._fallback_message_seen = False
 
     def feed(self, chunk: bytes) -> None:
         if not self._enabled:
@@ -980,38 +1040,192 @@ class ResponseObserver:
         try:
             value = json.loads(data, parse_constant=_reject_json_constant)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            if self.protocol == ANTHROPIC_PROTOCOL:
+                self._sse_protocol_invalid = True
             return
         self._observe_value(value)
 
     def _observe_value(self, value: object) -> None:
         if not isinstance(value, dict):
+            if self.protocol == ANTHROPIC_PROTOCOL and self._sse:
+                self._sse_protocol_invalid = True
             return
         if self.protocol == OPENAI_PROTOCOL:
             self._observe_openai_value(value)
             return
+        if self._sse:
+            self._observe_anthropic_sse_value(value)
+        else:
+            self._observe_anthropic_json_value(value)
+
+    def _observe_anthropic_json_value(self, value: dict[str, Any]) -> None:
+        model = _safe_model(value.get("model"))
+        content = value.get("content")
+        usage = value.get("usage")
+        if (
+            value.get("type") != "message"
+            or value.get("role") != "assistant"
+            or model is None
+            or not isinstance(content, list)
+            or not isinstance(usage, dict)
+            or not self._observe_anthropic_stop(value)
+        ):
+            return
+        self._json_parsed = True
+        self._returned_model = model
+        self._observe_usage(usage, observe_fallback_iterations=True)
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "fallback"
+                and not self._observe_fallback_block(block)
+            ):
+                self._json_parsed = False
+                return
+
+    def _observe_anthropic_sse_value(self, value: dict[str, Any]) -> None:
+        if self._sse_protocol_invalid:
+            return
+        if self._sse_complete:
+            self._sse_protocol_invalid = True
+            return
         event_type = value.get("type")
         if event_type == "error":
             self._stream_errors += 1
-        elif event_type == "message_stop":
-            self._sse_complete = True
-        message = value.get("message")
-        if isinstance(message, dict):
+            return
+        if event_type == "message_start":
+            message = value.get("message")
+            if self._sse_message_started or not isinstance(message, dict):
+                self._sse_protocol_invalid = True
+                return
             model = _safe_model(message.get("model"))
-            if model is not None:
-                self._returned_model = model
-            self._observe_usage(message.get("usage"))
-        model = _safe_model(value.get("model"))
-        if model is not None:
+            usage = message.get("usage")
+            if model is None or not isinstance(usage, dict):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_message_started = True
             self._returned_model = model
-        self._observe_usage(value.get("usage"))
+            self._observe_usage(usage)
+            return
+        if event_type == "content_block_start":
+            index = value.get("index")
+            block = value.get("content_block")
+            if (
+                not self._sse_message_started
+                or self._sse_final_delta_observed
+                or not isinstance(index, int)
+                or isinstance(index, bool)
+                or index < 0
+                or index in self._sse_seen_content_blocks
+                or len(self._sse_seen_content_blocks)
+                >= _MAX_OBSERVED_CONTENT_BLOCKS
+                or not isinstance(block, dict)
+                or not isinstance(block.get("type"), str)
+            ):
+                self._sse_protocol_invalid = True
+                return
+            if block.get("type") == "fallback" and not self._observe_fallback_block(
+                block
+            ):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_seen_content_blocks.add(index)
+            self._sse_open_content_blocks.add(index)
+            if block.get("type") == "fallback":
+                self._sse_fallback_blocks.add(index)
+            return
+        if event_type == "content_block_delta":
+            index = value.get("index")
+            if (
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or index not in self._sse_open_content_blocks
+                or index in self._sse_fallback_blocks
+            ):
+                self._sse_protocol_invalid = True
+            return
+        if event_type == "content_block_stop":
+            index = value.get("index")
+            if (
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or index not in self._sse_open_content_blocks
+            ):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_open_content_blocks.remove(index)
+            self._sse_fallback_blocks.discard(index)
+            return
+        if event_type == "message_delta":
+            delta = value.get("delta")
+            usage = value.get("usage")
+            if (
+                not self._sse_message_started
+                or self._sse_final_delta_observed
+                or bool(self._sse_open_content_blocks)
+                or not isinstance(delta, dict)
+                or not isinstance(usage, dict)
+                or not self._observe_anthropic_stop(delta)
+            ):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_final_delta_observed = True
+            self._observe_usage(usage, observe_fallback_iterations=True)
+            return
+        if event_type == "message_stop":
+            if not self._sse_message_started or not self._sse_final_delta_observed:
+                self._sse_protocol_invalid = True
+                return
+            self._sse_complete = True
+            return
 
-        block = value.get("content_block")
-        if isinstance(block, dict) and block.get("type") == "fallback":
-            target = block.get("to")
-            if isinstance(target, dict):
-                fallback_model = _safe_model(target.get("model"))
-                if fallback_model is not None:
-                    self._returned_model = fallback_model
+    def _observe_anthropic_stop(self, value: dict[str, Any]) -> bool:
+        stop_reason = value.get("stop_reason")
+        if not isinstance(stop_reason, str):
+            return False
+        self._stop_reason_observed = True
+        self._refusal_response = stop_reason == "refusal"
+        self._refusal_category = None
+        if not self._refusal_response:
+            return True
+        details = value.get("stop_details")
+        category = (
+            details.get("category")
+            if isinstance(details, dict) and details.get("type") == "refusal"
+            else None
+        )
+        self._refusal_category = (
+            category if category in _REFUSAL_CATEGORIES else "other"
+        )
+        return True
+
+    def _observe_fallback_block(self, block: object) -> bool:
+        if not isinstance(block, dict) or block.get("type") != "fallback":
+            return False
+        source = block.get("from")
+        target = block.get("to")
+        trigger = block.get("trigger")
+        if (
+            not isinstance(source, dict)
+            or _safe_model(source.get("model")) is None
+            or not isinstance(target, dict)
+            or _safe_model(target.get("model")) is None
+            or (
+                trigger is not None
+                and (
+                    not isinstance(trigger, dict)
+                    or trigger.get("type") != "refusal"
+                    or (
+                        trigger.get("category") is not None
+                        and trigger.get("category") not in _REFUSAL_CATEGORIES
+                    )
+                )
+            )
+        ):
+            return False
+        self._fallback_transitions += 1
+        self._returned_model = _safe_model(target.get("model"))
+        return True
 
     def _observe_openai_value(self, value: dict[str, Any]) -> None:
         event_type = value.get("type")
@@ -1033,7 +1247,9 @@ class ResponseObserver:
             self._returned_model = model
         self._observe_usage(candidate.get("usage"))
 
-    def _observe_usage(self, value: object) -> None:
+    def _observe_usage(
+        self, value: object, *, observe_fallback_iterations: bool = False
+    ) -> None:
         if not isinstance(value, dict):
             return
         if self.protocol == OPENAI_PROTOCOL:
@@ -1075,6 +1291,33 @@ class ResponseObserver:
             amount = value.get(field)
             if isinstance(amount, int) and not isinstance(amount, bool) and amount >= 0:
                 self._usage[field] = amount
+        if observe_fallback_iterations:
+            iterations = value.get("iterations")
+            self._fallback_message_seen = isinstance(iterations, list) and any(
+                self._valid_fallback_message_iteration(iteration)
+                for iteration in iterations
+            )
+
+    @staticmethod
+    def _valid_fallback_message_iteration(iteration: object) -> bool:
+        if not isinstance(iteration, dict):
+            return False
+        if (
+            iteration.get("type") != "fallback_message"
+            or _safe_model(iteration.get("model")) is None
+        ):
+            return False
+        return all(
+            isinstance(iteration.get(field), int)
+            and not isinstance(iteration.get(field), bool)
+            and iteration[field] >= 0
+            for field in (
+                "input_tokens",
+                "output_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        )
 
     def finish(self) -> None:
         if self._enabled:
@@ -1092,10 +1335,14 @@ class ResponseObserver:
                     )
                 except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                     value = None
-                self._json_parsed = value is not None
+                self._json_body.clear()
+                if self.protocol == OPENAI_PROTOCOL:
+                    self._json_parsed = value is not None
                 self._observe_value(value)
         telemetry_complete = self._enabled and (
-            self._sse_complete if self._sse else self._json_parsed
+            (self._sse_complete and not self._sse_protocol_invalid)
+            if self._sse
+            else self._json_parsed
         )
         self.metrics.record_provider_response(
             status=self.status,
@@ -1103,6 +1350,26 @@ class ResponseObserver:
             usage=self._usage if telemetry_complete else {},
             stream_errors=self._stream_errors,
             telemetry_available=telemetry_complete,
+            refusal_response=(
+                telemetry_complete
+                and self.protocol == ANTHROPIC_PROTOCOL
+                and self._refusal_response
+            ),
+            refusal_category=(
+                self._refusal_category if telemetry_complete else None
+            ),
+            fallback_transitions=(
+                self._fallback_transitions
+                if telemetry_complete and self.protocol == ANTHROPIC_PROTOCOL
+                else 0
+            ),
+            fallback_served=(
+                telemetry_complete
+                and self.protocol == ANTHROPIC_PROTOCOL
+                and self._fallback_message_seen
+                and self._stop_reason_observed
+                and not self._refusal_response
+            ),
         )
 
 
