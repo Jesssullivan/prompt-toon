@@ -309,7 +309,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             },
             "gh_release": {
                 "enabled": True,
-                "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
+                "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
             },
             "brew": {"enabled": False, "note": "C3 phase gate"},
             "rpm_deb": {"enabled": False, "note": "C3 phase gate (nfpm)"},

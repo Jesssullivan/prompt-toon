@@ -173,11 +173,15 @@ resident 64-stream production path, which remains covered by
 derive from it. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
 regenerates via `just manifest`, merges, then `just release X.Y.Z` — Linux
 parity, native remote Linux/Darwin builds, stamped manifest, wheel, and full
-Nix closure exports. The tagged flake is the canonical online install path;
-the `.nar` assets import with `nix-store --import`. Raw `ptoon` executables are
-Nix-store linked and are not claimed portable. The stamped manifest authenticates
-both each closure export and its `bin/ptoon` entrypoint. Fleet install will ride the lab
-Home Manager module (rev-pinned per INV-7).
+Nix closure exports. The release uses an OpenPGP-signed Git tag and publishes a
+detached OpenPGP signature over the stamped manifest. The tagged flake is the
+canonical online install path; the `.nar` assets import with
+`nix-store --import`. Raw `ptoon` executables are Nix-store linked and are not
+claimed portable. The signed manifest authenticates each closure export, its
+`bin/ptoon` entrypoint, and the wheel. Release notes record the signing-key
+fingerprint so verification can be anchored to the signed tag and repository
+identity. Fleet install will ride the lab Home Manager module (rev-pinned per
+INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
 C4 gateway. v0.3.0 is the first release line whose manifest declares

@@ -185,6 +185,14 @@ release version:
     [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "release from main only" >&2; exit 1; }
     [ -z "$(git status --porcelain)" ] || { echo "release requires a clean tree including untracked files" >&2; exit 1; }
     [ "$(python3 -c 'import prompt_toon; print(prompt_toon.__version__)')" = "{{version}}" ] || { echo "SSOT version != {{version}}; bump prompt_toon/__init__.py first" >&2; exit 1; }
+    command -v gpg >/dev/null || { echo "release requires OpenPGP signing via gpg" >&2; exit 1; }
+    signing_key="$(git config --get user.signingkey || true)"
+    [ -n "$signing_key" ] || { echo "release requires git user.signingkey" >&2; exit 1; }
+    signing_format="$(git config --get gpg.format || true)"
+    [ -z "$signing_format" ] || [ "$signing_format" = "openpgp" ] || { echo "release requires an OpenPGP git signing key" >&2; exit 1; }
+    gpg --list-secret-keys "$signing_key" >/dev/null 2>&1 || { echo "release signing key is unavailable: $signing_key" >&2; exit 1; }
+    signing_fingerprint="$(gpg --batch --with-colons --list-secret-keys --fingerprint "$signing_key" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+    [[ "$signing_fingerprint" =~ ^[0-9A-Fa-f]{40,64}$ ]] || { echo "release signing fingerprint is unavailable" >&2; exit 1; }
     rev="$(git rev-parse HEAD)"
     remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
     [ -n "$remote_main" ] && [ "$rev" = "$remote_main" ] || { echo "release HEAD must equal origin/main" >&2; exit 1; }
@@ -207,8 +215,8 @@ release version:
     # Raw executables are Nix-store linked and are not portable standalone
     # assets. Export each complete runtime closure for import with nix-store
     # --import; the tagged flake remains the canonical online install path.
-    nix-store --export $(nix-store --query --requisites "$linux_ptoon_store") > "$stage/ptoon-x86_64-linux.nar"
-    nix-store --export $(nix-store --query --requisites "$darwin_ptoon_store") > "$stage/ptoon-aarch64-darwin.nar"
+    nix-store --export $(nix-store --query --requisites "$linux_ptoon_store" | sort) > "$stage/ptoon-x86_64-linux.nar"
+    nix-store --export $(nix-store --query --requisites "$darwin_ptoon_store" | sort) > "$stage/ptoon-aarch64-darwin.nar"
     test -s "$stage/ptoon-x86_64-linux.nar"
     test -s "$stage/ptoon-aarch64-darwin.nar"
     mkdir "$stage/source"
@@ -220,20 +228,25 @@ release version:
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
     (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" corpus-report --help >/dev/null && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
+    manifest="$stage/manifest-$tag.json"
     python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" \
       --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
       --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \
       --with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar" \
       --with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon" \
-      --with-wheel "$wheel" > "$stage/manifest-$tag.json"
-    git tag -a "$tag" -m "prompt-toon $tag" "$rev"
+      --with-wheel "$wheel" > "$manifest"
+    git tag -s -u "$signing_key" "$tag" -m "prompt-toon $tag" "$rev"
     local_tag_created=1
+    git verify-tag "$tag"
+    gpg --local-user "$signing_key" --armor --detach-sign \
+      --output "$manifest.asc" "$manifest"
+    gpg --verify "$manifest.asc" "$manifest"
     git push origin "$tag"
     remote_tag_pushed=1
-    gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$wheel" "$stage/manifest-$tag.json" \
+    gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$wheel" "$manifest" "$manifest.asc" \
       --verify-tag \
       --title "prompt-toon v{{version}}" \
-      --notes "Stamped manifest is the provenance record: targets[].sha256 authenticates both importable Nix closure exports and the wheel, while each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke, package install, and repository gates green at $rev."
+      --notes "OpenPGP signer: $signing_fingerprint. The signed tag authenticates source and the detached manifest signature authenticates targets[].sha256 for both importable Nix closure exports and the wheel; each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke, package install, and repository gates green at $rev."
     trap - ERR
     rm -rf "$stage"
     echo "released $tag at $rev"
