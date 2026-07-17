@@ -950,6 +950,9 @@ class ResponseObserver:
         self._sse_message_started = False
         self._sse_final_delta_observed = False
         self._sse_protocol_invalid = False
+        self._sse_open_content_blocks: set[int] = set()
+        self._sse_seen_content_blocks: set[int] = set()
+        self._sse_fallback_blocks: set[int] = set()
         self._json_parsed = False
         self._stop_reason_observed = False
         self._refusal_response = False
@@ -966,6 +969,9 @@ class ResponseObserver:
         self._sse_message_started = False
         self._sse_final_delta_observed = False
         self._sse_protocol_invalid = False
+        self._sse_open_content_blocks.clear()
+        self._sse_seen_content_blocks.clear()
+        self._sse_fallback_blocks.clear()
         self._stop_reason_observed = False
         self._refusal_response = False
         self._refusal_category = None
@@ -1062,9 +1068,15 @@ class ResponseObserver:
             return
         self._json_parsed = True
         self._returned_model = model
-        self._observe_usage(usage)
+        self._observe_usage(usage, observe_fallback_iterations=True)
         for block in content:
-            self._observe_fallback_block(block)
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "fallback"
+                and not self._observe_fallback_block(block)
+            ):
+                self._json_parsed = False
+                return
 
     def _observe_anthropic_sse_value(self, value: dict[str, Any]) -> None:
         if self._sse_complete:
@@ -1089,10 +1101,51 @@ class ResponseObserver:
             self._observe_usage(usage)
             return
         if event_type == "content_block_start":
-            if not self._sse_message_started or self._sse_final_delta_observed:
+            index = value.get("index")
+            block = value.get("content_block")
+            if (
+                not self._sse_message_started
+                or self._sse_final_delta_observed
+                or not isinstance(index, int)
+                or isinstance(index, bool)
+                or index < 0
+                or index in self._sse_seen_content_blocks
+                or not isinstance(block, dict)
+                or not isinstance(block.get("type"), str)
+            ):
                 self._sse_protocol_invalid = True
                 return
-            self._observe_fallback_block(value.get("content_block"))
+            if block.get("type") == "fallback" and not self._observe_fallback_block(
+                block
+            ):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_seen_content_blocks.add(index)
+            self._sse_open_content_blocks.add(index)
+            if block.get("type") == "fallback":
+                self._sse_fallback_blocks.add(index)
+            return
+        if event_type == "content_block_delta":
+            index = value.get("index")
+            if (
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or index not in self._sse_open_content_blocks
+                or index in self._sse_fallback_blocks
+            ):
+                self._sse_protocol_invalid = True
+            return
+        if event_type == "content_block_stop":
+            index = value.get("index")
+            if (
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or index not in self._sse_open_content_blocks
+            ):
+                self._sse_protocol_invalid = True
+                return
+            self._sse_open_content_blocks.remove(index)
+            self._sse_fallback_blocks.discard(index)
             return
         if event_type == "message_delta":
             delta = value.get("delta")
@@ -1100,6 +1153,7 @@ class ResponseObserver:
             if (
                 not self._sse_message_started
                 or self._sse_final_delta_observed
+                or bool(self._sse_open_content_blocks)
                 or not isinstance(delta, dict)
                 or not isinstance(usage, dict)
                 or not self._observe_anthropic_stop(delta)
@@ -1107,7 +1161,7 @@ class ResponseObserver:
                 self._sse_protocol_invalid = True
                 return
             self._sse_final_delta_observed = True
-            self._observe_usage(usage)
+            self._observe_usage(usage, observe_fallback_iterations=True)
             return
         if event_type == "message_stop":
             if not self._sse_message_started or not self._sse_final_delta_observed:
@@ -1132,15 +1186,28 @@ class ResponseObserver:
         )
         return True
 
-    def _observe_fallback_block(self, block: object) -> None:
+    def _observe_fallback_block(self, block: object) -> bool:
         if not isinstance(block, dict) or block.get("type") != "fallback":
-            return
-        self._fallback_transitions += 1
+            return False
+        source = block.get("from")
         target = block.get("to")
-        if isinstance(target, dict):
-            fallback_model = _safe_model(target.get("model"))
-            if fallback_model is not None:
-                self._returned_model = fallback_model
+        trigger = block.get("trigger")
+        if (
+            not isinstance(source, dict)
+            or _safe_model(source.get("model")) is None
+            or not isinstance(target, dict)
+            or _safe_model(target.get("model")) is None
+            or not isinstance(trigger, dict)
+            or trigger.get("type") != "refusal"
+            or (
+                trigger.get("category") is not None
+                and not isinstance(trigger.get("category"), str)
+            )
+        ):
+            return False
+        self._fallback_transitions += 1
+        self._returned_model = _safe_model(target.get("model"))
+        return True
 
     def _observe_openai_value(self, value: dict[str, Any]) -> None:
         event_type = value.get("type")
@@ -1162,7 +1229,9 @@ class ResponseObserver:
             self._returned_model = model
         self._observe_usage(candidate.get("usage"))
 
-    def _observe_usage(self, value: object) -> None:
+    def _observe_usage(
+        self, value: object, *, observe_fallback_iterations: bool = False
+    ) -> None:
         if not isinstance(value, dict):
             return
         if self.protocol == OPENAI_PROTOCOL:
@@ -1204,13 +1273,33 @@ class ResponseObserver:
             amount = value.get(field)
             if isinstance(amount, int) and not isinstance(amount, bool) and amount >= 0:
                 self._usage[field] = amount
-        iterations = value.get("iterations")
-        if isinstance(iterations, list):
-            self._fallback_message_seen = self._fallback_message_seen or any(
-                isinstance(iteration, dict)
-                and iteration.get("type") == "fallback_message"
+        if observe_fallback_iterations:
+            iterations = value.get("iterations")
+            self._fallback_message_seen = isinstance(iterations, list) and any(
+                self._valid_fallback_message_iteration(iteration)
                 for iteration in iterations
             )
+
+    @staticmethod
+    def _valid_fallback_message_iteration(iteration: object) -> bool:
+        if not isinstance(iteration, dict):
+            return False
+        if (
+            iteration.get("type") != "fallback_message"
+            or _safe_model(iteration.get("model")) is None
+        ):
+            return False
+        return all(
+            isinstance(iteration.get(field), int)
+            and not isinstance(iteration.get(field), bool)
+            and iteration[field] >= 0
+            for field in (
+                "input_tokens",
+                "output_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        )
 
     def finish(self) -> None:
         if self._enabled:
