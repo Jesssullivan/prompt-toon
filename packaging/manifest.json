@@ -19,7 +19,7 @@
     },
     "gh_release": {
       "enabled": true,
-      "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, stamped manifest, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
+      "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
     },
     "home_manager": {
       "contract": "packaging/home-manager.json",
