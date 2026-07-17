@@ -196,6 +196,26 @@
             cp ptoon $out/bin/ptoon
             runHook postInstall
           '';
+          # Apple Silicon requires every executable to carry a valid code
+          # signature. clang/ld apply a linker ad-hoc signature automatically;
+          # verify the final post-fixup store artifact so this remains distinct
+          # from Developer ID identity signing and notarization.
+          doInstallCheck = pkgs.stdenv.isDarwin;
+          installCheckPhase = ''
+            runHook preInstallCheck
+            echo "== native Darwin final linker signature =="
+            signature_details="$(
+              /usr/bin/codesign --display --verbose=4 "$out/bin/ptoon" 2>&1
+            )"
+            printf '%s\n' "$signature_details"
+            /usr/bin/codesign --verify --strict --verbose=4 "$out/bin/ptoon"
+            printf '%s\n' "$signature_details" | grep -F "Signature=adhoc" >/dev/null || {
+              echo "ERROR: ptoon must retain a valid ad-hoc linker signature without a Developer ID identity" >&2
+              exit 1
+            }
+            echo "OK: final ptoon has a valid ad-hoc Apple Silicon code signature"
+            runHook postInstallCheck
+          '';
         };
         # C1 (TIN-2708): full parity of the ptoon binary vs the Python oracle.
         # Regenerates the gitignored shared corpus (gen_fixtures.py inputs +

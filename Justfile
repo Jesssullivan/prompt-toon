@@ -246,7 +246,7 @@ release version:
     gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$wheel" "$manifest" "$manifest.asc" \
       --verify-tag \
       --title "prompt-toon v{{version}}" \
-      --notes "OpenPGP signer: $signing_fingerprint. The signed tag authenticates source and the detached manifest signature authenticates targets[].sha256 for both importable Nix closure exports and the wheel; each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke, package install, and repository gates green at $rev."
+      --notes "OpenPGP signer: $signing_fingerprint. The signed tag authenticates source and the detached manifest signature authenticates targets[].sha256 for both importable Nix closure exports and the wheel; each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke with a valid ad-hoc Apple Silicon code signature, package install, and repository gates green at $rev."
     trap - ERR
     rm -rf "$stage"
     echo "released $tag at $rev"

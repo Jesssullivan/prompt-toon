@@ -364,6 +364,17 @@ class ManifestTests(unittest.TestCase):
             or "capacity-gateway.md" in release_surface
         )
 
+    def test_darwin_release_proves_valid_adhoc_linker_signature(self):
+        flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+        for required in (
+            "doInstallCheck = pkgs.stdenv.isDarwin",
+            "/usr/bin/codesign --verify --strict --verbose=4",
+            "Signature=adhoc",
+            "without a Developer ID identity",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, flake)
+
     def test_installed_launcher_isolates_imports_and_preserves_policy_override(self):
         flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
         self.assertIn('/bin/python -I "$out/lib/prompt-toon-launcher.py"', flake)
