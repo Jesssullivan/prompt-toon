@@ -148,6 +148,7 @@ class FlywheelContractTest(unittest.TestCase):
         build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
         self.assertIn('"flake.nix"', build)
         self.assertIn('"hooks/post_tool_condense.py"', build)
+        self.assertIn('"//tools/bazel/chapel:defs.bzl"', build)
         manifest_start = build.index('name = "manifest_srcs"')
         manifest_end = build.index("test_suite(", manifest_start)
         manifest_block = build[manifest_start:manifest_end]
