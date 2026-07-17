@@ -192,7 +192,12 @@ release version:
     [ -z "$signing_format" ] || [ "$signing_format" = "openpgp" ] || { echo "release requires an OpenPGP git signing key" >&2; exit 1; }
     gpg --list-secret-keys "$signing_key" >/dev/null 2>&1 || { echo "release signing key is unavailable: $signing_key" >&2; exit 1; }
     signing_fingerprint="$(gpg --batch --with-colons --list-secret-keys --fingerprint "$signing_key" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+    signing_fingerprint="$(printf '%s' "$signing_fingerprint" | tr '[:lower:]' '[:upper:]')"
     [[ "$signing_fingerprint" =~ ^[0-9A-Fa-f]{40,64}$ ]] || { echo "release signing fingerprint is unavailable" >&2; exit 1; }
+    trusted_signing_fingerprint="$(python3 -c 'import json; print(json.load(open("packaging/release-signers.json", encoding="utf-8"))["active"]["fingerprint"])')"
+    anchored_signing_fingerprint="$(gpg --batch --with-colons --show-keys --fingerprint packaging/release-signing-key.asc 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+    [ "$anchored_signing_fingerprint" = "$trusted_signing_fingerprint" ] || { echo "committed release key does not match release-signers.json" >&2; exit 1; }
+    [ "$signing_fingerprint" = "$trusted_signing_fingerprint" ] || { echo "configured release key is not the reviewed repository signer" >&2; exit 1; }
     rev="$(git rev-parse HEAD)"
     remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
     [ -n "$remote_main" ] && [ "$rev" = "$remote_main" ] || { echo "release HEAD must equal origin/main" >&2; exit 1; }
@@ -222,7 +227,7 @@ release version:
     mkdir "$stage/source"
     git archive "$rev" | tar -x -C "$stage/source"
     (cd "$stage/source" && UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage")
-    wheels=("$stage"/prompt_toon-{{version}}-*.whl)
+    wheels=("$stage"/prompt_toon-{{version}}-py3-none-any.whl)
     [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "release expected exactly one prompt-toon wheel" >&2; exit 1; }
     wheel="${wheels[0]}"
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"

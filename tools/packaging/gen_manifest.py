@@ -44,17 +44,22 @@ import ast
 import json
 import re
 import sys
+from email import policy as email_policy
+from email.parser import BytesParser
 from hashlib import sha256
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 MANIFEST_PATH = ROOT / "packaging" / "manifest.json"
 HOME_MANAGER_CONTRACT_PATH = ROOT / "packaging" / "home-manager.json"
+RELEASE_SIGNERS_PATH = ROOT / "packaging" / "release-signers.json"
 SCHEMA_VERSION = 2
 SAFE_PACKAGE_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PTOON_PLATFORMS = ("x86_64-linux", "aarch64-darwin")
+PYTHON_WHEEL_TAG = "py3-none-any"
 
 
 def version_from_init() -> str:
@@ -90,6 +95,90 @@ def assert_declared_versions_agree(version: str) -> None:
 
 def file_digest(path: Path) -> str:
     return sha256(path.read_bytes()).hexdigest()
+
+
+def release_signer_entry() -> dict[str, str]:
+    """Return the reviewed publisher trust anchor after checking its key bytes."""
+
+    try:
+        signers = json.loads(RELEASE_SIGNERS_PATH.read_text(encoding="utf-8"))
+        active = signers["active"]
+        fingerprint = active["fingerprint"]
+        public_key_name = active["public_key"]
+        public_key_sha256 = active["public_key_sha256"]
+        scheme = active["scheme"]
+    except (FileNotFoundError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise SystemExit(
+            "gen_manifest: packaging/release-signers.json is invalid"
+        ) from exc
+
+    if (
+        signers.get("schema_version") != 1
+        or signers.get("repository") != "github.com/Jesssullivan/prompt-toon"
+        or scheme != "openpgp"
+        or not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9A-F]{40,64}", fingerprint) is None
+        or not isinstance(public_key_name, str)
+        or not isinstance(public_key_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", public_key_sha256) is None
+    ):
+        raise SystemExit(
+            "gen_manifest: packaging/release-signers.json has an invalid "
+            "release signer contract"
+        )
+
+    relative_key = Path(public_key_name)
+    if relative_key.is_absolute() or ".." in relative_key.parts:
+        raise SystemExit("gen_manifest: release public key path must stay in the repo")
+    public_key = ROOT / relative_key
+    if public_key.is_symlink() or not public_key.is_file():
+        raise SystemExit("gen_manifest: release public key must be a regular file")
+    if file_digest(public_key) != public_key_sha256:
+        raise SystemExit(
+            "gen_manifest: release public key digest does not match "
+            "packaging/release-signers.json"
+        )
+
+    return {
+        "scheme": scheme,
+        "fingerprint": fingerprint,
+        "public_key": public_key_name,
+        "public_key_sha256": public_key_sha256,
+    }
+
+
+def validate_universal_wheel(path: Path, version: str) -> None:
+    """Require the exact pure-Python wheel promised by the release manifest."""
+
+    expected_filename = f"prompt_toon-{version}-{PYTHON_WHEEL_TAG}.whl"
+    if path.name != expected_filename:
+        raise SystemExit(
+            f"gen_manifest: release wheel must be {expected_filename}, "
+            f"not {path.name}"
+        )
+    if path.is_symlink() or not path.is_file():
+        raise SystemExit("gen_manifest: release wheel must be a regular file")
+
+    wheel_metadata_name = f"prompt_toon-{version}.dist-info/WHEEL"
+    try:
+        with ZipFile(path) as archive:
+            wheel_metadata = archive.read(wheel_metadata_name)
+    except (BadZipFile, KeyError, OSError) as exc:
+        raise SystemExit(
+            "gen_manifest: release wheel is not a valid wheel archive with "
+            f"{wheel_metadata_name}"
+        ) from exc
+
+    metadata = BytesParser(policy=email_policy.default).parsebytes(wheel_metadata)
+    if metadata.get("Root-Is-Purelib", "").lower() != "true":
+        raise SystemExit(
+            "gen_manifest: release wheel must declare Root-Is-Purelib: true"
+        )
+    if metadata.get_all("Tag", []) != [PYTHON_WHEEL_TAG]:
+        raise SystemExit(
+            f"gen_manifest: release wheel must declare exactly Tag: "
+            f"{PYTHON_WHEEL_TAG}"
+        )
 
 
 def policy_entries() -> list[dict[str, str]]:
@@ -216,6 +305,7 @@ def validate_stamped_artifacts(manifest: dict) -> None:
 def build_manifest(args: argparse.Namespace) -> dict:
     version = version_from_init()
     assert_declared_versions_agree(version)
+    release_signer = release_signer_entry()
 
     skills = sorted(
         validate_package_component("skill", p.name)
@@ -254,6 +344,8 @@ def build_manifest(args: argparse.Namespace) -> dict:
         "platform": "any",
         "kind": "python-wheel",
         "artifact": "prompt_toon",
+        "root_is_purelib": True,
+        "wheel_tag": PYTHON_WHEEL_TAG,
         "capabilities": {
             "anthropic_shadow_gateway": 1,
             "openai_responses_shadow_gateway": 1,
@@ -264,6 +356,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
     }
     if args.with_wheel:
         wheel = Path(args.with_wheel)
+        validate_universal_wheel(wheel, version)
         python_target["filename"] = wheel.name
         python_target["sha256"] = file_digest(wheel)
         python_target["size"] = wheel.stat().st_size
@@ -277,6 +370,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             "repo": "github.com/Jesssullivan/prompt-toon",
             "tag": args.tag,
             "ci_run": args.ci_run,
+            "release_signer": release_signer,
         },
         "build": {
             "toolchain": "chapel+python",
