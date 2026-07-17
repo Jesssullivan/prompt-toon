@@ -58,6 +58,7 @@ _MAX_CHUNK_LINE_BYTES = 128
 _MAX_TRAILER_BYTES = 64 * 1024
 _MAX_OBSERVED_RESPONSE_BYTES = 1024 * 1024
 _MAX_SSE_LINE_BYTES = 256 * 1024
+_MAX_OBSERVED_CONTENT_BLOCKS = 4096
 _MAX_MODEL_CARDINALITY = 32
 _MAX_CORRELATION_ID_BYTES = 1024
 _MAX_AUTH_TOKEN_BYTES = 8192
@@ -1039,11 +1040,15 @@ class ResponseObserver:
         try:
             value = json.loads(data, parse_constant=_reject_json_constant)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            if self.protocol == ANTHROPIC_PROTOCOL:
+                self._sse_protocol_invalid = True
             return
         self._observe_value(value)
 
     def _observe_value(self, value: object) -> None:
         if not isinstance(value, dict):
+            if self.protocol == ANTHROPIC_PROTOCOL and self._sse:
+                self._sse_protocol_invalid = True
             return
         if self.protocol == OPENAI_PROTOCOL:
             self._observe_openai_value(value)
@@ -1079,6 +1084,8 @@ class ResponseObserver:
                 return
 
     def _observe_anthropic_sse_value(self, value: dict[str, Any]) -> None:
+        if self._sse_protocol_invalid:
+            return
         if self._sse_complete:
             self._sse_protocol_invalid = True
             return
@@ -1110,6 +1117,8 @@ class ResponseObserver:
                 or isinstance(index, bool)
                 or index < 0
                 or index in self._sse_seen_content_blocks
+                or len(self._sse_seen_content_blocks)
+                >= _MAX_OBSERVED_CONTENT_BLOCKS
                 or not isinstance(block, dict)
                 or not isinstance(block.get("type"), str)
             ):
@@ -1180,7 +1189,11 @@ class ResponseObserver:
         if not self._refusal_response:
             return True
         details = value.get("stop_details")
-        category = details.get("category") if isinstance(details, dict) else None
+        category = (
+            details.get("category")
+            if isinstance(details, dict) and details.get("type") == "refusal"
+            else None
+        )
         self._refusal_category = (
             category if category in _REFUSAL_CATEGORIES else "other"
         )
@@ -1197,11 +1210,16 @@ class ResponseObserver:
             or _safe_model(source.get("model")) is None
             or not isinstance(target, dict)
             or _safe_model(target.get("model")) is None
-            or not isinstance(trigger, dict)
-            or trigger.get("type") != "refusal"
             or (
-                trigger.get("category") is not None
-                and not isinstance(trigger.get("category"), str)
+                trigger is not None
+                and (
+                    not isinstance(trigger, dict)
+                    or trigger.get("type") != "refusal"
+                    or (
+                        trigger.get("category") is not None
+                        and trigger.get("category") not in _REFUSAL_CATEGORIES
+                    )
+                )
             )
         ):
             return False

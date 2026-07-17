@@ -56,10 +56,11 @@ the latest observed provider exchange. `HEAD /` is a local connectivity probe.
 
 Completed, identity-encoded Anthropic responses also contribute the following
 fixed-cardinality counters. Non-stream JSON observation is capped at 1 MiB;
-SSE telemetry is committed only after a terminated `message_stop` event.
-Truncated, malformed, compressed, or incomplete responses increment the
-existing telemetry-unavailable signal instead of contributing partial safety
-counts.
+each SSE line is capped at 256 KiB, each assembled event at 1 MiB, and
+content-block tracking at 4096 indices. SSE telemetry is committed only after
+a terminated `message_stop` event. Truncated, malformed, compressed,
+over-limit, or incomplete responses increment the existing
+telemetry-unavailable signal instead of contributing partial safety counts.
 
 For SSE, safety fields are read only from their documented event positions:
 the initial `message_start`, `fallback` blocks in `content_block_start`, and
@@ -68,7 +69,9 @@ contribute safety fields. Any data event after `message_stop` invalidates the
 observed copy while the original response bytes continue to the client.
 Content-block indices must be unique and every start must be paired with a
 stop before the final delta; fallback blocks additionally require schema-valid
-`from`, `to`, and refusal `trigger` objects and carry no deltas.
+`from` and `to` objects and carry no deltas. The current public response
+example omits `trigger`; when a newer SDK-schema response includes one, it must
+be a valid refusal trigger.
 
 - `provider_refusal_responses` branches only on final
   `stop_reason: "refusal"`, including normal HTTP 200 refusals.
