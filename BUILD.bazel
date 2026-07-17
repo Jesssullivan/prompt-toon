@@ -91,6 +91,8 @@ filegroup(
         "MODULE.bazel",
         "packaging/home-manager.json",
         "packaging/manifest.json",
+        "packaging/release-signers.json",
+        "packaging/release-signing-key.asc",
         "pyproject.toml",
         ":delegation_policy",
         ":skills",
