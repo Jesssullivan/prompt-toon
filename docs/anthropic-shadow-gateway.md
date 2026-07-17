@@ -142,13 +142,16 @@ env \
   NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 \
   ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
   PROMPT_TOON_GATEWAY_URL=http://127.0.0.1:8787 \
-  claude
+  claude-api
 )
 ```
 
-Because activation is process-scoped, the parent shell is unchanged. A direct
-rollback process removes only prompt-toon routing and leaves credentials,
-model choice, and any original provider mode untouched:
+On managed lab hosts, `claude-api` is the API-preserving wrapper; the ordinary
+`claude` wrapper deliberately removes provider-routing variables. Standalone
+installs can pass an equivalent API-preserving binary through `CLAUDE_BIN` or
+`--claude-bin`. Because activation is process-scoped, the parent shell is
+unchanged. A direct rollback process removes only prompt-toon routing and leaves
+credentials, model choice, and any original provider mode untouched:
 
 ```sh
 just claude-profile direct
@@ -169,14 +172,15 @@ Before authorizing provider spend, run the deterministic harness proof:
 just gateway-harness-probe
 ```
 
-It launches the real Claude Code binary under `--bare` with an ephemeral config
-and no session persistence. Claude Code sends a streaming `Read` tool round
-trip through the real gateway to a scripted loopback upstream; the probe checks
-the `?beta=true` path, header values and stable session ID, correlated tool
-result, shadow completion, readiness transition, same-port rebind, and direct
-profile rendering. Its transform engine is an in-memory protocol fixture, not
-the Chapel binary. The API key is local fixture data and no external provider
-is contacted.
+It resolves the Claude Code binary from `CLAUDE_BIN`, then `claude-api` on
+`PATH`, then `claude`. It launches that real binary under `--bare` with an
+ephemeral config and no session persistence. Claude Code sends a streaming
+`Read` tool round trip through the real gateway to a scripted loopback upstream;
+the probe checks the `?beta=true` path, header values and stable session ID,
+correlated tool result, shadow completion, readiness transition, same-port
+rebind, and direct profile rendering. Its transform engine is an in-memory
+protocol fixture, not the Chapel binary. The API key is local fixture data and
+no external provider is contacted.
 
 The live probe starts its own zero-traffic gateway and real `ResidentEngine`,
 then uses the same Claude Code path against the configured provider. It is

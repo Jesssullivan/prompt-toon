@@ -16,7 +16,15 @@ MAX_DOGFOOD_CARDS_PER_DOCUMENT = 24
 MAX_DOGFOOD_BUDGET_MS = 2000
 LEXICAL_ESTIMATOR_ID = "prompt-toon-rough-lexical-v1"
 LEXICAL_ESTIMATOR_PATTERN = r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]"
-DOGFOOD_LEDGER_SCHEMA_VERSION = 2
+LEGACY_DOGFOOD_LEDGER_SCHEMA_VERSION = 2
+DOGFOOD_LEDGER_SCHEMA_VERSION = 3
+HANDOFF_RECALL_METHOD = "recognized-critical-question-line-recall-v1"
+HANDOFF_RECALL_KINDS = ("critical_constraints", "open_questions")
+HANDOFF_RECALL_CLAIM_BOUNDARY = (
+    "Occurrence-counted exact retention of recognized normalized and redacted "
+    "source lines; safety transformations that alter text are not credited, and "
+    "this is not semantic-equivalence or task-quality proof."
+)
 CORPUS_KEY_SCHEME = "prompt-toon-ordered-input-metadata-v1"
 CORPUS_DIVERSITY_SCHEME = "prompt-toon-input-multiset-v1"
 
@@ -162,6 +170,69 @@ def _meets_savings(baseline: int, candidate: int, minimum: float) -> bool:
     return (baseline - candidate) / baseline >= minimum
 
 
+def build_handoff_recall(
+    handoff_names: list[str],
+    recognized: dict[str, int],
+    retained_by_handoff: dict[str, dict[str, int]],
+) -> dict[str, Any]:
+    """Build a content-free recall gate over recognized source-line classes."""
+
+    if set(recognized) != set(HANDOFF_RECALL_KINDS):
+        raise ValueError("recognized anchor counts do not match the recall contract")
+    if set(retained_by_handoff) != set(handoff_names):
+        raise ValueError("retained anchor counts do not match the emitted handoffs")
+
+    normalized_recognized: dict[str, int] = {}
+    for kind in HANDOFF_RECALL_KINDS:
+        count = recognized[kind]
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"recognized {kind} count must be a non-negative integer")
+        normalized_recognized[kind] = count
+
+    total = sum(normalized_recognized.values())
+    handoffs: dict[str, dict[str, Any]] = {}
+    for name in handoff_names:
+        retained = retained_by_handoff[name]
+        if set(retained) != set(HANDOFF_RECALL_KINDS):
+            raise ValueError(f"retained anchor counts for {name} are incomplete")
+        normalized_retained: dict[str, int] = {}
+        for kind in HANDOFF_RECALL_KINDS:
+            count = retained[kind]
+            if (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 0
+                or count > normalized_recognized[kind]
+            ):
+                raise ValueError(
+                    f"retained {kind} count for {name} is outside the recognized total"
+                )
+            normalized_retained[kind] = count
+        retained_total = sum(normalized_retained.values())
+        if total == 0:
+            status = "not-applicable"
+        elif normalized_retained == normalized_recognized:
+            status = "pass"
+        else:
+            status = "recall-loss"
+        handoffs[name] = {
+            "retained": normalized_retained,
+            "retained_total": retained_total,
+            "status": status,
+        }
+
+    return {
+        "method": HANDOFF_RECALL_METHOD,
+        "recognized": {
+            **normalized_recognized,
+            "total": total,
+        },
+        "handoffs": handoffs,
+        "source_text_recorded": False,
+        "claim_boundary": HANDOFF_RECALL_CLAIM_BOUNDARY,
+    }
+
+
 def build_efficiency_ledger(
     *,
     run_id: str,
@@ -185,6 +256,8 @@ def build_efficiency_ledger(
     mythos_route: str | None,
     model_label: str | None,
     token_counter: Callable[[str], int],
+    recognized_anchors: dict[str, int],
+    retained_anchors_by_handoff: dict[str, dict[str, int]],
 ) -> dict[str, Any]:
     """Build a claim-bounded ledger from already-written run artifacts."""
     artifacts: dict[str, dict[str, Any]] = {}
@@ -239,7 +312,7 @@ def build_efficiency_ledger(
         handoffs,
         key=lambda name: handoffs[name]["tokens_estimate"],
     )
-    eligible_handoffs = sorted(
+    savings_eligible_handoffs = sorted(
         name
         for name, measurement in handoffs.items()
         if _meets_savings(
@@ -248,6 +321,14 @@ def build_efficiency_ledger(
             min_handoff_savings,
         )
     )
+    handoff_recall = build_handoff_recall(
+        list(handoffs), recognized_anchors, retained_anchors_by_handoff
+    )
+    eligible_handoffs = [
+        name
+        for name in savings_eligible_handoffs
+        if handoff_recall["handoffs"][name]["status"] != "recall-loss"
+    ]
     if withheld_documents:
         eligible_handoffs = []
         best_measured = None
@@ -262,7 +343,12 @@ def build_efficiency_ledger(
             if eligible_handoffs
             else None
         )
-        handoff_gate = "pass" if recommended_handoff is not None else "below-threshold"
+        if recommended_handoff is not None:
+            handoff_gate = "pass"
+        elif savings_eligible_handoffs:
+            handoff_gate = "recall-loss"
+        else:
+            handoff_gate = "below-threshold"
 
     toon_savings = format_analysis.get("toon_savings")
     # Selection is decided from the unrounded ratio in choose_card_format.
@@ -352,15 +438,18 @@ def build_efficiency_ledger(
         },
         "artifacts": artifacts,
         "handoffs": handoffs,
+        "handoff_recall": handoff_recall,
         "handoff_decision": {
             "minimum_token_estimate_savings": min_handoff_savings,
             "best_measured_handoff": best_measured,
+            "savings_eligible_handoffs": savings_eligible_handoffs,
             "eligible_handoffs": eligible_handoffs,
             "recommended_handoff": recommended_handoff,
             "gate": handoff_gate,
             "note": (
                 "TOON-vs-JSONL savings do not satisfy this gate unless the complete "
-                "handoff also beats the raw-input estimate; any withheld document "
+                "handoff also beats the raw-input estimate and retains every recognized "
+                "critical-constraint and open-question line; any withheld document "
                 "forces a non-pass result."
             ),
         },

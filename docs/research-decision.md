@@ -2,7 +2,15 @@
 
 Date: 2026-07-09
 
-## Decision
+## Current Scope Note
+
+This record captures the first offline increment, not the current whole-product
+boundary. The project subsequently expanded into standalone harness-to-model
+streaming IO middleware: Python owns provider HTTP/auth/stream pass-through and
+a resident Chapel process owns bounded typed-context transforms. The local
+condenser and Codex skill remain supported transforms within that middleware.
+
+## Initial Decision
 
 Build `prompt-toon` as a deterministic local condenser and Codex skill.
 

@@ -22,7 +22,12 @@ import unittest
 from pathlib import Path
 
 from prompt_toon import engine as engine_module
-from prompt_toon.cli import main, normalize_text as python_normalize_text, resolve_engine
+from prompt_toon.cli import (
+    main,
+    normalize_text as python_normalize_text,
+    redact_text as python_redact_text,
+    resolve_engine,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 

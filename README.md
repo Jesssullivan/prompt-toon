@@ -1,10 +1,17 @@
 # prompt-toon
 
-Private local tool and agent skill for safe research condensation.
+Low-level streaming IO middleware between local agent harnesses and remote
+model APIs, with provenance-preserving context optimization.
 
-`prompt-toon` turns noisy subagent/research output into a durable handoff:
-`summary.md`, `source-cards.jsonl`, and `manifest.json`. It is deterministic by
-default: no LLM call, no network call, no hidden transport change.
+The opt-in online gateways keep provider HTTP, authentication, and streaming
+pass-through in Python while one resident Chapel process owns bounded concurrent
+transforms over typed variable-context segments. Authority-bearing instructions,
+approval state, tool schemas, and provider controls are not transformed.
+
+Offline research condensation is one supported transform and dogfood workflow:
+`prompt-toon` turns noisy subagent/research output into `summary.md`,
+`source-cards.jsonl`, and `manifest.json`. That path is deterministic by default:
+no LLM call, no network call, and no hidden transport change.
 
 Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` process
 (native remote-built Nix outputs) owns normalize/redact/defang, the coforall
@@ -54,12 +61,14 @@ The run writes `summary.md`, authoritative `source-cards.jsonl`,
 `manifest.json`, optional `source-cards.toon`, and `efficiency.json` under the
 state directory. Token figures are explicitly labeled lexical estimates, not
 provider usage or billing telemetry. A separate whole-handoff gate prevents a
-TOON-vs-JSONL win from being presented as an end-to-end prompt win. See
-`docs/dogfood-efficiency.md`.
+TOON-vs-JSONL win from being presented as an end-to-end prompt win, and fails
+closed when a size-eligible handoff drops a recognized critical constraint or
+open question. See `docs/dogfood-efficiency.md`.
 Add `--mythos-route` or `--model-label` only when the caller observed those
 values; neither option proves delegation or provider routing.
 
-Aggregate explicit schema-v2 ledgers without reopening source material:
+Aggregate explicit schema-v3 or legacy schema-v2 ledgers without reopening
+source material:
 
 ```sh
 just dogfood-corpus path/to/run-*/efficiency.json
