@@ -26,6 +26,7 @@ build:executor-backed --remote_download_minimal
 build:executor-backed --noremote_cache_compression
 build:executor-backed --jobs=4
 build:executor-backed --host_platform=//tools/bazel/platforms:linux_x86_64
+build:executor-backed --platforms=//tools/bazel/platforms:linux_x86_64
 build:executor-backed --extra_execution_platforms=//tools/bazel/platforms:linux_x86_64
 # NOTE: no `test:executor-backed --config=executor-backed` here — that is a
 # self-referential rc cycle (Bazel: "Config expansion has a cycle"); `test`

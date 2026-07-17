@@ -34,6 +34,10 @@ jobs:
         run: |
           export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
           nix develop --command just bazel-graph
+      - name: Chapel platform toolchain analysis
+        run: |
+          export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          nix develop --command just bazel-chapel-toolchain-contract
       - name: MODULE.bazel.lock has not drifted
         run: |
           export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"

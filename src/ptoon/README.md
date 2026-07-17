@@ -129,7 +129,7 @@ x86_64-linux ELF:
 
 ```sh
 just build-ptoon      # or: make build-ptoon   — nix remote builder (cache-first)
-just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-backed)
+just flywheel-chapel  #      make bazel-ptoon   — fixed, uncached Bazel proof on GF REAPI
 ```
 
 - **nix remote builder** (current release substrate):
@@ -137,15 +137,18 @@ just flywheel-chapel  #      make bazel-ptoon   — Bazel on GF REAPI (executor-
   `chpl --fast -M src/ptoon -o ptoon` on the x86_64-linux builder and
   smoke-tests `echo hi | ./ptoon normalize`.
 - **Bazel on GF REAPI** (executor-backed graph and cache plane):
-  `//src/ptoon:ptoon` (the `chapel_binary` walking-skeleton rule in
-  `//tools/bazel/chapel:defs.bzl`) runs the identical compile on the
-  GloriousFlywheel REAPI executor. The target is
-  `target_compatible_with` linux, so a local darwin build is
-  incompatible-by-design, and the executor lane fails closed
-  (`--remote_local_fallback=false`) if `BAZEL_REMOTE_EXECUTOR` is not
-  armed. nix owns the chpl version; Bazel owns the graph/cache/execution.
+  `//src/ptoon:ptoon` uses the mandatory `ChapelToolchainInfo` boundary in
+  `//tools/bazel/chapel`. The registered x86_64-linux implementation is the
+  explicitly transitional GF worker-runtime bridge. Darwin has a distinct
+  execution platform but no registered compiler, so analysis fails closed
+  until TIN-2949 supplies a declared hermetic toolchain; it cannot fall through
+  to a developer-host `chpl`. Environmental Linux compiles are non-cacheable
+  because the ambient compiler is not part of their action key. `just
+  bazel-chapel-toolchain-contract` proves both analysis outcomes without
+  running a compile action. The executor lane also keeps
+  `--remote_local_fallback=false`.
 
-## Primary references checked 2026-07-11
+## Primary references checked 2026-07-16
 
 Keep this lane grounded in current upstream docs when touching Chapel/Bazel
 plumbing:
@@ -176,16 +179,18 @@ plumbing:
   https://chapel-lang.org/docs/tools/mason/guide/manifestfile.html. The
   local `Mason.toml` is `type = "application"` with `compopts = "-M src/ptoon"`;
   quickchpl remains advisory until pinned into a remote gate.
-- Bazel platforms and common attributes:
+- Bazel platforms, toolchains, and common attributes:
   https://bazel.build/extending/platforms and
+  https://bazel.build/extending/toolchains and
   https://bazel.build/reference/be/common-definitions. These are the sources
-  for `target_compatible_with` and `tags = ["manual"]` keeping
-  `//src/ptoon:ptoon` out of wildcard local builds.
+  for execution/target platform separation, compiler selection, and
+  `tags = ["manual"]` keeping `//src/ptoon:ptoon` out of wildcard local builds.
 - Bazel Starlark actions and remote execution docs:
   https://bazel.build/rules/lib/builtins/actions,
   https://bazel.build/remote/rbe, and https://bazel.build/remote/rules. These
-  anchor the walking-skeleton `ctx.actions.run_shell` action and the C3
-  follow-up to replace PATH/env `chpl` with a proper Chapel toolchain rule.
+  anchor the `ctx.actions.run` action with declared tool/runfiles inputs. The
+  remaining C3 work replaces the Linux environmental bridge and registers the
+  Darwin compiler closure; it does not regress to action-time downloads.
 - Bazel command/options and remote-build performance docs:
   https://bazel.build/docs/user-manual and
   https://bazel.build/advanced/performance/build-performance-breakdown. These
