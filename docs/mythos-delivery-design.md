@@ -682,9 +682,17 @@ TIN-2542 established the separate
 still-missing endpoint, declared hermetic Chapel toolchain, native artifact
 proof, and deliberate bridge to the Nix-closure release format. The Bazel
 target has a mandatory toolchain boundary and fails Darwin analysis closed
-until that compiler is registered. No accepted remote Apple Silicon worker
-currently exists, so `just release 0.3.0` remains blocked rather than compiling
-on Neo. See `docs/home-manager-adoption.md`.
+until that compiler is registered. Petting Zoo Mini is authorized under
+TIN-2998 as the physical Apple Silicon worker, but it is not yet commissioned:
+there is no managed GF service, bounded Darwin sandbox, mTLS endpoint, or forced
+execution proof. Neo remains excluded. The current v0.3 artifact is an
+ad-hoc-signed Apple Silicon CLI plus a digest-stamped Nix closure; the ad-hoc
+signature is validated after Nix fixup and carries no Developer ID identity.
+Publisher identity comes from the OpenPGP-signed Git tag and detached manifest
+signature. Apple Developer ID signing and notarization are not on its critical
+path; they become project release gates for a future target that claims a
+signed Gatekeeper-facing application or installer. See
+`docs/home-manager-adoption.md`.
 
 ### C4e offline measurement contract
 
