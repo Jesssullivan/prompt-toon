@@ -338,7 +338,16 @@ class ManifestTests(unittest.TestCase):
             '--with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon"',
             '--with-wheel "$wheel"',
             '"$stage/ptoon-aarch64-darwin.nar" "$wheel"',
-            '"$stage/manifest-$tag.json"',
+            'manifest="$stage/manifest-$tag.json"',
+            'signing_fingerprint="$(gpg --batch --with-colons',
+            'nix-store --query --requisites "$linux_ptoon_store" | sort',
+            'nix-store --query --requisites "$darwin_ptoon_store" | sort',
+            'git tag -s -u "$signing_key"',
+            'git verify-tag "$tag"',
+            'gpg --local-user "$signing_key" --armor --detach-sign',
+            'gpg --verify "$manifest.asc" "$manifest"',
+            '"$manifest" "$manifest.asc"',
+            'OpenPGP signer: $signing_fingerprint',
         ):
             with self.subTest(required=required):
                 self.assertIn(required, justfile)
@@ -354,6 +363,18 @@ class ManifestTests(unittest.TestCase):
             "tools/gateway_capacity.py" in release_surface
             or "capacity-gateway.md" in release_surface
         )
+
+    def test_darwin_release_proves_valid_adhoc_signature_without_identity(self):
+        flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
+        for required in (
+            "doInstallCheck = pkgs.stdenv.isDarwin",
+            "/usr/bin/codesign --verify --strict --verbose=4",
+            "Signature=adhoc",
+            "TeamIdentifier=not set",
+            "^Authority=",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, flake)
 
     def test_installed_launcher_isolates_imports_and_preserves_policy_override(self):
         flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
