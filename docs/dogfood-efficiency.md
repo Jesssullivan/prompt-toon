@@ -40,10 +40,12 @@ The default `--engine auto` behavior is observable:
   `coforall` semantics create a distinct task for each iteration and wait for
   all child tasks, so the CLI keeps the production document ceiling rather
   than permitting an unbounded fan-in. See the
-  [Chapel 2.7 `coforall` guide](https://chapel-lang.org/docs/2.7/users-guide/taskpar/coforall.html)
-  for the pinned compiler and the
+  [current `coforall` guide](https://chapel-lang.org/docs/users-guide/taskpar/coforall.html)
+  and the
   [current task-parallel specification](https://chapel-lang.org/docs/language/spec/task-parallelism-and-synchronization.html)
-  used for forward review. TIN-2807 owns the compiler upgrade to 2.9.
+  used for forward review. The exact locked source has 2.7.0 Nix package
+  metadata but reports 2.8.0 pre-release; TIN-2807 owns reconciliation and the
+  reviewed compiler upgrade to 2.9.
 - `python`: the sequential parity oracle was used because `ptoon` was absent.
   The ledger records the fallback; it is never presented as Chapel evidence.
   It enforces the same input ceilings but has no wall-clock withholding
@@ -90,6 +92,19 @@ than JSONL while `summary + TOON` still exceeds the raw source bundle. In that
 case `recommended_handoff` is null and the ledger reports `below-threshold`
 instead of promoting a misleading format-local win. Adjust the experiment gate
 with `--min-handoff-savings`; the configured value is recorded in the ledger.
+
+Recommendation also requires complete recall of every source-line occurrence
+recognized by the existing critical-constraint and open-question classifiers.
+Recall is measured separately for the summary, summary plus authoritative
+JSONL, and optional summary plus TOON view. One emitted card cannot satisfy
+multiple identical source occurrences, and a safety transformation that changes
+summary text is not credited as exact retention. A smaller handoff that loses a
+recognized line is removed from eligibility; a larger retaining handoff may be
+recommended. If every size-eligible handoff loses a recognized line, the gate
+is `recall-loss` and no recommendation is emitted. The ledger stores category
+counts only, not anchor text, and labels this as exact classifier-line recall
+rather than semantic equivalence or task-quality proof.
+
 Any withheld document forces the gate to `withheld` regardless of measured
 size, so fail-closed omission can never masquerade as an efficiency gain. The
 ledger retains only the withheld source label and reason, never body-derived
@@ -97,11 +112,17 @@ content.
 
 ## Corpus Reports
 
-Schema-v2 ledgers add an artifact-derived emitted-card count plus two path-free
+Schema-v2 introduced an artifact-derived emitted-card count plus two path-free
 input identities over SHA-256, trust tier, and byte count: an order-sensitive
 key binds the actual handoff order, while an order-insensitive multiset key
 measures spool diversity. Regenerate schema-v1 runs with the current `dogfood`
-command before aggregation.
+command before aggregation. Schema-v3 adds the content-free handoff-recall gate
+and requires it on every new ledger. Schema-v2 ledgers remain readable as
+`legacy-unmeasured-v2`, but a v2/v3 hybrid fails closed. Legacy ledgers are
+isolated from measured-recall cohorts and cannot claim recall evidence or
+contribute a handoff-pass result. Their byte/token measurements remain available
+for historical diagnostics. Corpus reports carrying these new fields use report
+schema v2.
 
 Pass explicit ledger files to the checked reporter:
 
@@ -122,15 +143,17 @@ diagnostic; 20 or more unique spools within the 50-ledger cap satisfy the
 sample-count gate.
 
 Estimator ID, pattern, and unit must match exactly. Engine, one-shot shape,
-budget enforcement, card cap, Chapel budget, and both savings thresholds form
-the execution cohort, so Python-oracle, Chapel one-shot, and policy variants
-never share percentiles. Resident gateway evidence is rejected and remains in
+budget enforcement, card cap, Chapel budget, both savings thresholds, and the
+recall method form the execution cohort, so Python-oracle, Chapel one-shot,
+legacy-unmeasured, and policy variants never share percentiles. Resident gateway
+evidence is rejected and remains in
 `just gateway-capacity`. Each cohort reports nearest-rank p50/p90 only at five
 or more runs; smaller cohorts retain sorted values with an
 `insufficient-cohort` status. Withheld and zero-token-baseline runs remain in
 operational and gate-rate denominators but are excluded explicitly from
 economics distributions and weighted aggregates. Output byte counts, lexical
-estimates, and savings are reported separately.
+estimates, savings, measured-recall rate, and recall-loss rate are reported
+separately.
 
 The report keeps TOON eligibility/selection separate from whole-handoff pass
 rate, records zero provider requests, and contains no implicit timestamp or
@@ -172,7 +195,9 @@ The canonical report contains fixture/case IDs, counts, engine identity, and
 failure codes only. It has no timestamp, absolute path, raw fixture content,
 provider request, or timing. Local `just check` runs the Python oracle. The
 remote Linux parity derivation runs both Python and Chapel, while native remote
-Darwin repeats the Chapel gate without local `chpl` iteration.
+Darwin repeats the Chapel gate in the attended release lane without local
+`chpl` iteration. The pull-request Darwin definition check does not claim this
+native artifact proof.
 
 An `offline-fixture-pass` proves this fixed transform regression suite only. It
 does not attest arbitrary self-reported corpus ledgers, prove SWE task quality,
@@ -223,7 +248,8 @@ regular files through bounded no-follow reads. It hashes raw bytes without JSON
 reserialization and emits no filesystem paths, request content, response
 content, timestamps, or provider credentials.
 
-The sidecar binds the schema-v2 ledger, corpus identity, manifest, selected
+The sidecar binds the validated schema-v3 or legacy schema-v2 ledger, corpus
+identity, manifest, selected
 handoff artifacts, ordered request sequence, and usage artifact. Missing cache
 or output fields remain `null`; they are never inferred as zero. Comparison
 requires the same ledger, corpus, source class, and model, with a `raw_input`

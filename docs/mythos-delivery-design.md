@@ -540,9 +540,11 @@ the binary, `auto` falls open to Python when the binary is absent.
   note: https://chapel-lang.org/docs/technotes/libraries.html and
   https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
 - These are the current language references, not compiler provenance. The
-  locked `chapel-nix` input still reports Chapel 2.7.0; remote derivation names
-  and `flake.lock` are the build truth until a separately reviewed toolchain
-  upgrade lands. Do not claim a 2.9-built artifact from this revision.
+  locked source's Nix package metadata says 2.7.0, while a remote-only
+  `chpl --version` observation reports 2.8.0 pre-release. The exact
+  `flake.lock` revision and both identities remain build truth until a
+  separately reviewed upgrade lands. Do not claim a 2.7.0- or 2.9-built
+  artifact from this revision.
 - Bazel current platform/compatibility, `manual` tag, `run_shell`, and
   remote-execution rule guidance:
   https://bazel.build/extending/platforms,
@@ -671,12 +673,18 @@ presence or readiness with traffic/provider reachability. The deterministic
 host-ledger fields; activation is false and the IO policy remains locked.
 
 Platform delivery is native remote: x86_64-linux retains exhaustive byte
-parity and the 64-session HTTP/SSE gate; aarch64-darwin builds with local jobs
-disabled and runs native caps, normalization, and resident round-trip smoke.
-Native-surface pull requests repeat the Darwin derivation on a bounded standard
-GitHub-hosted `macos-15` arm64 runner; releases continue to use the remote Nix
-builder path. Linux Bazel/GF REAPI stays Linux-only. See
-`docs/home-manager-adoption.md`.
+parity and the 64-session HTTP/SSE gate; aarch64-darwin must run native caps,
+normalization, resident round-trip, and offline quality smoke. Native-surface
+pull requests instantiate the Darwin derivation on a GF-managed Linux runner
+without realizing it; that is definition proof, not native artifact proof.
+TIN-2542 established the separate
+`gloriousflywheel-rbe-darwin-aarch64` contract. TIN-2949 now owns its
+still-missing endpoint, declared hermetic Chapel toolchain, native artifact
+proof, and deliberate bridge to the Nix-closure release format. The Bazel
+target has a mandatory toolchain boundary and fails Darwin analysis closed
+until that compiler is registered. No accepted remote Apple Silicon worker
+currently exists, so `just release 0.3.0` remains blocked rather than compiling
+on Neo. See `docs/home-manager-adoption.md`.
 
 ### C4e offline measurement contract
 
@@ -694,11 +702,18 @@ Mythos route/model labels. It records zero provider requests and never presents
 local estimates as context-window or billing truth. Exact GPT request counts
 require the complete payload and the separately authorized Responses input
 token count endpoint. TOON remains a non-authoritative compact view because it
-omits evidence and source hashes.
+omits evidence and source hashes. A recommendation must also retain every
+source-line occurrence recognized by the existing critical-constraint and
+open-question classifiers; one card cannot satisfy repeated occurrences, and
+text changed by a safety transform is not credited as exact retention. The
+ledger stores category counts, never anchor text. A lossy smallest handoff is
+skipped for a larger retaining handoff, or the recommendation fails closed with
+`recall-loss`. This is classifier-line recall, not semantic equivalence or
+task-quality proof.
 
 ### C4f corpus evidence contract
 
-`prompt-toon corpus-report` accepts only explicit schema-v2
+`prompt-toon corpus-report` accepts explicit schema-v3 or legacy schema-v2
 `efficiency.json` files. Each ledger carries an artifact-derived card count and
 a recomputable, path-free identity over ordered input hashes, trust tiers, and
 byte counts plus an order-insensitive diversity key. Replays within one cohort,
@@ -710,9 +725,13 @@ cross-plane timing blends.
 The corpus gate requires 20 unique spools within a 50-ledger cap. Nearest-rank
 distributions and weighted aggregates remain separate, as do format-local TOON
 rates and whole-handoff pass rates. Engine, execution shape, budget mode,
-policy thresholds, and card limits form distinct cohorts. Withheld and
-zero-token runs count toward operational outcomes but not economics. C4f.1
-reports self-attested optimization evidence with promotion blocked. C4f.2 adds
+policy thresholds, card limits, and recall method form distinct cohorts.
+Schema-v3 requires recall evidence. Pre-recall schema-v2 ledgers remain readable
+only as isolated `legacy-unmeasured-v2` evidence and never contribute a
+handoff-pass result; ambiguous v2/v3 hybrids fail closed.
+Withheld and zero-token runs count toward
+operational outcomes but not economics. C4f.1 reports self-attested optimization
+evidence with promotion blocked. C4f.2 adds
 a separate generated synthetic suite that requires 100% constraint and
 open-question recall, exclusion of untrusted imperatives from authority-bearing
 sections, zero secret-fragment leakage, exact clean-claim retention, and exact
@@ -733,12 +752,15 @@ C4f.3 runs the real Chapel one-shot path at 1/8/32/64 documents under two
 Qthreads workers and proves ordered results, card/provenance integrity,
 summary/manifest counts, and repeat determinism. It is a correctness and
 queueing-shape gate, not a throughput benchmark; resident 64-stream capacity
-remains a separate long-lived-service proof. The release pin is Chapel 2.7.0,
-while TIN-2807 owns the reviewed upgrade to current Chapel 2.9.
+remains a separate long-lived-service proof. The release pin is the exact
+Chapel source revision, whose Nix package metadata says 2.7.0 while the
+compiler reports 2.8.0 pre-release. TIN-2807 owns provenance reconciliation
+and the reviewed upgrade to current Chapel 2.9.
 
 C4f.4 imports terminal Responses or Codex usage from explicitly supplied local
-artifacts. A path-free sidecar hashes the validated schema-v2 ledger, manifest,
-selected handoff artifacts, exact ordered request bytes, and usage bytes. The
+artifacts. A path-free sidecar hashes the validated schema-v3 or legacy-v2
+ledger, manifest, selected handoff artifacts, exact ordered request bytes, and
+usage bytes. The
 importer performs no provider IO, preserves unreported cache/output fields as
 unknown, and compares a raw-input baseline with a condensed candidate only when
 ledger, corpus, source class, and model match. Hash descriptors make drift

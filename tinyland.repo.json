@@ -4,24 +4,24 @@
   "repo": {
     "name": "prompt-toon",
     "github": "Jesssullivan/prompt-toon",
-    "description": "Local agent research condenser with provenance-preserving prompt minimization and measured TOON support.",
+    "description": "Harness-to-model streaming IO middleware with bounded Chapel transforms and provenance-preserving context optimization.",
     "linear": {
-      "initiative": "Prompt TOON Agent Spool",
+      "initiative": "Prompt TOON Streaming IO Middleware",
       "initiativeId": "47641b08-44bc-4bac-956d-0dd8f8f88dad",
-      "project": "prompt-toon local research condenser",
+      "project": "prompt-toon streaming IO middleware",
       "projectId": "6c824bb3-4e8f-4a7b-9092-2638ed945c54",
       "bootstrapIssue": "TIN-2691"
     }
   },
   "taxonomy": {
-    "primary_role": "local-agent-tool",
-    "layers": ["org-wide-repo-contract", "bazel-package-cache-rbe", "agent-skill"]
+    "primary_role": "streaming-io-middleware",
+    "layers": ["org-wide-repo-contract", "bazel-package-cache-rbe", "provider-gateway", "resident-chapel-transform", "agent-skill"]
   },
   "enrollment": {
     "forgeScope": "Jesssullivan",
     "operatorOverlay": "jesssullivan-infra",
     "executionPool": "tinyland-nix",
-    "substrateMode": "shared-cache-backed"
+    "substrateMode": "executor-backed"
   },
   "contracts": {
     "agent_contract": "AGENTS.md",

@@ -1,52 +1,56 @@
 # TIN-2708 C1 / TIN-2709 C2 (pulled forward): the `ptoon` binary as a Bazel
-# target, compiled by the walking-skeleton chapel_binary rule on the GF REAPI
-# executor. This is byte-for-byte the same compile the flake's `ptoonBinary`
-# derivation runs on the nix remote builder (`chpl --fast src/ptoon/Main.chpl
-# -M src/ptoon -o ptoon`); the two execution planes must produce the same ELF.
+# target, compiled by the toolchain-backed chapel_binary rule on GF REAPI. This
+# uses the same sources and flags as the flake's `ptoonBinary` derivation
+# (`chpl --fast src/ptoon/Main.chpl -M src/ptoon -o ptoon`). Behavioral parity
+# is gated separately; reproducible binary identity is not assumed.
 #
-# Build (only realizes on a linux exec platform -- GF REAPI):
+# Build today (the registered transitional toolchain is Linux-only -- GF REAPI):
 #   gloriousflywheel-bazel build --config=executor-backed //src/ptoon:ptoon
-# On the aarch64-darwin dev host this target is incompatible-by-design and is
-# skipped (see target_compatible_with below and in //tools/bazel/chapel:defs.bzl).
+# Darwin analysis fails closed until TIN-2949 registers a declared hermetic
+# compiler toolchain; it never falls through to chpl on the developer host.
 
 load("//tools/bazel/chapel:defs.bzl", "chapel_binary")
 
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "linux_x86_64_target",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
 chapel_binary(
     name = "ptoon",
-    main = "Main.chpl",
     srcs = [
-        "Main.chpl",
         "Normalize.chpl",
         "Redact.chpl",
         "Defang.chpl",
         "Batch.chpl",  # C2b redact-batch coforall fan-in (Main uses Batch)
         "Sha256.chpl",  # C2d raw-bytes digests for card provenance (INV-1)
-        "Cards.chpl",   # C2d source-card extraction (Python-byte-exact)
+        "Cards.chpl",  # C2d source-card extraction (Python-byte-exact)
         "Stream.chpl",  # C2d condense-batch JSONL surface (Main uses Stream)
-        "Summary.chpl", # C2e run-level summary.md/manifest rendering
-        "Serve.chpl",   # C4a bounded resident transform service
+        "Summary.chpl",  # C2e run-level summary.md/manifest rendering
+        "Serve.chpl",  # C4a bounded resident transform service
         # Toon.chpl remains intentionally excluded: TOON is property-tested,
         # but no binary protocol command calls it. Kept out of srcs so the
         # compile graph matches the flake.
         "//c_src:normalize_ffi_srcs",
         "//c_src:sha256_srcs",
     ],
+    main = "Main.chpl",
     module_paths = ["src/ptoon"],
+    require_hermetic_toolchain = select({
+        ":linux_x86_64_target": False,
+        "//conditions:default": True,
+    }),
     # Per Bazel's common-definitions docs, `manual` excludes this from wildcard
     # target expansion (`//...`, `:all`, etc.). That keeps this OUT of local
     # wildcard build+test on EVERY platform -- including x86_64-linux CI, where
     # it is otherwise compatible and `bazel test //...` would try to run
     # ChapelCompile locally (chpl: not found). It is built ONLY when named
-    # explicitly, i.e. by `just flywheel-chapel //src/ptoon:ptoon` on the GF
+    # explicitly, i.e. by the fixed `just flywheel-chapel` proof on the GF
     # REAPI executor lane.
     tags = ["manual"],
-    # Remote-only build substrate, encoded in the graph: chpl emits an
-    # x86_64-linux ELF, so this is incompatible on the aarch64-darwin dev host
-    # and only realizes under the GF linux_x86_64 exec platform.
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
 )

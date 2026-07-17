@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import unittest
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -414,6 +415,15 @@ class ResidentEngineTests(unittest.TestCase):
         self.assertIsNotNone(true_binary)
         with self.assertRaisesRegex(EngineError, "caps preflight"):
             ResidentEngine(binary_path=true_binary)
+
+    def test_caps_preflight_timeout_is_bounded_for_loaded_runners(self):
+        with mock.patch(
+            "prompt_toon.resident.subprocess.run",
+            side_effect=subprocess.TimeoutExpired([str(FAKE_SERVER), "caps"], 15),
+        ) as run:
+            with self.assertRaisesRegex(EngineError, "caps preflight"):
+                ResidentEngine(binary_path=FAKE_SERVER)
+        self.assertEqual(run.call_args.kwargs["timeout"], 15)
 
 
 if __name__ == "__main__":

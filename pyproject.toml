@@ -7,7 +7,7 @@ name = "prompt-toon"
 # Version SSOT is prompt_toon/__init__.py:__version__ (TIN-2706 packaging
 # manifest derives from it; a release bump edits that ONE string).
 dynamic = ["version"]
-description = "Local agent research condenser with provenance-preserving prompt minimization and measured TOON support"
+description = "Harness-to-model streaming IO middleware with bounded Chapel transforms and measured context optimization"
 requires-python = ">=3.11"
 
 [project.scripts]
