@@ -17,6 +17,7 @@ import sys
 import unittest
 from hashlib import sha256
 from pathlib import Path
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parent.parent
 GEN = ROOT / "tools" / "packaging" / "gen_manifest.py"
@@ -24,6 +25,27 @@ MANIFEST = ROOT / "packaging" / "manifest.json"
 HOME_MANAGER_CONTRACT = ROOT / "packaging" / "home-manager.json"
 sys.path.insert(0, str(ROOT / "tools" / "packaging"))
 import gen_manifest  # noqa: E402
+
+
+def write_test_wheel(
+    path: Path,
+    *,
+    root_is_purelib: str = "true",
+    tags: tuple[str, ...] = ("py3-none-any",),
+) -> None:
+    metadata = [
+        "Wheel-Version: 1.0",
+        "Generator: prompt-toon-test",
+        f"Root-Is-Purelib: {root_is_purelib}",
+        *(f"Tag: {tag}" for tag in tags),
+        "",
+        "",
+    ]
+    with ZipFile(path, "w") as archive:
+        archive.writestr(
+            "prompt_toon-0.3.0.dist-info/WHEEL",
+            "\n".join(metadata).encode("ascii"),
+        )
 
 
 class ManifestTests(unittest.TestCase):
@@ -59,6 +81,29 @@ class ManifestTests(unittest.TestCase):
         for rel, digest in entries.items():
             self.assertEqual(digest, sha256((ROOT / rel).read_bytes()).hexdigest(), rel)
 
+    def test_release_signer_is_an_in_repo_trust_anchor(self):
+        signers = json.loads(
+            (ROOT / "packaging" / "release-signers.json").read_text(encoding="utf-8")
+        )
+        active = signers["active"]
+        public_key = ROOT / active["public_key"]
+        self.assertEqual(signers["repository"], "github.com/Jesssullivan/prompt-toon")
+        self.assertEqual(active["scheme"], "openpgp")
+        self.assertRegex(active["fingerprint"], r"^[0-9A-F]{40,64}$")
+        self.assertFalse(public_key.is_symlink())
+        self.assertEqual(
+            active["public_key_sha256"], sha256(public_key.read_bytes()).hexdigest()
+        )
+        self.assertEqual(
+            self.manifest["provenance"]["release_signer"],
+            {
+                "scheme": active["scheme"],
+                "fingerprint": active["fingerprint"],
+                "public_key": active["public_key"],
+                "public_key_sha256": active["public_key_sha256"],
+            },
+        )
+
     def test_home_manager_lane_authenticates_the_contract(self):
         lane = self.manifest["derived_lanes"]["home_manager"]
         self.assertFalse(lane["enabled"])
@@ -87,6 +132,10 @@ class ManifestTests(unittest.TestCase):
                 "anthropic_shadow_gateway": 1,
                 "openai_responses_shadow_gateway": 1,
             },
+        )
+        self.assertTrue(targets[("prompt_toon", "any")]["root_is_purelib"])
+        self.assertEqual(
+            targets[("prompt_toon", "any")]["wheel_tag"], "py3-none-any"
         )
 
     def test_committed_manifest_is_unstamped_and_binaryless(self):
@@ -129,7 +178,8 @@ class ManifestTests(unittest.TestCase):
         linux_entrypoint.write_bytes(b"exact Linux ptoon bytes")
         darwin_entrypoint.write_bytes(b"exact Darwin ptoon bytes")
         wheel = Path(tmp) / "prompt_toon-0.3.0-py3-none-any.whl"
-        wheel.write_bytes(b"not a real wheel")
+        write_test_wheel(wheel)
+        wheel_bytes = wheel.read_bytes()
         try:
             proc = subprocess.run(
                 [
@@ -184,9 +234,11 @@ class ManifestTests(unittest.TestCase):
             )
             self.assertEqual(prompt_toon["filename"], wheel.name)
             self.assertEqual(
-                prompt_toon["sha256"], sha256(b"not a real wheel").hexdigest()
+                prompt_toon["sha256"], sha256(wheel_bytes).hexdigest()
             )
-            self.assertEqual(prompt_toon["size"], len(b"not a real wheel"))
+            self.assertEqual(prompt_toon["size"], len(wheel_bytes))
+            self.assertTrue(prompt_toon["root_is_purelib"])
+            self.assertEqual(prompt_toon["wheel_tag"], "py3-none-any")
             # A stamped emission must never overwrite the committed SSOT.
             self.assertEqual(
                 json.loads(MANIFEST.read_text(encoding="utf-8")), self.manifest
@@ -198,6 +250,32 @@ class ManifestTests(unittest.TestCase):
             darwin_entrypoint.unlink(missing_ok=True)
             wheel.unlink(missing_ok=True)
             Path(tmp).rmdir()
+
+    def test_release_wheel_must_be_exactly_pure_python(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="ptoon-wheel-test-") as tmp:
+            root = Path(tmp)
+            valid = root / "prompt_toon-0.3.0-py3-none-any.whl"
+            write_test_wheel(valid)
+            gen_manifest.validate_universal_wheel(valid, "0.3.0")
+
+            wrong_name = root / "prompt_toon-0.3.0-cp313-cp313-macosx.whl"
+            write_test_wheel(wrong_name)
+            with self.assertRaisesRegex(SystemExit, "must be prompt_toon"):
+                gen_manifest.validate_universal_wheel(wrong_name, "0.3.0")
+
+            write_test_wheel(valid, root_is_purelib="false")
+            with self.assertRaisesRegex(SystemExit, "Root-Is-Purelib: true"):
+                gen_manifest.validate_universal_wheel(valid, "0.3.0")
+
+            write_test_wheel(valid, tags=("py3-none-any", "cp313-none-any"))
+            with self.assertRaisesRegex(SystemExit, "exactly Tag: py3-none-any"):
+                gen_manifest.validate_universal_wheel(valid, "0.3.0")
+
+            valid.write_bytes(b"not a zip archive")
+            with self.assertRaisesRegex(SystemExit, "not a valid wheel archive"):
+                gen_manifest.validate_universal_wheel(valid, "0.3.0")
 
     def test_stamped_emission_rejects_missing_release_artifacts(self):
         proc = subprocess.run(
@@ -340,6 +418,10 @@ class ManifestTests(unittest.TestCase):
             '"$stage/ptoon-aarch64-darwin.nar" "$wheel"',
             'manifest="$stage/manifest-$tag.json"',
             'signing_fingerprint="$(gpg --batch --with-colons',
+            'trusted_signing_fingerprint="$(python3 -c',
+            "packaging/release-signers.json",
+            "packaging/release-signing-key.asc",
+            'anchored_signing_fingerprint="$(gpg --batch --with-colons --show-keys',
             'nix-store --query --requisites "$linux_ptoon_store" | sort',
             'nix-store --query --requisites "$darwin_ptoon_store" | sort',
             'git tag -s -u "$signing_key"',
@@ -369,6 +451,8 @@ class ManifestTests(unittest.TestCase):
         for required in (
             "doInstallCheck = pkgs.stdenv.isDarwin",
             "/usr/bin/codesign --verify --strict --verbose=4",
+            '/usr/bin/lipo -archs "$out/bin/ptoon"',
+            'if [ "$native_archs" != "arm64" ]',
             "Signature=adhoc",
             "TeamIdentifier=not set",
             "^Authority=",
