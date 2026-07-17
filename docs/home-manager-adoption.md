@@ -5,8 +5,9 @@ deterministic, drift-gated consumption contract, not an active Home Manager
 module and not a fleet-health claim. The separate lab repository now contains
 a disabled-by-default consumer of this contract, but no host has activated it.
 `packaging/manifest.json` therefore continues to mark the lane
-`contract_ready = true` and `enabled = false` until a released package is
-pinned and an attended host activation produces the required ledger evidence.
+`contract_ready = true` and `enabled = false` until a released v0.3.0-or-newer
+package is pinned and an attended host activation produces the required ledger
+evidence.
 
 ## Managed unit
 
