@@ -50,6 +50,9 @@ Anthropic's API contract returns classifier refusals as HTTP 200 responses with
 `stop_reason: "refusal"`, an optional fixed-category `stop_details`, and, when
 configured, model-transition evidence in fallback blocks and usage iterations.
 See [Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback).
+The fallback-specific fields are beta-only. Prompt-toon neither enables those
+betas nor selects a model chain; it records schema-valid evidence when the
+calling harness already requested that provider behavior.
 
 One concrete harness-level lexical warning is provider-authored: Anthropic says
 prompts, skills, or harness instructions that ask Fable 5 to echo, transcribe,

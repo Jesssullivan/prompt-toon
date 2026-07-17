@@ -44,11 +44,15 @@ FALLBACK_RESPONSE_BODY = (
     b'{"id":"msg_fallback","type":"message","role":"assistant",'
     b'"model":"claude-fallback-fixture","content":['
     b'{"type":"fallback","from":{"model":"claude-fable-fixture"},'
-    b'"to":{"model":"claude-fallback-fixture"}},'
+    b'"to":{"model":"claude-fallback-fixture"},"trigger":'
+    b'{"type":"refusal","category":"cyber"}},'
     b'{"type":"text","text":"fixture answer"}],"stop_reason":"end_turn",'
     b'"stop_details":null,"usage":{"input_tokens":34,"output_tokens":3,'
-    b'"iterations":[{"type":"message","model":"claude-fable-fixture"},'
-    b'{"type":"fallback_message","model":"claude-fallback-fixture"}]}}'
+    b'"iterations":[{"type":"message","model":"claude-fable-fixture",'
+    b'"input_tokens":34,"output_tokens":0,"cache_creation_input_tokens":0,'
+    b'"cache_read_input_tokens":0},{"type":"fallback_message",'
+    b'"model":"claude-fallback-fixture","input_tokens":34,"output_tokens":3,'
+    b'"cache_creation_input_tokens":0,"cache_read_input_tokens":0}]}}'
 )
 
 
@@ -217,13 +221,20 @@ class FakeUpstreamHandler(http.server.BaseHTTPRequestHandler):
                     b"event: future_event\n",
                     b'data: {"type":"future_event","new_field":{"x":1}}\n\n',
                     b"event: content_block_start\n",
-                    b'data: {"type":"content_block_start","content_block":'
-                    b'{"type":"fallback","to":{"model":"claude-fallback"}}}\n\n',
+                    b'data: {"type":"content_block_start","index":0,'
+                    b'"content_block":{"type":"fallback","from":'
+                    b'{"model":"claude-returned"},"to":{"model":'
+                    b'"claude-fallback"},"trigger":{"type":"refusal",'
+                    b'"category":"reasoning_extraction"}}}\n\n',
+                    b"event: content_block_stop\n",
+                    b'data: {"type":"content_block_stop","index":0}\n\n',
                     b"event: message_delta\n",
                     b'data: {"type":"message_delta","delta":{"stop_reason":'
                     b'"end_turn","stop_details":null},"usage":{"output_tokens":4,'
-                    b'"iterations":[{"type":"message"},{"type":'
-                    b'"fallback_message","model":"claude-fallback"}]}}\n\n',
+                    b'"iterations":[{"type":"fallback_message","model":'
+                    b'"claude-fallback","input_tokens":12,"output_tokens":4,'
+                    b'"cache_creation_input_tokens":0,'
+                    b'"cache_read_input_tokens":0}]}}\n\n',
                     b"event: error\n",
                     b'data: {"type":"error","error":{"type":'
                     b'"overloaded_error","message":"Overloaded"}}\n\n',
@@ -946,6 +957,38 @@ class GatewayBoundaryTests(unittest.TestCase):
         self.assertEqual(counters["provider_fallback_served_responses"], 0)
         self.assertEqual(counters["response_telemetry_unavailable"], 1)
 
+    def test_malformed_fallback_block_invalidates_complete_json_telemetry(
+        self,
+    ) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "application/json")]
+        )
+        observer.feed(
+            json.dumps(
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-fixture",
+                    "content": [
+                        {
+                            "type": "fallback",
+                            "from": {"model": "claude-fixture"},
+                            "to": {"model": "claude-fallback"},
+                        }
+                    ],
+                    "stop_reason": "end_turn",
+                    "stop_details": None,
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            ).encode("utf-8")
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_input_tokens"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
+
     def test_sse_without_final_delta_contributes_no_fallback_telemetry(
         self,
     ) -> None:
@@ -956,8 +999,10 @@ class GatewayBoundaryTests(unittest.TestCase):
         observer.feed(
             b'data: {"type":"message_start","message":{"model":'
             b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
-            b'data: {"type":"content_block_start","content_block":'
-            b'{"type":"fallback","to":{"model":"claude-fallback"}}}\n\n'
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"fallback","from":{"model":'
+            b'"claude-stream-fixture"},"to":{"model":"claude-fallback"},'
+            b'"trigger":{"type":"refusal","category":"cyber"}}}\n\n'
             b'data: {"type":"message_stop"}\n\n'
         )
         observer.finish()
@@ -986,6 +1031,58 @@ class GatewayBoundaryTests(unittest.TestCase):
         self.assertEqual(counters["provider_fallback_transitions"], 0)
         self.assertEqual(counters["provider_fallback_served_responses"], 0)
         self.assertEqual(counters.get("response_telemetry_unavailable", 0), 0)
+
+    def test_message_start_usage_cannot_spoof_fallback_served(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        fallback_iteration = {
+            "type": "fallback_message",
+            "model": "claude-fallback",
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        }
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1,'
+            b'"iterations":'
+            + json.dumps([fallback_iteration], separators=(",", ":")).encode(
+                "utf-8"
+            )
+            + b'}}}\n\n'
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"end_turn","stop_details":null},"usage":{"output_tokens":1}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters.get("response_telemetry_unavailable", 0), 0)
+
+    def test_unclosed_fallback_block_invalidates_sse_telemetry(self) -> None:
+        metrics = GatewayMetrics()
+        observer = ResponseObserver(
+            metrics, 200, [("Content-Type", "text/event-stream")]
+        )
+        observer.feed(
+            b'data: {"type":"message_start","message":{"model":'
+            b'"claude-stream-fixture","usage":{"input_tokens":1}}}\n\n'
+            b'data: {"type":"content_block_start","index":0,'
+            b'"content_block":{"type":"fallback","from":{"model":'
+            b'"claude-stream-fixture"},"to":{"model":"claude-fallback"},'
+            b'"trigger":{"type":"refusal","category":"cyber"}}}\n\n'
+            b'data: {"type":"message_delta","delta":{"stop_reason":'
+            b'"end_turn","stop_details":null},"usage":{"output_tokens":1}}\n\n'
+            b'data: {"type":"message_stop"}\n\n'
+        )
+        observer.finish()
+        counters = metrics.snapshot()["counters"]
+        self.assertEqual(counters["provider_fallback_transitions"], 0)
+        self.assertEqual(counters["provider_fallback_served_responses"], 0)
+        self.assertEqual(counters["response_telemetry_unavailable"], 1)
 
     def test_post_stop_sse_event_invalidates_safety_telemetry(self) -> None:
         metrics = GatewayMetrics()
@@ -1071,11 +1168,23 @@ class GatewayBoundaryTests(unittest.TestCase):
                             "type": "fallback",
                             "from": {"model": "claude-first-fixture"},
                             "to": {"model": "claude-final-fixture"},
+                            "trigger": {"type": "refusal", "category": "cyber"},
                         }
                     ],
                     "stop_reason": "refusal",
                     "stop_details": None,
-                    "usage": {"iterations": [{"type": "fallback_message"}]},
+                    "usage": {
+                        "iterations": [
+                            {
+                                "type": "fallback_message",
+                                "model": "claude-final-fixture",
+                                "input_tokens": 1,
+                                "output_tokens": 0,
+                                "cache_creation_input_tokens": 0,
+                                "cache_read_input_tokens": 0,
+                            }
+                        ]
+                    },
                 }
             ).encode("utf-8")
         )
