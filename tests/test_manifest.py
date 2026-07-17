@@ -364,13 +364,14 @@ class ManifestTests(unittest.TestCase):
             or "capacity-gateway.md" in release_surface
         )
 
-    def test_darwin_release_proves_valid_adhoc_linker_signature(self):
+    def test_darwin_release_proves_valid_adhoc_signature_without_identity(self):
         flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
         for required in (
             "doInstallCheck = pkgs.stdenv.isDarwin",
             "/usr/bin/codesign --verify --strict --verbose=4",
             "Signature=adhoc",
-            "without a Developer ID identity",
+            "TeamIdentifier=not set",
+            "^Authority=",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, flake)

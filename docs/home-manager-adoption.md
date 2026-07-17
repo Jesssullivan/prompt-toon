@@ -92,14 +92,14 @@ resident-service round-trip checks.
 The v0.3 Darwin deliverable is a CLI distributed as a complete Nix closure, not
 an `.app`, `.pkg`, or disk image. Apple Silicon still requires executable code
 to be signed, so the native build gate verifies the final store executable's
-valid linker-provided ad-hoc signature. That signature seals the code without a
-Developer ID identity. The remaining release gates are the tagged flake,
-native execution, Mach-O architecture, closure and entrypoint digests, an
-OpenPGP-signed Git tag, and a detached OpenPGP signature over the stamped
-manifest. Developer ID identity signing, notarization, and stapling are not
-v0.3 prerequisites. They become project release requirements if a future
-target claims a Gatekeeper-facing signed, notarized, or stapled application or
-installer.
+valid ad-hoc signature and absence of a Team Identifier or signing authority.
+That signature seals the code without a Developer ID identity. The remaining
+release gates are the tagged flake, native execution, Mach-O architecture,
+closure and entrypoint digests, an OpenPGP-signed Git tag, and a detached
+OpenPGP signature over the stamped manifest. Developer ID identity signing,
+notarization, and stapling are not v0.3 prerequisites. They become project
+release requirements if a future target claims a Gatekeeper-facing signed,
+notarized, or stapled application or installer.
 
 This decision is distribution-specific, not a claim that software without a
 Developer ID identity is universally exempt from macOS security controls.
