@@ -692,7 +692,9 @@ Publisher identity comes from the OpenPGP-signed Git tag and detached manifest
 signature. Apple Developer ID signing and notarization are not on its critical
 path; they become project release gates for a future target that claims a
 signed Gatekeeper-facing application or installer. See
-`docs/home-manager-adoption.md`.
+`docs/home-manager-adoption.md`. Publisher identity is pinned in
+`packaging/release-signers.json` and its reviewed public key; mutable GitHub
+release notes are not the trust root.
 
 ### C4e offline measurement contract
 

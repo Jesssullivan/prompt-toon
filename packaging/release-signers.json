@@ -1,0 +1,11 @@
+{
+  "active": {
+    "fingerprint": "161895136D2E5C292D2A663D0B01977B8DD5DA60",
+    "public_key": "packaging/release-signing-key.asc",
+    "public_key_sha256": "1ae7d89b2d777dbdd056ac0e8b14cbfb8c4cd24cd6ff87dc89a51740bf04913c",
+    "scheme": "openpgp"
+  },
+  "repository": "github.com/Jesssullivan/prompt-toon",
+  "schema_version": 1,
+  "trust_root": "reviewed repository history"
+}
