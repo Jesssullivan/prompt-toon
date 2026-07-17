@@ -181,6 +181,18 @@ class ResponsesParserTests(unittest.TestCase):
         ):
             self.assertNotIn(marker, captured)
 
+    def test_source_ordinals_are_unique_across_repeated_output_items(self) -> None:
+        parsed = parse_response_for_shadow(responses_body(), self.policy)
+        sources = [doc["source"] for doc in parsed.docs]
+        self.assertEqual(len(sources), len(set(sources)))
+        self.assertEqual(
+            [source.rsplit(":", 1)[1] for source in sources], ["0", "1"]
+        )
+        self.assertEqual(
+            [doc["body"] for doc in parsed.docs],
+            ["first typed result", "second typed result"],
+        )
+
     def test_conflicting_duplicate_call_ids_fail_closed(self) -> None:
         body = json.dumps(
             {
