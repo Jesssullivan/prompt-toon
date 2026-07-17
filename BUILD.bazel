@@ -64,6 +64,8 @@ sh_test(
         ":manifest_srcs",
         "tools/anthropic_gateway_canary.py",
         "tools/anthropic_gateway_harness_probe.py",
+        "tools/bazel/assert_execution_log.py",
+        "//tools/bazel/chapel:defs.bzl",
         "tools/gateway_capacity.py",
         "tools/gen_fixtures.py",
         "tools/openai_gateway_harness_probe.py",

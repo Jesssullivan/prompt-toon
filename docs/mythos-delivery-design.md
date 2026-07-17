@@ -540,9 +540,11 @@ the binary, `auto` falls open to Python when the binary is absent.
   note: https://chapel-lang.org/docs/technotes/libraries.html and
   https://chapel-lang.org/blog/posts/announcing-chapel-2.9/.
 - These are the current language references, not compiler provenance. The
-  locked `chapel-nix` input still reports Chapel 2.7.0; remote derivation names
-  and `flake.lock` are the build truth until a separately reviewed toolchain
-  upgrade lands. Do not claim a 2.9-built artifact from this revision.
+  locked source's Nix package metadata says 2.7.0, while a remote-only
+  `chpl --version` observation reports 2.8.0 pre-release. The exact
+  `flake.lock` revision and both identities remain build truth until a
+  separately reviewed upgrade lands. Do not claim a 2.7.0- or 2.9-built
+  artifact from this revision.
 - Bazel current platform/compatibility, `manual` tag, `run_shell`, and
   remote-execution rule guidance:
   https://bazel.build/extending/platforms,
@@ -671,14 +673,18 @@ presence or readiness with traffic/provider reachability. The deterministic
 host-ledger fields; activation is false and the IO policy remains locked.
 
 Platform delivery is native remote: x86_64-linux retains exhaustive byte
-parity and the 64-session HTTP/SSE gate; aarch64-darwin builds with local jobs
-disabled and runs native caps, normalization, and resident round-trip smoke.
-Native-surface pull requests instantiate the Darwin derivation on a GF-managed
-Linux runner without realizing it; that is definition proof, not native
-artifact proof. Attended releases use the remote Nix builder path as an interim
-gate. Durable native CI remains blocked on TIN-2542's
-`gloriousflywheel-rbe-darwin-aarch64` executor and signing custody. Linux
-Bazel/GF REAPI stays Linux-only. See `docs/home-manager-adoption.md`.
+parity and the 64-session HTTP/SSE gate; aarch64-darwin must run native caps,
+normalization, resident round-trip, and offline quality smoke. Native-surface
+pull requests instantiate the Darwin derivation on a GF-managed Linux runner
+without realizing it; that is definition proof, not native artifact proof.
+TIN-2542 established the separate
+`gloriousflywheel-rbe-darwin-aarch64` contract. TIN-2949 now owns its
+still-missing endpoint, declared hermetic Chapel toolchain, native artifact
+proof, and deliberate bridge to the Nix-closure release format. The Bazel
+target has a mandatory toolchain boundary and fails Darwin analysis closed
+until that compiler is registered. No accepted remote Apple Silicon worker
+currently exists, so `just release 0.3.0` remains blocked rather than compiling
+on Neo. See `docs/home-manager-adoption.md`.
 
 ### C4e offline measurement contract
 
@@ -746,8 +752,10 @@ C4f.3 runs the real Chapel one-shot path at 1/8/32/64 documents under two
 Qthreads workers and proves ordered results, card/provenance integrity,
 summary/manifest counts, and repeat determinism. It is a correctness and
 queueing-shape gate, not a throughput benchmark; resident 64-stream capacity
-remains a separate long-lived-service proof. The release pin is Chapel 2.7.0,
-while TIN-2807 owns the reviewed upgrade to current Chapel 2.9.
+remains a separate long-lived-service proof. The release pin is the exact
+Chapel source revision, whose Nix package metadata says 2.7.0 while the
+compiler reports 2.8.0 pre-release. TIN-2807 owns provenance reconciliation
+and the reviewed upgrade to current Chapel 2.9.
 
 C4f.4 imports terminal Responses or Codex usage from explicitly supplied local
 artifacts. A path-free sidecar hashes the validated schema-v3 or legacy-v2

@@ -7,3 +7,13 @@ platform(
     exec_properties = {"gf.platform": "gloriousflywheel-rbe-linux-x86_64"},
     visibility = ["//visibility:public"],
 )
+
+platform(
+    name = "darwin_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:osx",
+    ],
+    exec_properties = {"gf.platform": "gloriousflywheel-rbe-darwin-aarch64"},
+    visibility = ["//visibility:public"],
+)

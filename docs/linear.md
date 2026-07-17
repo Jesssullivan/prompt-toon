@@ -69,8 +69,9 @@ C4 online IO gateway:
   recommend a handoff that drops recognized constraints or open questions;
   schema-v3 requires the gate, while schema-v2 remains isolated as
   legacy-unmeasured evidence.
-- `TIN-2807`: upgrade the locked Chapel compiler from 2.7.0 to current 2.9;
-  current 2.9 docs inform review but do not rewrite artifact provenance.
+- `TIN-2807`: reconcile the locked Chapel source's version provenance and
+  upgrade to current 2.9. The Nix package metadata says 2.7.0, while remote
+  `chpl --version` reports 2.8.0 pre-release; neither may be rewritten as 2.9.
 
 Related prior work:
 

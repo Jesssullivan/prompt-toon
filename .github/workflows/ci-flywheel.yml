@@ -93,21 +93,45 @@ jobs:
           nix develop --command just flywheel-executor-proof \
             "${log}" "//:ci_validation_suite" "${REQUIRE_CACHE_REUSE}"
 
+      - name: Compile ptoon through the GF Chapel toolchain
+        id: chapel
+        run: |
+          set -euo pipefail
+          source "${{ steps.mint.outputs.profile_file }}"
+          export PATH="${{ steps.gf.outputs.bin }}:${PATH}"
+          log="${RUNNER_TEMP}/prompt-toon-chapel-rbe.log"
+          execution_log="${RUNNER_TEMP}/prompt-toon-chapel-execution.json"
+          : > "${log}"
+          : > "${execution_log}"
+          echo "log=${log}" >> "${GITHUB_OUTPUT}"
+          echo "execution_log=${execution_log}" >> "${GITHUB_OUTPUT}"
+          nix develop --command just flywheel-chapel-proof "${log}" "${execution_log}"
+
       - name: Upload executor proof log
-        if: always() && steps.proof.outputs.log != ''
+        if: always() && (steps.proof.outputs.log != '' || steps.chapel.outputs.log != '')
         uses: actions/upload-artifact@v7
         with:
           name: prompt-toon-rbe-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.proof.outputs.log }}
+          path: |
+            ${{ steps.proof.outputs.log }}
+            ${{ steps.chapel.outputs.log }}
+            ${{ steps.chapel.outputs.execution_log }}
           if-no-files-found: error
           retention-days: 7
 
-      - name: Require counted execution and trusted-main cache reuse
+      - name: Require counted execution, Chapel attachment, and trusted-main cache reuse
         env:
+          CHAPEL_EXECUTION_LOG: ${{ steps.chapel.outputs.execution_log }}
+          CHAPEL_LOG: ${{ steps.chapel.outputs.log }}
           GF_SOURCE: ${{ steps.gf.outputs.source }}
           PROOF_LOG: ${{ steps.proof.outputs.log }}
         run: |
           set -euo pipefail
+          nix develop --command python3 tools/bazel/assert_execution_log.py \
+            "${CHAPEL_EXECUTION_LOG}" \
+            --target //src/ptoon:ptoon \
+            --mnemonic ChapelCompile \
+            --platform-property gf.platform=gloriousflywheel-rbe-linux-x86_64
           nix develop --command python3 - "${GF_SOURCE}/scripts/gf-reapi-proof-result.py" "${PROOF_LOG}" <<'PY'
           import importlib.util
           import os
@@ -128,6 +152,17 @@ jobs:
           print(f"GF remote cache hits: {counts['remote_cache_hits']}")
           if counts["remote_processes"] <= 0:
               raise SystemExit("executor proof did not record any remote processes")
+
+          chapel_log = Path(os.environ["CHAPEL_LOG"])
+          chapel_process_line, chapel_counts = module.parse_process_counts(
+              chapel_log.read_text(encoding="utf-8")
+          )
+          print(chapel_process_line)
+          print(f"GF Chapel remote processes: {chapel_counts['remote_processes']}")
+          print(f"GF Chapel remote cache hits: {chapel_counts['remote_cache_hits']}")
+          if chapel_counts["remote_processes"] <= 0:
+              raise SystemExit("Chapel build did not record remote execution")
+
           require_cache_reuse = os.environ.get("REQUIRE_CACHE_REUSE") == "true"
           if require_cache_reuse and counts["remote_cache_hits"] <= 0:
               raise SystemExit("executor proof did not record any remote cache hits")
