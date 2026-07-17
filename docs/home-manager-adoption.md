@@ -2,9 +2,11 @@
 
 TIN-2791's repo-local artifact is `packaging/home-manager.json`. It is a
 deterministic, drift-gated consumption contract, not an active Home Manager
-module and not a fleet-health claim. `packaging/manifest.json` therefore marks
-the lane `contract_ready = true` and `enabled = false` until the separate lab
-module consumes it.
+module and not a fleet-health claim. The separate lab repository now contains
+a disabled-by-default consumer of this contract, but no host has activated it.
+`packaging/manifest.json` therefore continues to mark the lane
+`contract_ready = true` and `enabled = false` until a released package is
+pinned and an attended host activation produces the required ledger evidence.
 
 ## Managed unit
 
@@ -76,12 +78,15 @@ path-scoped `Darwin Definition` workflow on the GF-managed Linux control plane.
 That lane instantiates `packages.aarch64-darwin.ptoon.drvPath` only: it proves
 the flake still defines the target, not that a Darwin artifact compiled or ran.
 
-Durable native CI artifact proof remains blocked on TIN-2542's live
-`gloriousflywheel-rbe-darwin-aarch64` executor and signing custody. The remote
-Nix realization in `just release` is an attended interim release gate, not the
-durable CI substrate. Linux retains exhaustive byte parity and the 64-stream
-capacity gate. A release's Darwin derivation additionally runs native `caps`,
-normalization, and resident-service round-trip checks.
+TIN-2949 owns the remaining durable native artifact proof: an authorized
+physical `gloriousflywheel-rbe-darwin-aarch64` worker and endpoint, forced
+remote action evidence, a native Mach-O smoke matrix, and a reviewed bridge to
+the closure-stamped release manifest. TIN-2542 is complete and is no longer the
+blocking issue. The current remote Nix realization in `just release` remains
+an attended interim gate, not a substitute for the durable GF proof. Linux
+retains exhaustive byte parity and the 64-stream capacity gate. A release's
+Darwin derivation additionally runs native `caps`, normalization, and
+resident-service round-trip checks.
 
 The implementation is reviewed against current Chapel 2.9 documentation. The
 locked source revision is nevertheless older and internally inconsistent: its
