@@ -12,6 +12,7 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "gen_home_manager_contract.py",
     "gen_manifest.py",
+    "import_gf_ptoon.py",
 ])
 
 sh_binary(
@@ -20,6 +21,7 @@ sh_binary(
     data = [
         "gen_home_manager_contract.py",
         "gen_manifest.py",
+        "import_gf_ptoon.py",
     ],
 )
 
@@ -29,6 +31,7 @@ sh_test(
     data = [
         "gen_home_manager_contract.py",
         "gen_manifest.py",
+        "import_gf_ptoon.py",
         "//:manifest_srcs",
     ],
 )
