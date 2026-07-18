@@ -216,40 +216,65 @@ release $version:
     release_marker=""
     release_completed=0
     canonical_repo="Jesssullivan/prompt-toon"
+    assert_release_checkout() {
+      [ "$(git rev-parse HEAD)" = "$rev" ] \
+        && [ -z "$(git status --porcelain)" ] \
+        || { echo "release checkout changed after source snapshot" >&2; return 1; }
+    }
+    confirm_release_absent() {
+      release_http="$(gh api --include "repos/$canonical_repo/releases/tags/$tag" 2>&1)"
+      release_api_status="$?"
+      release_http_status="$(printf '%s\n' "$release_http" | awk '/^HTTP\// { status=$2 } END { print status }')"
+      [ "$release_api_status" -ne 0 ] && [ "$release_http_status" = "404" ]
+    }
     cleanup_release() {
       status="$?"
       trap - EXIT INT TERM HUP
       set +e
       if [ "$status" -ne 0 ] && [ "$release_completed" = "0" ]; then
+        release_absent_confirmed=0
         if [ "$release_create_attempted" = "1" ] && [ -n "$release_marker" ]; then
           current_release_json="$(gh release view "$tag" --repo "$canonical_repo" --json id,body 2>/dev/null)"
+          current_release_status="$?"
           current_release_id="$(printf '%s' "$current_release_json" | jq -r '.id // empty' 2>/dev/null)"
           current_release_body="$(printf '%s' "$current_release_json" | jq -r '.body // empty' 2>/dev/null)"
-          if [[ "$current_release_body" == *"$release_marker"* ]] \
+          if [ "$current_release_status" -eq 0 ] \
+            && [ -n "$current_release_id" ] \
+            && [[ "$current_release_body" == *"$release_marker"* ]] \
             && { [ -z "$created_release_id" ] || [ "$current_release_id" = "$created_release_id" ]; }; then
-            gh release delete "$tag" --repo "$canonical_repo" --yes >/dev/null 2>&1 || \
-              echo "release cleanup could not remove owned GitHub release $tag; inspect repository state" >&2
-          elif [ -n "$current_release_id" ]; then
+            if gh release delete "$tag" --repo "$canonical_repo" --yes >/dev/null 2>&1; then
+              if confirm_release_absent; then
+                release_absent_confirmed=1
+              else
+                echo "release cleanup could not confirm deletion of owned GitHub release $tag; retaining signed tag" >&2
+              fi
+            else
+              echo "release cleanup could not remove owned GitHub release $tag; retaining signed tag" >&2
+            fi
+          elif [ "$current_release_status" -eq 0 ]; then
             echo "release cleanup refused to remove $tag because release ownership changed" >&2
+          elif confirm_release_absent; then
+            release_absent_confirmed=1
+          else
+            echo "release cleanup could not determine whether GitHub release $tag exists; retaining signed tag" >&2
           fi
+        elif [ "$release_create_attempted" = "1" ]; then
+          echo "release cleanup lacks its ownership marker; retaining release and signed tag" >&2
         fi
         if [ "$remote_tag_push_attempted" = "1" ] && [ -n "$rev" ] && [ -n "$local_tag_object" ]; then
-          remote_tags="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" 2>/dev/null)"
-          remote_query_status="$?"
-          remote_tag_object="$(printf '%s\n' "$remote_tags" | awk -v ref="refs/tags/$tag" '$2 == ref { print $1 }')"
-          remote_tag_commit="$(printf '%s\n' "$remote_tags" | awk -v ref="refs/tags/$tag^{}" '$2 == ref { print $1 }')"
-          if [ "$remote_query_status" -eq 0 ] && [ "$remote_tag_object" = "$local_tag_object" ] && [ "$remote_tag_commit" = "$rev" ]; then
-            git push --force-with-lease="refs/tags/$tag:$remote_tag_object" origin ":refs/tags/$tag" >/dev/null 2>&1 || \
-              echo "release cleanup could not remove exact remote tag $tag; inspect origin" >&2
-          elif [ "$remote_query_status" -ne 0 ]; then
-            echo "release cleanup could not query origin for $tag; inspect remote state" >&2
-          elif [ -n "$remote_tag_object" ]; then
-            echo "release cleanup refused to remove $tag because exact tag ownership changed" >&2
+          if [ "$release_absent_confirmed" = "1" ]; then
+            echo "release cleanup retained exact signed tag $tag for operator inspection" >&2
+          else
+            echo "release cleanup retained exact signed tag $tag because release absence is unconfirmed" >&2
           fi
         fi
         if [ -n "$local_tag_object" ] && [ "$(git rev-parse -q --verify "refs/tags/$tag" 2>/dev/null)" = "$local_tag_object" ]; then
-          git tag -d "$tag" >/dev/null 2>&1 || \
-            echo "release cleanup could not remove exact local tag $tag" >&2
+          if [ "$remote_tag_push_attempted" = "0" ]; then
+            git tag -d "$tag" >/dev/null 2>&1 || \
+              echo "release cleanup could not remove exact local tag $tag" >&2
+          else
+            echo "release cleanup retained exact local tag $tag with its remote counterpart" >&2
+          fi
         fi
       fi
       [ -z "$stage" ] || rm -rf "$stage"
@@ -300,7 +325,7 @@ release $version:
     done
     ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag already exists locally" >&2; exit 1; }
     [ -z "$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")" ] || { echo "$tag already exists on origin" >&2; exit 1; }
-    ! gh release view "$tag" --repo "$canonical_repo" >/dev/null 2>&1 || { echo "GitHub release $tag already exists" >&2; exit 1; }
+    confirm_release_absent || { echo "GitHub release $tag must be confirmed absent before release" >&2; exit 1; }
     stage="$(mktemp -d)"
     cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"
     cp "$darwin_bridge_entrypoint" "$stage/ptoon-aarch64-darwin.bin"
@@ -316,30 +341,38 @@ release $version:
     darwin_bridge_outputs="$stage/ptoon-aarch64-darwin.gf-exported-outputs.json"
     darwin_bridge_attestation="$stage/ptoon-aarch64-darwin.gf-proof-result.attestation.json"
     darwin_bridge_smoke="$stage/ptoon-aarch64-darwin.native-smoke.json"
-    python3 tools/packaging/import_gf_ptoon.py replay \
+    mkdir "$stage/source"
+    git archive "$rev" | tar -x -C "$stage/source"
+    git archive --format=tar.gz --prefix="prompt-toon-$version/" "$rev" > "$stage/prompt-toon-$version-source.tar.gz"
+    release_source_store="$(nix store add --name "prompt-toon-source-$version-$rev" "$stage/source")"
+    release_source_archive_store="$(nix store add --mode flat --name "prompt-toon-$version-source.tar.gz" "$stage/prompt-toon-$version-source.tar.gz")"
+    nix-store --add-root "$stage/release-source-gc-root" --indirect --realise "$release_source_store" >/dev/null
+    nix-store --add-root "$stage/release-source-archive-gc-root" --indirect --realise "$release_source_archive_store" >/dev/null
+    release_flake="path:$release_source_store"
+    assert_release_checkout
+    python3 "$release_source_store/tools/packaging/import_gf_ptoon.py" replay \
       --record "$darwin_bridge_record" \
       --closure-export "$darwin_bridge_closure" \
       --entrypoint-export "$darwin_bridge_entrypoint" \
       --expected-revision "$rev" \
       --expected-gf-revision "$gf_revision"
-    python3 tools/packaging/gen_manifest.py --check
+    python3 "$release_source_store/tools/packaging/gen_manifest.py" --check
     just check
     just gateway-harness-probe
     just responses-gateway-harness-probe
+    assert_release_checkout
     # A release may never claim gates it did not run: realize the full
     # parity + hook-canary derivation at this rev before anything is tagged.
-    nix build .#packages.x86_64-linux.ptoon-parity --no-link --print-build-logs
-    linux_ptoon_store="$(nix build .#packages.x86_64-linux.ptoon --no-link --print-out-paths --print-build-logs)"
-    nix build .#packages.x86_64-linux.prompt-toon --no-link --print-build-logs
+    nix build "$release_flake#packages.x86_64-linux.ptoon-parity" --no-link --print-build-logs
+    linux_ptoon_store="$(nix build "$release_flake#packages.x86_64-linux.ptoon" --no-link --print-out-paths --print-build-logs)"
+    nix build "$release_flake#packages.x86_64-linux.prompt-toon" --no-link --print-build-logs
     # Raw executables are Nix-store linked and are not portable standalone
     # assets. Export each complete runtime closure for exact import with
     # nix-store --import; the tagged flake remains the source definition.
     nix-store --export $(nix-store --query --requisites "$linux_ptoon_store" | sort) > "$stage/ptoon-x86_64-linux.nar"
     test -s "$stage/ptoon-x86_64-linux.nar"
     test -s "$stage/ptoon-aarch64-darwin.nar"
-    mkdir "$stage/source"
-    git archive "$rev" | tar -x -C "$stage/source"
-    (cd "$stage/source" && UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage")
+    UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage" "$release_source_archive_store"
     wheels=("$stage"/prompt_toon-"$version"-py3-none-any.whl)
     [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "release expected exactly one prompt-toon wheel" >&2; exit 1; }
     wheel="${wheels[0]}"
@@ -347,13 +380,14 @@ release $version:
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
     (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" corpus-report --help >/dev/null && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
     manifest="$stage/manifest-$tag.json"
-    python3 tools/packaging/gen_manifest.py --git-rev "$rev" --tag "$tag" \
+    python3 "$release_source_store/tools/packaging/gen_manifest.py" --git-rev "$rev" --tag "$tag" \
       --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
       --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \
       --with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar" \
       --with-entrypoint "aarch64-darwin=$stage/ptoon-aarch64-darwin.bin" \
       --with-build-provenance "aarch64-darwin=$stage/ptoon-aarch64-darwin.gf-nix-bridge.json" \
       --with-wheel "$wheel" > "$manifest"
+    assert_release_checkout
     git tag -s -u "$signing_key" "$tag" -m "prompt-toon $tag" "$rev"
     local_tag_object="$(git rev-parse "refs/tags/$tag")"
     [ "$(git cat-file -t "$local_tag_object")" = "tag" ] || { echo "release tag is not an annotated tag object" >&2; exit 1; }

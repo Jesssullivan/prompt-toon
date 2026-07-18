@@ -45,17 +45,24 @@ SMOKE_CLAIM_PATH = (
 )
 REVISION = "a" * 40
 GF_REVISION = "f" * 40
+DISPATCH_CELL_DIGEST = "sha256:" + "9" * 64
+WORKER_CLOSURE_DIGEST = "sha256:" + "a" * 64
 
 
 def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
 
 
-def proof(outputs: list[dict[str, object]]) -> dict[str, object]:
+def proof(
+    outputs: list[dict[str, object]],
+    exported_outputs_sha256: str,
+) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "gf-reapi-proof-result",
         "authority": GF_AUTHORITY,
+        "dispatch_cell_image_digest": DISPATCH_CELL_DIGEST,
+        "worker_image_digest": DISPATCH_CELL_DIGEST,
         "platform": DARWIN_PLATFORM,
         "countable_remote_execution": True,
         "force_execution": True,
@@ -75,7 +82,21 @@ def proof(outputs: list[dict[str, object]]) -> dict[str, object]:
             "host": DARWIN_WORKER_HOST,
             "architecture": "arm64",
             "os": "darwin",
-            "closure_digest": "sha256:" + "a" * 64,
+            "closure_digest": WORKER_CLOSURE_DIGEST,
+        },
+        "worker_execution_evidence": {
+            "schema_version": 3,
+            "evidence_sha256": "sha256:" + "1" * 64,
+            "remote_grpc_log_sha256": "sha256:" + "2" * 64,
+            "execution_log_sha256": "sha256:" + "3" * 64,
+            "bep_sha256": "sha256:" + "4" * 64,
+            "eligibility_manifest_sha256": "sha256:" + "5" * 64,
+            "exported_outputs_manifest_sha256": (
+                f"sha256:{exported_outputs_sha256}"
+            ),
+            "target": LABEL,
+            "tool_invocation_id": "fixture-invocation",
+            "remote_execution_count": 1,
         },
         "exported_outputs": outputs,
         "request": {
@@ -88,6 +109,7 @@ def proof(outputs: list[dict[str, object]]) -> dict[str, object]:
             "consumer_ref": REVISION,
             "target": LABEL,
             "target_platform": DARWIN_TARGET_PLATFORM,
+            "worker_closure_digest": WORKER_CLOSURE_DIGEST,
             "bazel_command": "build",
         },
     }
@@ -154,15 +176,19 @@ def evidence_fixture(
             }
         )
     claims.sort(key=lambda claim: (str(claim["label"]), str(claim["path"])))
+    exports_path = evidence / "exported-outputs.json"
     write_json(
-        evidence / "exported-outputs.json",
+        exports_path,
         {
             "schema": 1,
             "kind": "gf-reapi-exported-outputs",
             "outputs": claims,
         },
     )
-    write_json(evidence / "proof-result.json", proof(claims))
+    write_json(
+        evidence / "proof-result.json",
+        proof(claims, sha256_file(exports_path)),
+    )
     (evidence / GF_ATTESTATION_FILENAME).write_text(
         '{"fixture":"sigstore-bundle"}\n',
         encoding="utf-8",
@@ -171,6 +197,9 @@ def evidence_fixture(
 
 
 class FakeAttestation:
+    def __init__(self, source_digest: str = GF_REVISION) -> None:
+        self.source_digest = source_digest
+
     def __call__(self, command: object):
         from subprocess import CompletedProcess
 
@@ -181,11 +210,17 @@ class FakeAttestation:
             "--repo": GF_AUTHORITY,
             "--signer-workflow": GF_SIGNER_WORKFLOW,
             "--source-ref": GF_SOURCE_REF,
+            "--source-digest": self.source_digest,
             "--format": "json",
         }
         for flag, expected in expected_flags.items():
             if flag not in command or command[command.index(flag) + 1] != expected:
-                raise AssertionError(command)
+                return CompletedProcess(
+                    command,
+                    1,
+                    b"",
+                    b"certificate source digest mismatch",
+                )
         proof_path = Path(command[3])
         self.command = command
         payload = [
@@ -220,7 +255,7 @@ class FakeAttestation:
                                             "git+https://github.com/"
                                             f"{GF_AUTHORITY}@{GF_SOURCE_REF}"
                                         ),
-                                        "digest": {"gitCommit": GF_REVISION},
+                                        "digest": {"gitCommit": self.source_digest},
                                     }
                                 ],
                             }
@@ -260,6 +295,9 @@ def refresh_output_claim(evidence_dir: Path, claim_path: str) -> None:
     write_json(exports_path, exports)
     proof_value = json.loads(proof_path.read_text(encoding="utf-8"))
     proof_value["exported_outputs"] = exports["outputs"]
+    proof_value["worker_execution_evidence"][
+        "exported_outputs_manifest_sha256"
+    ] = f"sha256:{sha256_file(exports_path)}"
     write_json(proof_path, proof_value)
 
 
@@ -270,9 +308,34 @@ class FakeNixDarwin:
         self.store_root = store_root
         self.imported = store_root / ("a" * 32 + "-ptoon")
         self.dependency = store_root / ("b" * 32 + "-libptoon")
+        self.local_store_roots: list[Path] = []
+        self.clean_store_commands: list[list[str]] = []
         library = self.dependency / "lib" / "libptoon.dylib"
         library.parent.mkdir(parents=True)
         library.write_bytes(b"fake dylib")
+
+    def _write_smoke(self, binary: Path, result_path: Path) -> None:
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "prompt-toon-darwin-native-smoke",
+                    "artifact_sha256": f"sha256:{sha256_file(binary)}",
+                    "caps_engine": "chapel",
+                    "caps_serve_protocol": 1,
+                    "caps_sha256": CAPS_SMOKE_SHA256,
+                    "normalize_sha256": NORMALIZE_SMOKE_SHA256,
+                    "one_shot_sha256": ONE_SHOT_SMOKE_SHA256,
+                    "redaction_canary_absent": True,
+                    "redaction_sha256": REDACTION_SMOKE_SHA256,
+                    "resident_round_trip_sha256": RESIDENT_SMOKE_SHA256,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     def __call__(self, command: object):
         from subprocess import CompletedProcess
@@ -287,11 +350,16 @@ class FakeNixDarwin:
                 command, 0, b"", b"Signature=adhoc\nTeamIdentifier=not set\n"
             )
         if command[:2] == ["/usr/bin/otool", "-L"]:
-            payload = (
-                f"{command[-1]}:\n"
-                "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
-                f"\t{self.dependency}/lib/libptoon.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
-            ).encode()
+            dependencies = [
+                "\t/usr/lib/libSystem.B.dylib "
+                "(compatibility version 1.0.0, current version 1.0.0)"
+            ]
+            if Path(command[-1]).name != "libptoon.dylib":
+                dependencies.append(
+                    f"\t{self.dependency}/lib/libptoon.dylib "
+                    "(compatibility version 1.0.0, current version 1.0.0)"
+                )
+            payload = (f"{command[-1]}:\n" + "\n".join(dependencies) + "\n").encode()
             return CompletedProcess(command, 0, payload, b"")
         if command[:2] == ["/usr/bin/otool", "-l"]:
             return CompletedProcess(
@@ -303,27 +371,35 @@ class FakeNixDarwin:
         if command and Path(command[0]) == NATIVE_SMOKE_SCRIPT:
             binary = Path(command[1])
             result_path = Path(command[2])
-            result_path.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "kind": "prompt-toon-darwin-native-smoke",
-                        "artifact_sha256": f"sha256:{sha256_file(binary)}",
-                        "caps_engine": "chapel",
-                        "caps_serve_protocol": 1,
-                        "caps_sha256": CAPS_SMOKE_SHA256,
-                        "normalize_sha256": NORMALIZE_SMOKE_SHA256,
-                        "one_shot_sha256": ONE_SHOT_SMOKE_SHA256,
-                        "redaction_canary_absent": True,
-                        "redaction_sha256": REDACTION_SMOKE_SHA256,
-                        "resident_round_trip_sha256": RESIDENT_SMOKE_SHA256,
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                + "\n",
-                encoding="utf-8",
+            self._write_smoke(binary, result_path)
+            return CompletedProcess(command, 0, b"", b"")
+        if command[:2] == ["/usr/bin/sandbox-exec", "-p"]:
+            self.clean_store_commands.append(command)
+            profile = command[2]
+            wrapper = Path(command[4])
+            binary = Path(command[5])
+            result_path = Path(command[6])
+            physical_store = self.local_store_roots[-1].joinpath(
+                *self.store_root.parts[1:]
             )
+            physical_library = (
+                physical_store / self.dependency.name / "lib" / "libptoon.dylib"
+            )
+            wrapper_text = wrapper.read_text(encoding="utf-8")
+            copied_smoke = wrapper.parent / NATIVE_SMOKE_SCRIPT.name
+            if (
+                f'(subpath "{self.store_root}")' not in profile
+                or str(physical_library.parent) not in wrapper_text
+                or "export DYLD_LIBRARY_PATH=" not in wrapper_text
+                or str(copied_smoke) not in wrapper_text
+                or str(NATIVE_SMOKE_SCRIPT) in wrapper_text
+                or not copied_smoke.is_file()
+                or sha256_file(copied_smoke) != sha256_file(NATIVE_SMOKE_SCRIPT)
+            ):
+                return CompletedProcess(
+                    command, 1, b"", b"clean-store sandbox contract mismatch"
+                )
+            self._write_smoke(binary, result_path)
             return CompletedProcess(command, 0, b"", b"")
         if command[:3] == ["nix", "store", "add"]:
             shutil.copytree(Path(command[3]), self.imported)
@@ -343,6 +419,7 @@ class FakeNixDarwin:
             if archive.read_bytes() != self.closure_bytes:
                 return CompletedProcess(command, 1, b"", b"invalid closure archive")
             replay_root = Path(command[2])
+            self.local_store_roots.append(replay_root)
             physical_store = replay_root.joinpath(*self.store_root.parts[1:])
             shutil.copytree(
                 self.imported,
@@ -363,6 +440,7 @@ class FakeNixDarwin:
             and "--query" in command
             and "--requisites" in command
         ):
+            self.local_store_roots.append(Path(command[2]))
             return CompletedProcess(
                 command, 0, f"{self.imported}\n{self.dependency}\n".encode(), b""
             )
@@ -385,10 +463,15 @@ class GfDarwinBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             evidence_dir, executable = evidence_fixture(Path(temporary))
             expected_sha256 = hashlib.sha256(executable.read_bytes()).hexdigest()
-            evidence = verify_fixture(evidence_dir)
+            attestation = FakeAttestation()
+            evidence = verify_fixture(evidence_dir, runner=attestation)
         self.assertEqual(evidence.output.sha256, expected_sha256)
         self.assertEqual(evidence.proof["platform"], DARWIN_PLATFORM)
         self.assertEqual(evidence.gf_source_digest, GF_REVISION)
+        self.assertEqual(
+            attestation.command[attestation.command.index("--source-digest") + 1],
+            GF_REVISION,
+        )
 
     def test_native_smoke_rejects_caps_with_trailing_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -532,6 +615,12 @@ class GfDarwinBridgeTests(unittest.TestCase):
                 "bazel_command must be build",
             ),
             (
+                "wrong worker closure",
+                "worker_closure_digest",
+                "sha256:" + "b" * 64,
+                "requested worker closure mismatch",
+            ),
+            (
                 "wrong workflow",
                 "workflow_run_url",
                 "https://github.com/Jesssullivan/prompt-toon/actions/runs/123",
@@ -544,6 +633,33 @@ class GfDarwinBridgeTests(unittest.TestCase):
                 proof_path = evidence_dir / "proof-result.json"
                 bad = json.loads(proof_path.read_text(encoding="utf-8"))
                 bad["request"][field] = value
+                write_json(proof_path, bad)
+                with self.assertRaisesRegex(BridgeError, expected_error):
+                    verify_fixture(evidence_dir)
+
+    def test_rejects_legacy_or_unbound_worker_execution_proof(self) -> None:
+        cases = (
+            ("schema_version", 1, "schema_version must be 2"),
+            (
+                "exported_outputs_manifest_sha256",
+                "sha256:" + "0" * 64,
+                "does not match exported-outputs.json",
+            ),
+            (
+                "target",
+                "//src/ptoon:other",
+                "worker execution binding target mismatch",
+            ),
+        )
+        for field, value, expected_error in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
+                evidence_dir, _ = evidence_fixture(Path(temporary))
+                proof_path = evidence_dir / "proof-result.json"
+                bad = json.loads(proof_path.read_text(encoding="utf-8"))
+                if field == "schema_version":
+                    bad[field] = value
+                else:
+                    bad["worker_execution_evidence"][field] = value
                 write_json(proof_path, bad)
                 with self.assertRaisesRegex(BridgeError, expected_error):
                     verify_fixture(evidence_dir)
@@ -586,7 +702,7 @@ class GfDarwinBridgeTests(unittest.TestCase):
     def test_rejects_attested_gf_source_commit_other_than_operator_pin(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             evidence_dir, _ = evidence_fixture(Path(temporary))
-            with self.assertRaisesRegex(BridgeError, "source commit mismatch"):
+            with self.assertRaisesRegex(BridgeError, "source digest mismatch"):
                 verify_fixture(evidence_dir, gf_revision="e" * 40)
 
     def test_import_exports_closure_and_emits_canonical_record(self) -> None:
@@ -731,6 +847,11 @@ class GfDarwinBridgeTests(unittest.TestCase):
             replay["transfer_smoke_sha256"],
             replay["store_smoke_sha256"],
         )
+        self.assertEqual(len(fake.clean_store_commands), 1)
+        self.assertIn(
+            f'(subpath "{store_root}")',
+            fake.clean_store_commands[0][2],
+        )
 
     def test_release_replay_rejects_substituted_closure_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -767,6 +888,101 @@ class GfDarwinBridgeTests(unittest.TestCase):
                     expected_revision=REVISION,
                     expected_gf_revision=GF_REVISION,
                     runner=FakeReplay(fake),
+                    store_root=store_root,
+                )
+
+    def test_release_replay_canonicalizes_every_local_store_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            evidence_dir, _ = evidence_fixture(root)
+            evidence = verify_fixture(evidence_dir)
+            store_root = root / "nix" / "store"
+            fake = FakeNixDarwin(store_root)
+            output = root / "out"
+            closure = output / "ptoon-aarch64-darwin.nar"
+            entrypoint = output / "ptoon-aarch64-darwin.bin"
+            record_path = output / "ptoon-aarch64-darwin.gf-nix-bridge.json"
+            import_verified_output(
+                evidence,
+                closure_export=closure,
+                entrypoint_export=entrypoint,
+                record_path=record_path,
+                runner=fake,
+                store_root=store_root,
+            )
+            canonical_parent = root / "private-var"
+            canonical_parent.mkdir()
+            symlink_parent = root / "var"
+            symlink_parent.symlink_to(
+                canonical_parent,
+                target_is_directory=True,
+            )
+            original_tempdir = tempfile.tempdir
+            tempfile.tempdir = str(symlink_parent)
+            try:
+                replay_bridge_bundle(
+                    record_path=record_path,
+                    closure_export=closure,
+                    entrypoint_export=entrypoint,
+                    expected_revision=REVISION,
+                    expected_gf_revision=GF_REVISION,
+                    runner=FakeReplay(fake),
+                    store_root=store_root,
+                )
+            finally:
+                tempfile.tempdir = original_tempdir
+
+        self.assertGreaterEqual(len(fake.local_store_roots), 2)
+        for local_store_root in fake.local_store_roots:
+            self.assertTrue(local_store_root.is_relative_to(canonical_parent.resolve()))
+            self.assertNotIn(str(symlink_parent), str(local_store_root))
+
+    def test_release_replay_fails_closed_when_live_store_denial_cannot_run(
+        self,
+    ) -> None:
+        from subprocess import CompletedProcess
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            evidence_dir, _ = evidence_fixture(root)
+            evidence = verify_fixture(evidence_dir)
+            store_root = root / "nix" / "store"
+            fake = FakeNixDarwin(store_root)
+            output = root / "out"
+            closure = output / "ptoon-aarch64-darwin.nar"
+            entrypoint = output / "ptoon-aarch64-darwin.bin"
+            record_path = output / "ptoon-aarch64-darwin.gf-nix-bridge.json"
+            import_verified_output(
+                evidence,
+                closure_export=closure,
+                entrypoint_export=entrypoint,
+                record_path=record_path,
+                runner=fake,
+                store_root=store_root,
+            )
+            replay = FakeReplay(fake)
+
+            def reject_sandbox(command: object):
+                if list(command)[:2] == [  # type: ignore[arg-type]
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                ]:
+                    return CompletedProcess(
+                        command,
+                        1,
+                        b"",
+                        b"live store denial unavailable",
+                    )
+                return replay(command)
+
+            with self.assertRaisesRegex(BridgeError, "live store denial unavailable"):
+                replay_bridge_bundle(
+                    record_path=record_path,
+                    closure_export=closure,
+                    entrypoint_export=entrypoint,
+                    expected_revision=REVISION,
+                    expected_gf_revision=GF_REVISION,
+                    runner=reject_sandbox,
                     store_root=store_root,
                 )
 

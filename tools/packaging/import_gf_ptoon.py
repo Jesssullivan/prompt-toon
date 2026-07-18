@@ -15,6 +15,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -70,6 +71,7 @@ RESIDENT_SMOKE_SHA256 = (
 )
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_REV_RE = re.compile(r"^[0-9a-f]{40}$")
+MAX_INT64 = (1 << 63) - 1
 GF_WORKFLOW_URL_RE = re.compile(
     r"^https://github\.com/tinyland-inc/GloriousFlywheel/actions/runs/([1-9][0-9]*)$"
 )
@@ -208,6 +210,64 @@ def _require_positive_decimal(value: Any, field: str) -> str:
     return value
 
 
+def _require_positive_int(value: Any, field: str) -> int:
+    if type(value) is not int or value <= 0 or value > MAX_INT64:
+        raise BridgeError(f"{field} must be a positive int64")
+    return value
+
+
+def _verify_worker_execution_binding(
+    proof: dict[str, Any],
+    *,
+    expected_exported_outputs_sha256: str,
+) -> None:
+    binding = proof.get("worker_execution_evidence")
+    expected_keys = {
+        "schema_version",
+        "evidence_sha256",
+        "remote_grpc_log_sha256",
+        "execution_log_sha256",
+        "bep_sha256",
+        "eligibility_manifest_sha256",
+        "exported_outputs_manifest_sha256",
+        "target",
+        "tool_invocation_id",
+        "remote_execution_count",
+    }
+    if not isinstance(binding, dict) or set(binding) != expected_keys:
+        raise BridgeError("proof-result worker_execution_evidence key set mismatch")
+    if type(binding["schema_version"]) is not int or binding["schema_version"] != 3:
+        raise BridgeError("proof-result worker_execution_evidence schema must be 3")
+    for field in (
+        "evidence_sha256",
+        "remote_grpc_log_sha256",
+        "execution_log_sha256",
+        "bep_sha256",
+        "eligibility_manifest_sha256",
+    ):
+        _require_sha256_claim(
+            binding[field],
+            f"proof-result worker_execution_evidence.{field}",
+        )
+    expected_exports_digest = f"sha256:{expected_exported_outputs_sha256}"
+    if binding["exported_outputs_manifest_sha256"] != expected_exports_digest:
+        raise BridgeError(
+            "proof-result worker execution binding does not match "
+            "exported-outputs.json"
+        )
+    request = proof.get("request")
+    if not isinstance(request, dict) or binding["target"] != request.get("target"):
+        raise BridgeError("proof-result worker execution binding target mismatch")
+    _require_nonempty_string(
+        binding["tool_invocation_id"],
+        "proof-result worker_execution_evidence.tool_invocation_id",
+    )
+    _require_positive_int(
+        binding["remote_execution_count"],
+        "proof-result worker_execution_evidence.remote_execution_count",
+    )
+
+
 def _verify_gf_attestation(
     proof_path: Path,
     bundle_path: Path,
@@ -236,6 +296,8 @@ def _verify_gf_attestation(
             GF_SIGNER_WORKFLOW,
             "--source-ref",
             GF_SOURCE_REF,
+            "--source-digest",
+            expected_gf_revision,
             "--format",
             "json",
         ],
@@ -321,12 +383,16 @@ def _verify_gf_attestation(
 
 
 def _verify_proof(
-    proof: dict[str, Any], *, expected_revision: str, expected_label: str
+    proof: dict[str, Any],
+    *,
+    expected_revision: str,
+    expected_label: str,
+    expected_exported_outputs_sha256: str,
 ) -> None:
     if GIT_REV_RE.fullmatch(expected_revision) is None:
         raise BridgeError("--expected-revision must be exactly 40 lowercase hex")
-    if proof.get("schema_version") != 1:
-        raise BridgeError("proof-result schema_version must be 1")
+    if type(proof.get("schema_version")) is not int or proof["schema_version"] != 2:
+        raise BridgeError("proof-result schema_version must be 2")
     if proof.get("kind") != "gf-reapi-proof-result":
         raise BridgeError("proof-result kind mismatch")
     if proof.get("authority") != GF_AUTHORITY:
@@ -342,21 +408,28 @@ def _verify_proof(
     ):
         if proof.get(field) is not True:
             raise BridgeError(f"proof-result {field} must be true")
-    if proof.get("proof_exit_status") != 0:
+    if type(proof.get("proof_exit_status")) is not int or proof["proof_exit_status"] != 0:
         raise BridgeError("proof-result proof_exit_status must be 0")
     if proof.get("cache_hits_only") is not False:
         raise BridgeError("proof-result cache_hits_only must be false")
-    remote_processes = proof.get("remote_processes")
-    if (
-        isinstance(remote_processes, bool)
-        or not isinstance(remote_processes, int)
-        or remote_processes <= 0
-    ):
-        raise BridgeError("proof-result remote_processes must be a positive integer")
+    remote_processes = _require_positive_int(
+        proof.get("remote_processes"),
+        "proof-result remote_processes",
+    )
     if proof.get("worker_remote_execution_log") is not True:
         raise BridgeError(
             "Darwin proof-result must cite a real remote worker execution log"
         )
+    dispatch_cell_digest = _require_sha256_claim(
+        proof.get("dispatch_cell_image_digest"),
+        "proof-result dispatch_cell_image_digest",
+    )
+    worker_image_digest = _require_sha256_claim(
+        proof.get("worker_image_digest"),
+        "proof-result worker_image_digest",
+    )
+    if dispatch_cell_digest != worker_image_digest:
+        raise BridgeError("proof-result dispatch-cell digest alias mismatch")
     _require_nonempty_string(proof.get("executor"), "proof-result executor")
     _require_nonempty_string(proof.get("remote_cache"), "proof-result remote_cache")
     worker = proof.get("worker_identity")
@@ -375,7 +448,7 @@ def _verify_proof(
     for field, expected in expected_worker.items():
         if worker.get(field) != expected:
             raise BridgeError(f"proof-result worker_identity.{field} mismatch")
-    _require_sha256_claim(
+    worker_closure_digest = _require_sha256_claim(
         worker.get("closure_digest"), "proof-result worker_identity.closure_digest"
     )
 
@@ -390,6 +463,7 @@ def _verify_proof(
         "consumer_ref",
         "target",
         "target_platform",
+        "worker_closure_digest",
         "bazel_command",
     ):
         _require_nonempty_string(request.get(field), f"proof-result request.{field}")
@@ -415,8 +489,22 @@ def _verify_proof(
         raise BridgeError("proof-result request.target does not match --output label")
     if request["target_platform"] != DARWIN_TARGET_PLATFORM:
         raise BridgeError("proof-result request.target_platform mismatch")
+    requested_worker_closure = _require_sha256_claim(
+        request["worker_closure_digest"],
+        "proof-result request.worker_closure_digest",
+    )
+    if requested_worker_closure != worker_closure_digest:
+        raise BridgeError("proof-result requested worker closure mismatch")
     if request["bazel_command"] != "build":
         raise BridgeError("proof-result request.bazel_command must be build")
+    _verify_worker_execution_binding(
+        proof,
+        expected_exported_outputs_sha256=expected_exported_outputs_sha256,
+    )
+    if proof["worker_execution_evidence"]["remote_execution_count"] > remote_processes:
+        raise BridgeError(
+            "proof-result worker execution count exceeds Bazel remote processes"
+        )
 
 
 def _validated_output_claims(exports: dict[str, Any]) -> list[dict[str, Any]]:
@@ -565,13 +653,19 @@ def verify_evidence(
     proof = _read_json(proof_path, "proof-result")
     label, claim_path = parse_output_spec(output_spec)
     smoke_label, smoke_claim_path = parse_output_spec(native_smoke_spec)
-    _verify_proof(proof, expected_revision=expected_revision, expected_label=label)
     if smoke_label != label:
         raise BridgeError("native smoke and binary outputs must share one Bazel label")
     if smoke_claim_path != claim_path + ".native-smoke.json":
         raise BridgeError("native smoke output must be the release target sidecar")
     exports = _read_json(exports_path, "exported-outputs")
     outputs = _validated_output_claims(exports)
+    exported_outputs_sha256 = sha256_file(exports_path)
+    _verify_proof(
+        proof,
+        expected_revision=expected_revision,
+        expected_label=label,
+        expected_exported_outputs_sha256=exported_outputs_sha256,
+    )
     if proof.get("exported_outputs") != outputs:
         raise BridgeError(
             "proof-result exported_outputs does not match exported-outputs.json"
@@ -594,7 +688,7 @@ def verify_evidence(
         evidence_dir=evidence_dir,
         proof=proof,
         proof_result_sha256=proof_sha256,
-        exported_outputs_sha256=sha256_file(exports_path),
+        exported_outputs_sha256=exported_outputs_sha256,
         attestation_bundle_sha256=sha256_file(attestation_path),
         gf_source_digest=gf_source_digest,
         output=output,
@@ -833,11 +927,19 @@ def validate_bridge_record(
         "attestation",
         "request",
         "platform",
+        "dispatch_cell_image_digest",
         "worker_identity",
+        "worker_execution_evidence",
     }:
         raise BridgeError("GF Darwin bridge record gf key set mismatch")
     if gf["authority"] != GF_AUTHORITY or gf["platform"] != DARWIN_PLATFORM:
         raise BridgeError("GF Darwin bridge authority or platform mismatch")
+    _require_sha256_claim(
+        gf["dispatch_cell_image_digest"],
+        "GF Darwin bridge dispatch_cell_image_digest",
+    )
+    if not isinstance(gf["worker_execution_evidence"], dict):
+        raise BridgeError("GF Darwin bridge worker_execution_evidence must be an object")
     if (
         gf["proof_result_filename"] != DARWIN_GF_PROOF_FILENAME
         or gf["exported_outputs_filename"] != DARWIN_GF_EXPORTS_FILENAME
@@ -929,6 +1031,7 @@ def validate_bridge_record(
         "consumer_ref",
         "target",
         "target_platform",
+        "worker_closure_digest",
         "bazel_command",
     }
     if not isinstance(request, dict) or set(request) != request_keys:
@@ -948,8 +1051,21 @@ def validate_bridge_record(
         raise BridgeError("GF Darwin bridge consumer revision is stale")
     if request["target_platform"] != DARWIN_TARGET_PLATFORM:
         raise BridgeError("GF Darwin bridge target platform mismatch")
+    requested_worker_closure = _require_sha256_claim(
+        request["worker_closure_digest"],
+        "GF Darwin bridge request.worker_closure_digest",
+    )
+    if requested_worker_closure != worker["closure_digest"].removeprefix("sha256:"):
+        raise BridgeError("GF Darwin bridge requested worker closure mismatch")
     if request["bazel_command"] != "build":
         raise BridgeError("GF Darwin bridge must come from bazel build")
+    _verify_worker_execution_binding(
+        {
+            "request": request,
+            "worker_execution_evidence": gf["worker_execution_evidence"],
+        },
+        expected_exported_outputs_sha256=exported_outputs_sha256,
+    )
 
     exported = record.get("exported_output")
     if not isinstance(exported, dict) or set(exported) != {
@@ -1154,8 +1270,11 @@ def validate_bridge_record(
         "consumer_ref": request["consumer_ref"],
         "target": request["target"],
         "bazel_command": request["bazel_command"],
+        "worker_closure_digest": request["worker_closure_digest"],
         "platform": gf["platform"],
+        "dispatch_cell_image_digest": gf["dispatch_cell_image_digest"],
         "worker_identity": dict(worker),
+        "worker_execution_evidence": dict(gf["worker_execution_evidence"]),
         "exported_output": dict(exported),
         "native_smoke": {
             "evidence_filename": native_smoke_evidence["evidence_filename"],
@@ -1316,6 +1435,21 @@ def _import_closure_archive(
     return paths
 
 
+def _canonical_replay_store_root(replay_store_root: Path) -> Path:
+    """Resolve symlinked ancestors before any local-store operation."""
+
+    return replay_store_root.resolve()
+
+
+def _physical_replay_store_root(
+    replay_store_root: Path,
+    store_root: Path,
+) -> Path:
+    return _canonical_replay_store_root(replay_store_root).joinpath(
+        *store_root.parts[1:],
+    )
+
+
 def _physical_replay_store_path(
     logical_path: Path,
     *,
@@ -1323,11 +1457,212 @@ def _physical_replay_store_path(
     store_root: Path,
 ) -> Path:
     _store_path(str(logical_path), store_root)
-    replay_store_root = replay_store_root.resolve()
-    physical_store_root = replay_store_root.joinpath(
-        *store_root.parts[1:],
+    physical_store_root = _physical_replay_store_root(
+        replay_store_root,
+        store_root,
     )
     return physical_store_root / logical_path.name
+
+
+def _require_safe_replay_file(
+    path: Path,
+    *,
+    replay_store_root: Path,
+    store_root: Path,
+) -> None:
+    try:
+        resolved = path.resolve(strict=True)
+        details = resolved.stat()
+    except OSError as exc:
+        raise BridgeError(
+            f"cannot inspect clean-store Mach-O dependency: {path}"
+        ) from exc
+    physical_store_root = _physical_replay_store_root(
+        replay_store_root,
+        store_root,
+    )
+    if not resolved.is_relative_to(physical_store_root):
+        raise BridgeError(
+            f"clean-store Mach-O dependency escapes imported store: {path}"
+        )
+    if not stat.S_ISREG(details.st_mode):
+        raise BridgeError(
+            f"clean-store Mach-O dependency must resolve to a regular file: {path}"
+        )
+
+
+def _physical_replay_dependency(
+    dependency: str,
+    *,
+    recorded_requisites: Sequence[str],
+    replay_store_root: Path,
+    store_root: Path,
+) -> Path:
+    logical_dependency = next(
+        (
+            Path(requisite)
+            for requisite in recorded_requisites
+            if dependency == requisite or dependency.startswith(requisite + "/")
+        ),
+        None,
+    )
+    if logical_dependency is None:
+        raise BridgeError(
+            f"clean-store Mach-O dependency is absent from closure: {dependency}"
+        )
+    physical_dependency = _physical_replay_store_path(
+        logical_dependency,
+        replay_store_root=replay_store_root,
+        store_root=store_root,
+    ) / Path(dependency).relative_to(logical_dependency)
+    _require_safe_replay_file(
+        physical_dependency,
+        replay_store_root=replay_store_root,
+        store_root=store_root,
+    )
+    return physical_dependency
+
+
+def _replay_library_directories(
+    dependencies: Sequence[str],
+    *,
+    recorded_requisites: Sequence[str],
+    replay_store_root: Path,
+    store_root: Path,
+    runner: CommandRunner,
+) -> list[Path]:
+    """Map the complete Mach-O dependency graph to imported physical bytes."""
+
+    pending = list(dependencies)
+    inspected: set[str] = set()
+    library_by_leaf: dict[str, Path] = {}
+    system_leaves: set[str] = set()
+    while pending:
+        dependency = pending.pop()
+        if dependency in inspected:
+            continue
+        inspected.add(dependency)
+        if not dependency.startswith(str(store_root) + "/"):
+            leaf = Path(dependency).name
+            if leaf in library_by_leaf:
+                raise BridgeError(
+                    f"clean-store replay would override system library: {leaf}"
+                )
+            system_leaves.add(leaf)
+            continue
+        if any(part.endswith(".framework") for part in Path(dependency).parts):
+            raise BridgeError(
+                "clean-store replay cannot prove framework dependency remapping"
+            )
+        physical_dependency = _physical_replay_dependency(
+            dependency,
+            recorded_requisites=recorded_requisites,
+            replay_store_root=replay_store_root,
+            store_root=store_root,
+        )
+        leaf = Path(dependency).name
+        if leaf in system_leaves:
+            raise BridgeError(
+                f"clean-store replay would override system library: {leaf}"
+            )
+        previous = library_by_leaf.setdefault(leaf, physical_dependency)
+        if previous != physical_dependency:
+            raise BridgeError(
+                f"clean-store replay has ambiguous Mach-O library leaf: {leaf}"
+            )
+        transitive = _macho_dependencies(
+            _run(runner, ["/usr/bin/otool", "-L", str(physical_dependency)]),
+            store_root,
+        )
+        _validate_rpaths(
+            _run(runner, ["/usr/bin/otool", "-l", str(physical_dependency)]),
+            store_root,
+        )
+        pending.extend(transitive)
+
+    directories = sorted({path.parent for path in library_by_leaf.values()})
+    if any(":" in str(path) or "\n" in str(path) for path in directories):
+        raise BridgeError("clean-store replay library path is not DYLD-safe")
+    return directories
+
+
+def _run_clean_store_smoke(
+    binary: Path,
+    evidence: VerifiedEvidence,
+    runner: CommandRunner,
+    *,
+    dependencies: Sequence[str],
+    recorded_requisites: Sequence[str],
+    replay_store_root: Path,
+    store_root: Path,
+) -> str:
+    """Run the smoke while the publisher's live Nix store is unreadable."""
+
+    replay_store_root = _canonical_replay_store_root(replay_store_root)
+    library_directories = _replay_library_directories(
+        dependencies,
+        recorded_requisites=recorded_requisites,
+        replay_store_root=replay_store_root,
+        store_root=store_root,
+        runner=runner,
+    )
+    if runner is _default_runner:
+        _require_regular_file(Path("/usr/bin/sandbox-exec"), "sandbox-exec")
+        _require_regular_file(Path("/bin/sh"), "system shell")
+
+    profile = (
+        "(version 1) "
+        "(allow default) "
+        f"(deny file-read* (subpath {json.dumps(str(store_root))}))"
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="prompt-toon-clean-store-smoke-"
+    ) as temporary:
+        smoke_root = Path(temporary)
+        smoke_script = smoke_root / NATIVE_SMOKE_SCRIPT.name
+        expected = smoke_root / NATIVE_SMOKE_EXPECTED.name
+        shutil.copyfile(NATIVE_SMOKE_SCRIPT, smoke_script)
+        shutil.copyfile(NATIVE_SMOKE_EXPECTED, expected)
+        if sha256_file(smoke_script) != sha256_file(NATIVE_SMOKE_SCRIPT):
+            raise BridgeError("clean-store smoke script bytes changed")
+        if sha256_file(expected) != sha256_file(NATIVE_SMOKE_EXPECTED):
+            raise BridgeError("clean-store smoke expected bytes changed")
+
+        wrapper = smoke_root / "run-smoke.sh"
+        dyld_library_path = ":".join(map(str, library_directories))
+        wrapper.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "unset DYLD_FALLBACK_FRAMEWORK_PATH DYLD_FALLBACK_LIBRARY_PATH "
+            "DYLD_FRAMEWORK_PATH DYLD_IMAGE_SUFFIX DYLD_INSERT_LIBRARIES "
+            "DYLD_VERSIONED_FRAMEWORK_PATH DYLD_VERSIONED_LIBRARY_PATH\n"
+            f"export DYLD_LIBRARY_PATH={shlex.quote(dyld_library_path)}\n"
+            f". {shlex.quote(str(smoke_script))}\n",
+            encoding="utf-8",
+        )
+        wrapper.chmod(0o700)
+        result_path = smoke_root / "native-smoke.json"
+        _run_result(
+            runner,
+            [
+                "/usr/bin/sandbox-exec",
+                "-p",
+                profile,
+                "/bin/sh",
+                str(wrapper),
+                str(binary),
+                str(result_path),
+            ],
+        )
+        _require_regular_file(result_path, "clean-store native smoke result")
+        result = _read_json(result_path, "clean-store native smoke result")
+        if result != evidence.native_smoke:
+            raise BridgeError("clean-store native smoke differs from remote result")
+        if result_path.read_bytes() != evidence.native_smoke_output.path.read_bytes():
+            raise BridgeError(
+                "clean-store native smoke bytes differ from remote result"
+            )
+        return sha256_file(result_path)
 
 
 def import_verified_output(
@@ -1453,11 +1788,18 @@ def import_verified_output(
                     "consumer_ref",
                     "target",
                     "target_platform",
+                    "worker_closure_digest",
                     "bazel_command",
                 )
             },
             "platform": evidence.proof["platform"],
+            "dispatch_cell_image_digest": evidence.proof[
+                "dispatch_cell_image_digest"
+            ],
             "worker_identity": evidence.proof["worker_identity"],
+            "worker_execution_evidence": evidence.proof[
+                "worker_execution_evidence"
+            ],
         },
         "exported_output": {
             "label": evidence.output.label,
@@ -1582,6 +1924,30 @@ def replay_bridge_bundle(
             expected_gf_revision=expected_gf_revision,
             runner=runner,
         )
+        proof_request = evidence.proof["request"]
+        if (
+            gf["dispatch_cell_image_digest"]
+            != evidence.proof["dispatch_cell_image_digest"]
+            or gf["worker_identity"] != evidence.proof["worker_identity"]
+            or gf["worker_execution_evidence"]
+            != evidence.proof["worker_execution_evidence"]
+            or gf["request"]
+            != {
+                key: proof_request[key]
+                for key in (
+                    "workflow_run_id",
+                    "workflow_run_attempt",
+                    "workflow_run_url",
+                    "consumer_repository",
+                    "consumer_ref",
+                    "target",
+                    "target_platform",
+                    "worker_closure_digest",
+                    "bazel_command",
+                )
+            }
+        ):
+            raise BridgeError("GF Darwin bridge record differs from signed proof")
 
         validate_darwin_binary(entrypoint_export, runner, store_root=store_root)
         transfer_smoke_sha256 = _run_post_import_smoke(
@@ -1590,7 +1956,9 @@ def replay_bridge_bundle(
             runner,
         )
 
-        replay_store_root = evidence_dir / "nix-replay-root"
+        replay_store_root = _canonical_replay_store_root(
+            evidence_dir / "nix-replay-root"
+        )
         imported_paths = sorted(
             {
                 str(_store_path(path, store_root))
@@ -1649,32 +2017,20 @@ def replay_bridge_bundle(
         for dependency in dependencies:
             if not dependency.startswith(str(store_root) + "/"):
                 continue
-            logical_dependency = next(
-                (
-                    Path(requisite)
-                    for requisite in recorded_requisites
-                    if dependency == requisite
-                    or dependency.startswith(requisite + "/")
-                ),
-                None,
-            )
-            if logical_dependency is None:
-                raise BridgeError(
-                    f"clean-store Mach-O dependency is absent from closure: {dependency}"
-                )
-            physical_dependency = _physical_replay_store_path(
-                logical_dependency,
+            _physical_replay_dependency(
+                dependency,
+                recorded_requisites=recorded_requisites,
                 replay_store_root=replay_store_root,
                 store_root=store_root,
-            ) / Path(dependency).relative_to(logical_dependency)
-            _require_regular_file(
-                physical_dependency,
-                "clean-store Mach-O dependency",
             )
-        store_smoke_sha256 = _run_post_import_smoke(
+        store_smoke_sha256 = _run_clean_store_smoke(
             imported_entrypoint,
             evidence,
             runner,
+            dependencies=dependencies,
+            recorded_requisites=recorded_requisites,
+            replay_store_root=replay_store_root,
+            store_root=store_root,
         )
 
     return {
