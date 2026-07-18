@@ -24,9 +24,12 @@ sh_binary(
 
 chapel_toolchain(
     name = "linux_environmental_impl",
+    cacheable = False,
     chpl = ":chpl_from_path",
     hermetic = False,
     identity = "gf-linux-executor-environmental-chpl-transition",
+    inherit_default_shell_env = True,
+    worker_closure_bound = False,
 )
 
 toolchain(
@@ -40,5 +43,38 @@ toolchain(
         "@platforms//os:linux",
     ],
     toolchain = ":linux_environmental_impl",
+    toolchain_type = ":toolchain_type",
+)
+
+# TIN-2949 Darwin production bridge. The worker owns an exact Nix action PATH
+# rooted by launchd and verifies the GF Chapel metadata before this wrapper
+# invokes chpl. The closure is isolated from the caller host, but remains
+# non-cacheable until its digest is represented in the Bazel action key.
+sh_binary(
+    name = "chpl_from_worker_closure",
+    srcs = ["chpl_from_worker_closure.sh"],
+)
+
+chapel_toolchain(
+    name = "darwin_worker_closure_impl",
+    cacheable = False,
+    chpl = ":chpl_from_worker_closure",
+    hermetic = False,
+    identity = "gf-darwin-nix-chapel-ab552d8-worker-closure",
+    inherit_default_shell_env = False,
+    worker_closure_bound = True,
+)
+
+toolchain(
+    name = "darwin_worker_closure_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:osx",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:osx",
+    ],
+    toolchain = ":darwin_worker_closure_impl",
     toolchain_type = ":toolchain_type",
 )

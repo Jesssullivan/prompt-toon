@@ -14,6 +14,9 @@ platform(
         "@platforms//cpu:aarch64",
         "@platforms//os:osx",
     ],
-    exec_properties = {"gf.platform": "gloriousflywheel-rbe-darwin-aarch64"},
+    exec_properties = {
+        "gf.platform": "gloriousflywheel-rbe-darwin-aarch64",
+        "gf.toolchain-policy": "chapel-ab552d8",
+    },
     visibility = ["//visibility:public"],
 )
