@@ -449,15 +449,16 @@ asserted equal by the generator. `policy[]` carries sha256 digests of the
 delegation/io SSOT artifacts, tying packaging integrity to INV-8.
 DETERMINISM SPLIT: the committed manifest is a pure function of repo
 content (`git_rev: UNSTAMPED`, targets[] sha256/entrypoint_sha256 null); the
-release lane re-runs the generator with
-`--git-rev/--tag/--ci-run/--with-closure/--with-entrypoint/--with-wheel` to
-stamp provenance and inject both platform closure and entrypoint digests plus
-the wheel digest. Stamped output fails closed if any target digest or size is
-missing. Manifest schema v2 identifies targets by `(artifact, platform)` and
-names exact assets. The
-tagged flake is canonical; GH assets are complete Nix closure exports, not
-falsely portable raw executables. Nix is enabled; the Home Manager contract
-is ready but disabled until the separate lab module consumes it.
+release lane re-runs the generator with `--git-rev`, `--tag`, `--ci-run`,
+`--with-closure`, `--with-entrypoint`, `--with-build-provenance`, and
+`--with-wheel` to stamp both platform closure and entrypoint digests, the wheel
+digest, and the authenticated GF Darwin-to-Nix bridge. Stamped output fails
+closed if any target digest, size, or Darwin build provenance is missing.
+Manifest schema v2 identifies targets by `(artifact, platform)` and names exact
+assets. GH assets are complete Nix closure exports; the tagged flake is a
+source definition and is not a claim of byte identity with the GF-produced
+Darwin output. Nix is enabled; the Home Manager contract is ready but disabled
+until the separate lab module consumes it.
 
 ### Decline (do not re-propose without new facts)
 
@@ -555,9 +556,11 @@ the binary, `auto` falls open to Python when the binary is absent.
   `--remote_download_minimal` performance guidance:
   https://bazel.build/docs/user-manual, https://bazel.build/remote/rbe, and
   https://bazel.build/advanced/performance/build-performance-breakdown.
-- Bazel execution/target platform and toolchain resolution remain separate;
-  the current Chapel rule is Linux-only and does not claim a Linux executor
-  can produce Darwin provenance: https://bazel.build/extending/platforms and
+- Bazel execution/target platform and toolchain resolution remain separate.
+  The Chapel rule has distinct Linux and Darwin toolchains; only the physical
+  Darwin worker may resolve the worker-closure implementation, and a Linux
+  executor cannot produce Darwin provenance:
+  https://bazel.build/extending/platforms and
   https://bazel.build/extending/toolchains.
 - As with Chapel, unversioned current docs are guidance rather than build
   provenance. This repository is pinned to Bazel 8.2.1; Bazel 9 is the current
@@ -679,15 +682,40 @@ pull requests instantiate the Darwin derivation on a GF-managed Linux runner
 without realizing it; that is definition proof, not native artifact proof.
 TIN-2542 established the separate
 `gloriousflywheel-rbe-darwin-aarch64` contract. TIN-2949 now owns its
-still-missing endpoint, declared hermetic Chapel toolchain, native artifact
-proof, and deliberate bridge to the Nix-closure release format. The Bazel
-target has a mandatory toolchain boundary and fails Darwin analysis closed
-until that compiler is registered. Petting Zoo Mini is authorized under
-TIN-2998 as the physical Apple Silicon worker, but it is not yet commissioned:
-there is no managed GF service, bounded Darwin sandbox, mTLS endpoint, or forced
-execution proof. Neo remains excluded. The current v0.3 artifact is an
-ad-hoc-signed Apple Silicon CLI plus a digest-stamped Nix closure; the ad-hoc
-signature is validated after Nix fixup and carries no Developer ID identity.
+still-unproved live endpoint, worker-closure-managed Chapel execution, native
+artifact proof, and deliberate bridge to the Nix-closure release format. The
+Bazel target now resolves a Darwin-only wrapper that verifies the exact GF Nix
+toolchain metadata. The execution platform contributes
+`gf.toolchain-policy=chapel-ab552d8` to the REAPI Action key, while the exact
+worker closure digest remains proof evidence rather than a cache key; both the
+compile and native-smoke actions therefore remain non-cacheable. Petting Zoo
+Mini is authorized under TIN-2998 as the
+physical Apple Silicon worker, but it is not yet commissioned: there is no
+accepted managed GF service, bounded Darwin sandbox, mTLS endpoint, or forced
+execution proof. Neo remains excluded.
+
+The source bridge contract is implemented but no v0.3 artifact or release is
+claimed yet. It consumes one authenticated GF proof and BEP-declared output,
+requires a Sigstore attestation from the reviewed GF main workflow with the
+exact source commit certificate-enforced by `gh attestation verify
+--source-digest`, and requires a physical-worker closure identity. It verifies
+schema-v2 separation between dispatch-cell provenance and the requested
+physical PZM closure, plus the schema-v3 exact Action/BEP/export binding. It
+then verifies an exact artifact-bound native `caps`, normalization, one-shot
+redaction, and resident round-trip result. The Darwin publisher first inspects the
+arm64/ad-hoc-signed executable and linkage, adds the same bytes to the Nix
+store, and then imports the closure into a fresh canonical local-store root.
+The release replay recursively maps Mach-O dependencies to imported physical
+files and executes only the fixed offline native-smoke contract under a Darwin
+sandbox that denies the live `/nix/store`. It fails closed if that execution
+boundary cannot be established. It validates closure linkage and exports the
+complete closure without a Nix fixup or independent Darwin rebuild. The signed
+manifest binds that bridge record, while the release retains the GF proof,
+exported-output index, attestation bundle, and smoke record for replay. Linux
+artifacts, bridge replay, the wheel, and manifest stamping consume immutable
+Nix-store snapshots of the exact tagged source revision. Failed publication
+retains any already-pushed signed tag for operator recovery. The ad-hoc
+signature carries no Developer ID identity.
 Publisher identity comes from the OpenPGP-signed Git tag and detached manifest
 signature. Apple Developer ID signing and notarization are not on its critical
 path; they become project release gates for a future target that claims a

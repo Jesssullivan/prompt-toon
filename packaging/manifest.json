@@ -3,7 +3,7 @@
     "chapel": {
       "flags": "--fast",
       "source": "github:Jesssullivan/chapel/llvm-21-support",
-      "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: nix Darwin builder; never local chpl)"
+      "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: exact forced GF output plus byte-preserving Nix bridge; never local chpl)"
     },
     "python": ">=3.11",
     "toolchain": "chapel+python"
@@ -19,7 +19,7 @@
     },
     "gh_release": {
       "enabled": true,
-      "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
+      "note": "operated via `just release <version>` (Linux remote parity/build, Sigstore-attested GF Darwin output and artifact-bound remote native smoke, byte-preserving Nix bridge, replayable GF evidence, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)"
     },
     "home_manager": {
       "contract": "packaging/home-manager.json",
@@ -71,6 +71,7 @@
   "targets": [
     {
       "artifact": "ptoon",
+      "build_provenance": null,
       "capabilities": {
         "serve_protocol": 1
       },
@@ -85,6 +86,7 @@
     },
     {
       "artifact": "ptoon",
+      "build_provenance": null,
       "capabilities": {
         "serve_protocol": 1
       },

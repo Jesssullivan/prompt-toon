@@ -132,23 +132,34 @@ just build-ptoon      # or: make build-ptoon   — nix remote builder (cache-fir
 just flywheel-chapel  #      make bazel-ptoon   — fixed, uncached Bazel proof on GF REAPI
 ```
 
-- **nix remote builder** (current release substrate):
+- **nix remote builder** (Linux release/parity substrate):
   `nix build .#packages.x86_64-linux.ptoon` compiles `Main.chpl` with
   `chpl --fast -M src/ptoon -o ptoon` on the x86_64-linux builder and
   smoke-tests `echo hi | ./ptoon normalize`.
 - **Bazel on GF REAPI** (executor-backed graph and cache plane):
   `//src/ptoon:ptoon` uses the mandatory `ChapelToolchainInfo` boundary in
   `//tools/bazel/chapel`. The registered x86_64-linux implementation is the
-  explicitly transitional GF worker-runtime bridge. Darwin has a distinct
-  execution platform but no registered compiler, so analysis fails closed
-  until TIN-2949 supplies a declared hermetic toolchain; it cannot fall through
-  to a developer-host `chpl`. Environmental Linux compiles are non-cacheable
-  because the ambient compiler is not part of their action key. `just
-  bazel-chapel-toolchain-contract` proves both analysis outcomes without
-  running a compile action. The executor lane also keeps
+  explicitly transitional GF worker-runtime bridge. Darwin resolves only the
+  GF Nix Chapel package on the managed `aarch64-darwin` worker action PATH.
+  The execution platform places `gf.toolchain-policy=chapel-ab552d8` in the
+  REAPI Action key; the worker ignores caller `PATH` and selects the extended
+  path only for that exact policy. Its wrapper checks the pinned package
+  metadata and compiler version before compiling, and it cannot fall through
+  to a developer-host `chpl`.
+  TIN-2949's release bridge consumes the exact forced GF output and imports
+  those bytes into a complete Nix closure after verifying an artifact-bound
+  remote native smoke record. The publisher inspects the downloaded binary,
+  imports it byte-for-byte, and executes only the same fixed offline smoke
+  contract from the Nix store; it does not compile Chapel locally.
+  Linux environmental compiles, Darwin worker-closure compiles, and Darwin
+  native-smoke actions are non-cacheable because the exact compiler closure
+  digest is proof evidence rather than part of the Bazel action key. `just
+  bazel-chapel-toolchain-contract` proves both analysis outcomes and both
+  Darwin no-cache actions without running a compile action. The executor lane
+  also keeps
   `--remote_local_fallback=false`.
 
-## Primary references checked 2026-07-16
+## Primary references checked 2026-07-17
 
 Keep this lane grounded in current upstream docs when touching Chapel/Bazel
 plumbing:
@@ -189,13 +200,24 @@ plumbing:
   https://bazel.build/rules/lib/builtins/actions,
   https://bazel.build/remote/rbe, and https://bazel.build/remote/rules. These
   anchor the `ctx.actions.run` action with declared tool/runfiles inputs. The
-  remaining C3 work replaces the Linux environmental bridge and registers the
-  Darwin compiler closure; it does not regress to action-time downloads.
+  remaining C3 work replaces the Linux environmental bridge and makes the
+  Darwin closure digest part of its action key; it does not regress to
+  action-time downloads.
 - Bazel command/options and remote-build performance docs:
   https://bazel.build/docs/user-manual and
   https://bazel.build/advanced/performance/build-performance-breakdown. These
   anchor `--platforms`, `--host_platform`, `--extra_execution_platforms`, and
   `--remote_download_minimal`.
+- Bazel Build Event Protocol overview and examples:
+  https://bazel.build/remote/bep and
+  https://bazel.build/remote/bep-examples. These anchor the GF exporter that
+  resolves successful top-level `TargetComplete` output groups through
+  `NamedSetOfFiles`; target and aspect events can share labels, so the producer
+  distinguishes them before selecting the release output.
+- Remote Execution API v2 `Action.platform` contract:
+  https://github.com/bazelbuild/remote-apis/blob/main/build/bazel/remote/execution/v2/remote_execution.proto.
+  This anchors the action-keyed `gf.toolchain-policy` selection; the worker
+  rejects duplicate properties and unsupported policy values.
 
 ## Parity gate
 

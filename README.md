@@ -14,7 +14,8 @@ Offline research condensation is one supported transform and dogfood workflow:
 no LLM call, no network call, and no hidden transport change.
 
 Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` process
-(native remote-built Nix outputs) owns normalize/redact/defang, the coforall
+(remote-built outputs delivered in complete Nix closures) owns
+normalize/redact/defang, the coforall
 batch fan-in, and the full condense rendering — proven byte-identical to the
 Python oracle by the parity gates. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
@@ -172,25 +173,37 @@ resident 64-stream production path, which remains covered by
 (TIN-2706): version, skills, policy digests, and per-lane enablement all
 derive from it. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
 regenerates via `just manifest`, merges, then `just release X.Y.Z` — Linux
-parity, native remote Linux/Darwin builds, stamped manifest, wheel, and full
-Nix closure exports. The release uses an OpenPGP-signed Git tag and publishes a
-detached OpenPGP signature over the stamped manifest. The tagged flake is the
-canonical online install path; the `.nar` assets import with
-`nix-store --import`. Raw `ptoon` executables are Nix-store linked and are not
-claimed portable. The native Darwin gate verifies the final store executable's
-required ad-hoc Apple Silicon code signature; this carries no Developer ID
-identity. The signed manifest authenticates each closure export, its
-`bin/ptoon` entrypoint, and the wheel. Release notes record the OpenPGP
-signing-key fingerprint so verification can be anchored to the signed tag and
-repository identity. Fleet install will ride the lab Home Manager module
-(rev-pinned per INV-7).
+parity/build, an exact attended GF Darwin output-to-Nix bridge, a stamped
+manifest, wheel, and full Nix closure exports. The Darwin bridge verifies the
+Sigstore-attested GF proof, physical-worker identity, output digest, remote
+native `caps`/normalization/redaction/resident smoke, and arm64/ad-hoc
+signature and linkage. After those checks, the attended publisher imports the
+same bytes into Nix and runs only the fixed offline native-smoke contract from
+the imported store path before exporting the complete closure. It never
+compiles Chapel locally or forwards smoke inputs to a provider. The release
+uses an OpenPGP-signed Git tag and publishes a detached OpenPGP signature over
+the stamped manifest.
+
+The signed manifest authenticates each closure export, its `bin/ptoon`
+entrypoint, the wheel, and Darwin `build_provenance`. Release `.nar` assets are
+the exact binary install artifacts and import with `nix-store --import`; the
+tagged flake remains a source build/install definition but does not imply byte
+identity with the GF-produced Darwin artifact. The raw Darwin executable is a
+non-portable provenance/replay asset, not the install contract. The release
+also retains the GF proof, exported-output index, Sigstore bundle, and remote
+smoke record so provenance can be re-verified after Actions artifact expiry.
+The ad-hoc Apple Silicon signature carries no Developer ID identity. Release
+notes record the OpenPGP signing-key fingerprint so verification can be
+anchored to the signed tag and repository identity. Fleet install will ride
+the lab Home Manager module (rev-pinned per INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
 C4 gateway. v0.3.0 is the first release line whose manifest declares
 per-target `serve_protocol = 1` and `anthropic_shadow_gateway = 1`
 plus `openai_responses_shadow_gateway = 1` capabilities. Manifest schema v2
 identifies ptoon targets by `(artifact, platform)` and authenticates complete
-Linux and Darwin Nix closure exports, their entrypoint binaries, and the universal wheel.
+Linux and Darwin Nix closure exports, their entrypoint binaries, the Darwin
+GF/Nix bridge provenance, and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
 manifest exist.
 

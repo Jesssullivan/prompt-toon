@@ -7,12 +7,14 @@ under `--config=executor-backed` -- remote execution on GF REAPI.
 
 TIN-2949 introduces the mandatory `ChapelToolchainInfo` boundary. The registered
 Linux implementation remains an explicitly non-hermetic bridge to the pinned GF
-executor runtime; a Darwin build must resolve a declared, hermetic compiler
-closure. Full reusable `rules_chapel` extraction remains TIN-2710.
+executor runtime. Darwin resolves an action-keyed, worker-owned Nix closure but
+also remains non-hermetic and non-cacheable until Bazel declares or keys every
+compiler input. Full reusable `rules_chapel` extraction remains TIN-2710.
 
-Toolchain resolution binds both execution and target platforms. Today only the
-Linux implementation is registered, so a Darwin analysis fails closed instead
-of falling through to the developer host's PATH.
+Toolchain resolution binds both execution and target platforms. Darwin resolves
+only the authenticated GF worker-closure bridge; it cannot fall through to the
+developer host's PATH and remains non-cacheable until its closure digest is
+part of the action key.
 """
 
 _CHAPEL_TOOLCHAIN_TYPE = "//tools/bazel/chapel:toolchain_type"
@@ -21,9 +23,12 @@ def _chapel_binary_impl(ctx):
     out = ctx.actions.declare_file(ctx.attr.binary_name or ctx.label.name)
 
     toolchain = ctx.toolchains[_CHAPEL_TOOLCHAIN_TYPE].chapel
-    if ctx.attr.require_hermetic_toolchain and not toolchain.hermetic:
+    if (
+        ctx.attr.require_worker_closure_toolchain and
+        not toolchain.worker_closure_bound
+    ):
         fail(
-            "%s requires a hermetic Chapel toolchain; selected %s" %
+            "%s requires an action-keyed worker-closure Chapel toolchain; selected %s" %
             (ctx.label, toolchain.identity),
         )
 
@@ -48,7 +53,7 @@ def _chapel_binary_impl(ctx):
         arguments = [args],
         env = toolchain.env,
         executable = toolchain.chpl,
-        execution_requirements = {} if toolchain.hermetic else {"no-cache": "1"},
+        execution_requirements = {} if toolchain.cacheable else {"no-cache": "1"},
         inputs = depset(
             direct = [ctx.file.main] + ctx.files.srcs + ctx.files.data,
             transitive = [toolchain.files],
@@ -56,7 +61,7 @@ def _chapel_binary_impl(ctx):
         outputs = [out],
         tools = [toolchain.chpl],
         toolchain = _CHAPEL_TOOLCHAIN_TYPE,
-        use_default_shell_env = not toolchain.hermetic,
+        use_default_shell_env = toolchain.inherit_default_shell_env,
         mnemonic = "ChapelCompile",
         progress_message = "chpl[%s] --fast %s -> %s" % (
             toolchain.identity,
@@ -64,10 +69,32 @@ def _chapel_binary_impl(ctx):
             ctx.label.name,
         ),
     )
+
+    outputs = [out]
+    if ctx.executable.native_smoke_script:
+        smoke = ctx.actions.declare_file(out.basename + ".native-smoke.json")
+        ctx.actions.run(
+            arguments = [out.path, smoke.path],
+            executable = ctx.executable.native_smoke_script,
+            inputs = depset(
+                direct = [out] + ctx.files.native_smoke_data,
+            ),
+            outputs = [smoke],
+            tools = [ctx.executable.native_smoke_script],
+            execution_requirements = {"no-cache": "1"},
+            use_default_shell_env = False,
+            mnemonic = "PtoonNativeSmoke",
+            progress_message = "native smoke %s -> %s" % (
+                ctx.label,
+                smoke.short_path,
+            ),
+        )
+        outputs.append(smoke)
+
     return [DefaultInfo(
         executable = out,
-        files = depset([out]),
-        runfiles = ctx.runfiles(files = [out]),
+        files = depset(outputs),
+        runfiles = ctx.runfiles(files = outputs),
     )]
 
 chapel_binary = rule(
@@ -90,12 +117,22 @@ chapel_binary = rule(
         "module_paths": attr.string_list(
             doc = "Directories passed as `-M` so chpl finds sibling modules.",
         ),
-        "require_hermetic_toolchain": attr.bool(
+        "require_worker_closure_toolchain": attr.bool(
             default = True,
-            doc = "Reject transitional environmental compiler toolchains.",
+            doc = "Reject toolchains not selected by an action-keyed worker closure policy.",
         ),
         "binary_name": attr.string(
             doc = "Output basename; defaults to the target name.",
+        ),
+        "native_smoke_script": attr.label(
+            allow_files = True,
+            cfg = "exec",
+            executable = True,
+            doc = "Optional executable that runs the built binary and writes a smoke JSON sidecar.",
+        ),
+        "native_smoke_data": attr.label_list(
+            allow_files = True,
+            doc = "Declared inputs used by native_smoke_script.",
         ),
     },
     toolchains = [_CHAPEL_TOOLCHAIN_TYPE],

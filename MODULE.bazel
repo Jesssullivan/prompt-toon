@@ -6,7 +6,10 @@ module(
 
 bazel_dep(name = "platforms", version = "1.0.0")
 
-# Transitional Linux implementation. Darwin intentionally has no registered
-# compiler yet: TIN-2949 must supply a declared, hermetic aarch64-darwin
-# toolchain before //src/ptoon:ptoon can analyze for that target platform.
-register_toolchains("//tools/bazel/chapel:linux_environmental_toolchain")
+# Linux retains its transitional environmental bridge. Darwin resolves only
+# the GF worker-owned Nix closure and is deliberately non-cacheable until that
+# closure digest participates in the action key.
+register_toolchains(
+    "//tools/bazel/chapel:darwin_worker_closure_toolchain",
+    "//tools/bazel/chapel:linux_environmental_toolchain",
+)
