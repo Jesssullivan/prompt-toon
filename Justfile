@@ -97,9 +97,8 @@ bazel-graph:
     cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
 
 # TIN-2949: analysis-only platform/toolchain proof. This runs no Chapel action:
-# Linux must resolve the transitional GF toolchain without caching its ambient
-# compiler result, while Darwin must fail closed until a declared hermetic
-# compiler is registered.
+# both platforms resolve their exact implementation and remain non-cacheable;
+# Darwin must also declare the native smoke action.
 bazel-chapel-toolchain-contract:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -108,7 +107,8 @@ bazel-chapel-toolchain-contract:
     bazel=(bazelisk --output_user_root="${output_root}")
     linux_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-linux-toolchain.XXXXXX")"
     darwin_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-toolchain.XXXXXX")"
-    trap 'rm -f "${linux_log}" "${darwin_log}"' EXIT
+    darwin_smoke_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-smoke.XXXXXX")"
+    trap 'rm -f "${linux_log}" "${darwin_log}" "${darwin_smoke_log}"' EXIT
     "${bazel[@]}" cquery \
       --platforms=//tools/bazel/platforms:linux_x86_64 \
       --extra_execution_platforms=//tools/bazel/platforms:linux_x86_64 \
@@ -119,20 +119,28 @@ bazel-chapel-toolchain-contract:
       --output=text \
       'mnemonic(ChapelCompile, //src/ptoon:ptoon)' >"${linux_log}"
     grep -F "ExecutionInfo: {no-cache: 1}" "${linux_log}" >/dev/null
-    set +e
     "${bazel[@]}" cquery \
       --platforms=//tools/bazel/platforms:darwin_aarch64 \
       --extra_execution_platforms=//tools/bazel/platforms:darwin_aarch64 \
-      //src/ptoon:ptoon >"${darwin_log}" 2>&1
-    rc=$?
-    set -e
-    if [[ ${rc} -eq 0 ]]; then
-      echo "Darwin Chapel analysis unexpectedly resolved without a reviewed toolchain" >&2
-      exit 1
-    fi
-    grep -F "No matching toolchains found for types:" "${darwin_log}" >/dev/null
-    grep -F "//tools/bazel/chapel:toolchain_type" "${darwin_log}" >/dev/null
-    echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux non-cacheable; Darwin failed closed)"
+      //src/ptoon:ptoon >/dev/null
+    "${bazel[@]}" aquery \
+      --platforms=//tools/bazel/platforms:darwin_aarch64 \
+      --extra_execution_platforms=//tools/bazel/platforms:darwin_aarch64 \
+      --output=text \
+      'mnemonic(ChapelCompile, //src/ptoon:ptoon)' >"${darwin_log}"
+    grep -F "Mnemonic: ChapelCompile" "${darwin_log}" >/dev/null
+    grep -F "ExecutionInfo: {no-cache: 1}" "${darwin_log}" >/dev/null
+    "${bazel[@]}" aquery \
+      --platforms=//tools/bazel/platforms:darwin_aarch64 \
+      --extra_execution_platforms=//tools/bazel/platforms:darwin_aarch64 \
+      --output=text \
+      'mnemonic(PtoonNativeSmoke, //src/ptoon:ptoon)' >"${darwin_smoke_log}"
+    grep -F "Mnemonic: PtoonNativeSmoke" "${darwin_smoke_log}" >/dev/null
+    grep -F "ExecutionInfo: {no-cache: 1}" "${darwin_smoke_log}" >/dev/null
+    "${bazel[@]}" query --output=build \
+      //tools/bazel/platforms:darwin_aarch64 \
+      | grep -F '"gf.toolchain-policy": "chapel-ab552d8"' >/dev/null
+    echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux/Darwin compile and Darwin native smoke are non-cacheable)"
 
 bazel-test:
     cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
@@ -155,36 +163,111 @@ package-smoke-local:
 manifest:
     cd {{root}} && python3 tools/packaging/gen_manifest.py
 
-# TIN-2706 gh_release lane: local-operated release. Builds ptoon on the
-# native remote substrates (never local chpl), builds and installs the universal
-# wheel, stamps every asset digest, then publishes both closure exports, the
-# wheel, and manifest.
-# CI tag-push automation stays gated on a publicly reachable chapel cache.
-release version:
+# TIN-2949: on an attended Darwin bridge host, verify one exact GF proof output,
+# add its byte-identical package tree to the Nix store, and emit a transfer
+# bundle. No Chapel compilation occurs in this recipe.
+gf-darwin-bridge $evidence $output $native_smoke $revision $gf_revision $bundle:
     #!/usr/bin/env bash
     set -Eeuo pipefail
     cd {{root}}
-    tag="v{{version}}"
-    stage=""
-    local_tag_created=0
-    remote_tag_pushed=0
-    cleanup_release_failure() {
+    [ ! -e "$bundle" ] || { echo "bridge bundle path already exists: $bundle" >&2; exit 1; }
+    mkdir -p "$bundle"
+    bridge_completed=0
+    cleanup_bridge() {
       status="$?"
-      if [ "$status" -ne 0 ]; then
-        if [ "$remote_tag_pushed" = "1" ]; then
-          gh release view "$tag" >/dev/null 2>&1 && gh release delete "$tag" --yes --cleanup-tag >/dev/null 2>&1 || git push origin ":refs/tags/$tag" >/dev/null 2>&1 || true
-        fi
-        if [ "$local_tag_created" = "1" ]; then
-          git tag -d "$tag" >/dev/null 2>&1 || true
-        fi
-        [ -z "$stage" ] || rm -rf "$stage"
+      trap - EXIT INT TERM HUP
+      if [ "$bridge_completed" = "0" ]; then
+        rm -rf "$bundle"
       fi
       exit "$status"
     }
-    trap cleanup_release_failure ERR
+    trap cleanup_bridge EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    python3 tools/packaging/import_gf_ptoon.py import \
+      --evidence-dir "$evidence" \
+      --output "$output" \
+      --native-smoke "$native_smoke" \
+      --expected-revision "$revision" \
+      --expected-gf-revision "$gf_revision" \
+      --closure-export "$bundle/ptoon-aarch64-darwin.nar" \
+      --entrypoint-export "$bundle/ptoon-aarch64-darwin.bin" \
+      --record "$bundle/ptoon-aarch64-darwin.gf-nix-bridge.json"
+    bridge_completed=1
+    echo "GF Darwin bridge bundle: $bundle"
+
+# TIN-2706/TIN-2949 gh_release lane: local-operated release. Linux remains
+# remote/cache-first; Darwin consumes the exact attended GF-to-Nix bridge
+# bundle named by PROMPT_TOON_DARWIN_BRIDGE_DIR. The release never compiles
+# Chapel on the publisher host or substitutes an independent Darwin build.
+# CI tag-push automation stays gated on a publicly reachable chapel cache.
+release $version:
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    cd {{root}}
+    tag="v$version"
+    stage=""
+    rev=""
+    local_tag_object=""
+    remote_tag_push_attempted=0
+    release_create_attempted=0
+    created_release_id=""
+    release_marker=""
+    release_completed=0
+    canonical_repo="Jesssullivan/prompt-toon"
+    cleanup_release() {
+      status="$?"
+      trap - EXIT INT TERM HUP
+      set +e
+      if [ "$status" -ne 0 ] && [ "$release_completed" = "0" ]; then
+        if [ "$release_create_attempted" = "1" ] && [ -n "$release_marker" ]; then
+          current_release_json="$(gh release view "$tag" --repo "$canonical_repo" --json id,body 2>/dev/null)"
+          current_release_id="$(printf '%s' "$current_release_json" | jq -r '.id // empty' 2>/dev/null)"
+          current_release_body="$(printf '%s' "$current_release_json" | jq -r '.body // empty' 2>/dev/null)"
+          if [[ "$current_release_body" == *"$release_marker"* ]] \
+            && { [ -z "$created_release_id" ] || [ "$current_release_id" = "$created_release_id" ]; }; then
+            gh release delete "$tag" --repo "$canonical_repo" --yes >/dev/null 2>&1 || \
+              echo "release cleanup could not remove owned GitHub release $tag; inspect repository state" >&2
+          elif [ -n "$current_release_id" ]; then
+            echo "release cleanup refused to remove $tag because release ownership changed" >&2
+          fi
+        fi
+        if [ "$remote_tag_push_attempted" = "1" ] && [ -n "$rev" ] && [ -n "$local_tag_object" ]; then
+          remote_tags="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}" 2>/dev/null)"
+          remote_query_status="$?"
+          remote_tag_object="$(printf '%s\n' "$remote_tags" | awk -v ref="refs/tags/$tag" '$2 == ref { print $1 }')"
+          remote_tag_commit="$(printf '%s\n' "$remote_tags" | awk -v ref="refs/tags/$tag^{}" '$2 == ref { print $1 }')"
+          if [ "$remote_query_status" -eq 0 ] && [ "$remote_tag_object" = "$local_tag_object" ] && [ "$remote_tag_commit" = "$rev" ]; then
+            git push --force-with-lease="refs/tags/$tag:$remote_tag_object" origin ":refs/tags/$tag" >/dev/null 2>&1 || \
+              echo "release cleanup could not remove exact remote tag $tag; inspect origin" >&2
+          elif [ "$remote_query_status" -ne 0 ]; then
+            echo "release cleanup could not query origin for $tag; inspect remote state" >&2
+          elif [ -n "$remote_tag_object" ]; then
+            echo "release cleanup refused to remove $tag because exact tag ownership changed" >&2
+          fi
+        fi
+        if [ -n "$local_tag_object" ] && [ "$(git rev-parse -q --verify "refs/tags/$tag" 2>/dev/null)" = "$local_tag_object" ]; then
+          git tag -d "$tag" >/dev/null 2>&1 || \
+            echo "release cleanup could not remove exact local tag $tag" >&2
+        fi
+      fi
+      [ -z "$stage" ] || rm -rf "$stage"
+      exit "$status"
+    }
+    trap cleanup_release EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
     [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "release from main only" >&2; exit 1; }
     [ -z "$(git status --porcelain)" ] || { echo "release requires a clean tree including untracked files" >&2; exit 1; }
-    [ "$(python3 -c 'import prompt_toon; print(prompt_toon.__version__)')" = "{{version}}" ] || { echo "SSOT version != {{version}}; bump prompt_toon/__init__.py first" >&2; exit 1; }
+    origin_url="$(git remote get-url origin)"
+    case "$origin_url" in
+      "https://github.com/$canonical_repo.git"|"git@github.com:$canonical_repo.git") ;;
+      *) echo "release origin must be canonical $canonical_repo, got $origin_url" >&2; exit 1 ;;
+    esac
+    [ "$(gh repo view "$canonical_repo" --json nameWithOwner --jq .nameWithOwner)" = "$canonical_repo" ] || { echo "GitHub CLI cannot resolve canonical repository $canonical_repo" >&2; exit 1; }
+    [ "$(python3 -c 'import prompt_toon; print(prompt_toon.__version__)')" = "$version" ] || { echo "SSOT version != $version; bump prompt_toon/__init__.py first" >&2; exit 1; }
     command -v gpg >/dev/null || { echo "release requires OpenPGP signing via gpg" >&2; exit 1; }
     signing_key="$(git config --get user.signingkey || true)"
     [ -n "$signing_key" ] || { echo "release requires git user.signingkey" >&2; exit 1; }
@@ -201,9 +284,44 @@ release version:
     rev="$(git rev-parse HEAD)"
     remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
     [ -n "$remote_main" ] && [ "$rev" = "$remote_main" ] || { echo "release HEAD must equal origin/main" >&2; exit 1; }
+    darwin_bridge_source_dir="${PROMPT_TOON_DARWIN_BRIDGE_DIR:-}"
+    [ -n "$darwin_bridge_source_dir" ] && [ -d "$darwin_bridge_source_dir" ] || { echo "release requires PROMPT_TOON_DARWIN_BRIDGE_DIR from the attended GF-to-Nix bridge" >&2; exit 1; }
+    darwin_bridge_closure="$darwin_bridge_source_dir/ptoon-aarch64-darwin.nar"
+    darwin_bridge_entrypoint="$darwin_bridge_source_dir/ptoon-aarch64-darwin.bin"
+    darwin_bridge_record="$darwin_bridge_source_dir/ptoon-aarch64-darwin.gf-nix-bridge.json"
+    darwin_bridge_proof="$darwin_bridge_source_dir/ptoon-aarch64-darwin.gf-proof-result.json"
+    darwin_bridge_outputs="$darwin_bridge_source_dir/ptoon-aarch64-darwin.gf-exported-outputs.json"
+    darwin_bridge_attestation="$darwin_bridge_source_dir/ptoon-aarch64-darwin.gf-proof-result.attestation.json"
+    darwin_bridge_smoke="$darwin_bridge_source_dir/ptoon-aarch64-darwin.native-smoke.json"
+    gf_revision="${PROMPT_TOON_GF_REVISION:-}"
+    [[ "$gf_revision" =~ ^[0-9a-f]{40}$ ]] || { echo "release requires PROMPT_TOON_GF_REVISION as the exact lowercase GF proof commit" >&2; exit 1; }
+    for bridge_input in "$darwin_bridge_closure" "$darwin_bridge_entrypoint" "$darwin_bridge_record" "$darwin_bridge_proof" "$darwin_bridge_outputs" "$darwin_bridge_attestation" "$darwin_bridge_smoke"; do
+      [ -f "$bridge_input" ] && [ ! -L "$bridge_input" ] || { echo "missing or unsafe Darwin bridge input: $bridge_input" >&2; exit 1; }
+    done
     ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "$tag already exists locally" >&2; exit 1; }
-    ! git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1 || { echo "$tag already exists on origin" >&2; exit 1; }
-    ! gh release view "$tag" >/dev/null 2>&1 || { echo "GitHub release $tag already exists" >&2; exit 1; }
+    [ -z "$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")" ] || { echo "$tag already exists on origin" >&2; exit 1; }
+    ! gh release view "$tag" --repo "$canonical_repo" >/dev/null 2>&1 || { echo "GitHub release $tag already exists" >&2; exit 1; }
+    stage="$(mktemp -d)"
+    cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"
+    cp "$darwin_bridge_entrypoint" "$stage/ptoon-aarch64-darwin.bin"
+    cp "$darwin_bridge_record" "$stage/ptoon-aarch64-darwin.gf-nix-bridge.json"
+    cp "$darwin_bridge_proof" "$stage/ptoon-aarch64-darwin.gf-proof-result.json"
+    cp "$darwin_bridge_outputs" "$stage/ptoon-aarch64-darwin.gf-exported-outputs.json"
+    cp "$darwin_bridge_attestation" "$stage/ptoon-aarch64-darwin.gf-proof-result.attestation.json"
+    cp "$darwin_bridge_smoke" "$stage/ptoon-aarch64-darwin.native-smoke.json"
+    darwin_bridge_closure="$stage/ptoon-aarch64-darwin.nar"
+    darwin_bridge_entrypoint="$stage/ptoon-aarch64-darwin.bin"
+    darwin_bridge_record="$stage/ptoon-aarch64-darwin.gf-nix-bridge.json"
+    darwin_bridge_proof="$stage/ptoon-aarch64-darwin.gf-proof-result.json"
+    darwin_bridge_outputs="$stage/ptoon-aarch64-darwin.gf-exported-outputs.json"
+    darwin_bridge_attestation="$stage/ptoon-aarch64-darwin.gf-proof-result.attestation.json"
+    darwin_bridge_smoke="$stage/ptoon-aarch64-darwin.native-smoke.json"
+    python3 tools/packaging/import_gf_ptoon.py replay \
+      --record "$darwin_bridge_record" \
+      --closure-export "$darwin_bridge_closure" \
+      --entrypoint-export "$darwin_bridge_entrypoint" \
+      --expected-revision "$rev" \
+      --expected-gf-revision "$gf_revision"
     python3 tools/packaging/gen_manifest.py --check
     just check
     just gateway-harness-probe
@@ -212,22 +330,17 @@ release version:
     # parity + hook-canary derivation at this rev before anything is tagged.
     nix build .#packages.x86_64-linux.ptoon-parity --no-link --print-build-logs
     linux_ptoon_store="$(nix build .#packages.x86_64-linux.ptoon --no-link --print-out-paths --print-build-logs)"
-    # max-jobs=0 forbids a same-architecture local Darwin build; the native
-    # aarch64-darwin remote builder must realize or substitute this target.
-    darwin_ptoon_store="$(nix build --max-jobs 0 .#packages.aarch64-darwin.ptoon --no-link --print-out-paths --print-build-logs)"
     nix build .#packages.x86_64-linux.prompt-toon --no-link --print-build-logs
-    stage="$(mktemp -d)"
     # Raw executables are Nix-store linked and are not portable standalone
-    # assets. Export each complete runtime closure for import with nix-store
-    # --import; the tagged flake remains the canonical online install path.
+    # assets. Export each complete runtime closure for exact import with
+    # nix-store --import; the tagged flake remains the source definition.
     nix-store --export $(nix-store --query --requisites "$linux_ptoon_store" | sort) > "$stage/ptoon-x86_64-linux.nar"
-    nix-store --export $(nix-store --query --requisites "$darwin_ptoon_store" | sort) > "$stage/ptoon-aarch64-darwin.nar"
     test -s "$stage/ptoon-x86_64-linux.nar"
     test -s "$stage/ptoon-aarch64-darwin.nar"
     mkdir "$stage/source"
     git archive "$rev" | tar -x -C "$stage/source"
     (cd "$stage/source" && UV_CACHE_DIR="$stage/uv-cache" uv build --wheel --out-dir "$stage")
-    wheels=("$stage"/prompt_toon-{{version}}-py3-none-any.whl)
+    wheels=("$stage"/prompt_toon-"$version"-py3-none-any.whl)
     [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "release expected exactly one prompt-toon wheel" >&2; exit 1; }
     wheel="${wheels[0]}"
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
@@ -238,22 +351,39 @@ release version:
       --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
       --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \
       --with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar" \
-      --with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon" \
+      --with-entrypoint "aarch64-darwin=$stage/ptoon-aarch64-darwin.bin" \
+      --with-build-provenance "aarch64-darwin=$stage/ptoon-aarch64-darwin.gf-nix-bridge.json" \
       --with-wheel "$wheel" > "$manifest"
     git tag -s -u "$signing_key" "$tag" -m "prompt-toon $tag" "$rev"
-    local_tag_created=1
+    local_tag_object="$(git rev-parse "refs/tags/$tag")"
+    [ "$(git cat-file -t "$local_tag_object")" = "tag" ] || { echo "release tag is not an annotated tag object" >&2; exit 1; }
     git verify-tag "$tag"
     gpg --local-user "$signing_key" --armor --detach-sign \
       --output "$manifest.asc" "$manifest"
     gpg --verify "$manifest.asc" "$manifest"
-    git push origin "$tag"
-    remote_tag_pushed=1
-    gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$wheel" "$manifest" "$manifest.asc" \
+    remote_tag_push_attempted=1
+    git push --force-with-lease="refs/tags/$tag:" origin "$local_tag_object:refs/tags/$tag"
+    pushed_tags="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+    pushed_tag_object="$(printf '%s\n' "$pushed_tags" | awk -v ref="refs/tags/$tag" '$2 == ref { print $1 }')"
+    pushed_tag_commit="$(printf '%s\n' "$pushed_tags" | awk -v ref="refs/tags/$tag^{}" '$2 == ref { print $1 }')"
+    [ "$pushed_tag_object" = "$local_tag_object" ] && [ "$pushed_tag_commit" = "$rev" ] || { echo "origin tag $tag does not match the exact signed release tag object" >&2; exit 1; }
+    release_marker="<!-- prompt-toon-release-owner:$tag:$local_tag_object -->"
+    release_notes="$stage/release-notes.md"
+    printf '%s\n\n%s\n' \
+      "$release_marker" \
+      "OpenPGP signer: $signing_fingerprint. The signed tag authenticates source; the detached manifest signature authenticates both importable Nix closure exports, the universal wheel, and the GF Darwin-to-Nix bridge record. Darwin build_provenance binds the exact forced GF output, source revision, physical worker closure identity, Sigstore-attested GF proof, byte-identical Nix entrypoint, remote native caps/normalize/resident smoke, and closure export. Replayable GF proof inputs are published with the release. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native arm64/ad-hoc signature checks, package install, and repository gates are green at $rev." \
+      >"$release_notes"
+    release_create_attempted=1
+    gh release create "$tag" "$stage/ptoon-x86_64-linux.nar" "$stage/ptoon-aarch64-darwin.nar" "$stage/ptoon-aarch64-darwin.bin" "$stage/ptoon-aarch64-darwin.gf-nix-bridge.json" "$stage/ptoon-aarch64-darwin.gf-proof-result.json" "$stage/ptoon-aarch64-darwin.gf-exported-outputs.json" "$stage/ptoon-aarch64-darwin.gf-proof-result.attestation.json" "$stage/ptoon-aarch64-darwin.native-smoke.json" "$wheel" "$manifest" "$manifest.asc" \
+      --repo "$canonical_repo" \
+      --draft \
       --verify-tag \
-      --title "prompt-toon v{{version}}" \
-      --notes "OpenPGP signer: $signing_fingerprint. The signed tag authenticates source and the detached manifest signature authenticates targets[].sha256 for both importable Nix closure exports and the wheel; each closure target's entrypoint_sha256 binds it to the built bin/ptoon. The tagged flake is the canonical install path. Linux parity, hook canary, Claude/Codex real-CLI harness probes, native remote Darwin smoke with a valid ad-hoc Apple Silicon code signature, package install, and repository gates green at $rev."
-    trap - ERR
-    rm -rf "$stage"
+      --title "prompt-toon v$version" \
+      --notes-file "$release_notes"
+    created_release_id="$(gh release view "$tag" --repo "$canonical_repo" --json id --jq .id)"
+    [ -n "$created_release_id" ] || { echo "created release has no stable GitHub id" >&2; exit 1; }
+    gh release edit "$tag" --repo "$canonical_repo" --draft=false
+    release_completed=1
     echo "released $tag at $rev"
 
 build-ptoon:

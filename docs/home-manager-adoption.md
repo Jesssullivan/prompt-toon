@@ -71,32 +71,38 @@ rollout.
 
 ## Platform delivery
 
-The tagged flake is the canonical online package for `x86_64-linux` and
-`aarch64-darwin`. The attended release lane realizes and smoke-tests both
-platform closures on native remote builders; `--max-jobs 0` forbids local
-Darwin compilation. Pull requests that change the native surface run the
-path-scoped `Darwin Definition` workflow on the GF-managed Linux control plane.
-That lane instantiates `packages.aarch64-darwin.ptoon.drvPath` only: it proves
-the flake still defines the target, not that a Darwin artifact compiled or ran.
+The tagged flake remains the reviewed source build/install definition for
+`x86_64-linux` and `aarch64-darwin`. Exact release adoption uses the
+OpenPGP-authenticated `.nar` assets: a tagged-flake rebuild does not inherit
+the GF proof or establish byte identity with the released Darwin executable.
+Pull requests that change the native surface run the path-scoped `Darwin
+Definition` workflow on the GF-managed Linux control plane. That lane
+instantiates `packages.aarch64-darwin.ptoon.drvPath` only; it proves the flake
+still defines the target, not that a Darwin artifact compiled or ran.
 
-TIN-2949 owns the remaining durable native artifact proof: an authorized
-physical `gloriousflywheel-rbe-darwin-aarch64` worker and endpoint, forced
-remote action evidence, a native Mach-O smoke matrix, and a reviewed bridge to
-the closure-stamped release manifest. TIN-2542 is complete and is no longer the
-blocking issue. The current remote Nix realization in `just release` remains
-an attended interim gate, not a substitute for the durable GF proof. Linux
-retains exhaustive byte parity and the 64-stream capacity gate. A release's
-Darwin derivation additionally runs native `caps`, normalization, and
-resident-service round-trip checks.
+TIN-2949 owns the remaining live proof: commission the authorized physical
+`gloriousflywheel-rbe-darwin-aarch64` worker and endpoint, force the Chapel
+action remotely, and export its BEP-declared output plus an artifact-bound
+native smoke result. The implemented attended bridge verifies the
+Sigstore-attested GF proof, physical worker identity, exact output, and remote
+`caps`, normalization, one-shot redaction, and resident-service round trip. On
+Darwin it performs Mach-O/signature/linkage inspection, a byte-preserving
+`nix store add`, and then the fixed offline native-smoke contract from the
+imported store path. The publisher does not compile Chapel locally or send
+smoke inputs to a provider. `just release` requires that replayed bridge bundle
+and refuses an independent Darwin rebuild. TIN-2542 is complete and is no
+longer the blocking issue. Linux retains exhaustive byte parity and the
+64-stream capacity gate.
 
 The v0.3 Darwin deliverable is a CLI distributed as a complete Nix closure, not
 an `.app`, `.pkg`, or disk image. Apple Silicon still requires executable code
 to be signed, so the native build gate verifies the final store executable's
 valid ad-hoc signature and absence of a Team Identifier or signing authority.
 That signature seals the code without a Developer ID identity. The remaining
-release gates are the tagged flake, native execution, Mach-O architecture,
-closure and entrypoint digests, an OpenPGP-signed Git tag, and a detached
-OpenPGP signature over the stamped manifest. Developer ID identity signing,
+release gates are forced GF execution, native smoke, Mach-O architecture,
+closure and entrypoint digests, authenticated bridge provenance, an
+OpenPGP-signed Git tag, and a detached OpenPGP signature over the stamped
+manifest. Developer ID identity signing,
 notarization, and stapling are not v0.3 prerequisites. They become project
 release requirements if a future target claims a Gatekeeper-facing signed,
 notarized, or stapled application or installer.
@@ -130,5 +136,11 @@ full fingerprint before trusting artifact digests. GitHub release notes repeat
 the fingerprint for convenience but are not the trust root.
 Import a closure with `nix-store --import`; its platform target and archive
 digest are recorded in manifest schema v2, together with the SHA-256 of its
-`bin/ptoon` entrypoint. Raw executables are linked to their Nix-store runtime
-closure and are not portable standalone assets.
+`bin/ptoon` entrypoint. Darwin `build_provenance` binds the GF workflow,
+consumer revision, physical worker closure identity, Sigstore bundle,
+exported-output digest, remote native smoke, exact Nix store path, and bridge
+record. The release retains those replay records after the temporary Actions
+artifact expires. The lab consumer must import the authenticated release
+closure and select its recorded store path; rebuilding only from the tagged
+flake is a distinct provenance path. Raw executables are linked to their
+Nix-store runtime closure and are not portable standalone assets.

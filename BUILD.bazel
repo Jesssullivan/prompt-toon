@@ -74,6 +74,9 @@ sh_test(
         "tinyland.repo.json",
         "//tools/packaging:gen_manifest.py",
         "//tools/packaging:gen_home_manager_contract.py",
+        "//tools/packaging:import_gf_ptoon.py",
+        "//tools/bazel/chapel:chpl_from_worker_closure",
+        "//tools/bazel/chapel:toolchain.bzl",
     ] + glob([
         "prompt_toon/**/*.py",
         "tests/**/*.py",
@@ -94,6 +97,8 @@ filegroup(
         "packaging/release-signers.json",
         "packaging/release-signing-key.asc",
         "pyproject.toml",
+        "//src/ptoon:native_smoke.sh",
+        "//src/ptoon:native_smoke_expected.sh",
         ":delegation_policy",
         ":skills",
     ] + glob(["prompt_toon/**/*.py"]),

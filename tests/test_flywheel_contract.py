@@ -96,13 +96,37 @@ class FlywheelContractTest(unittest.TestCase):
         )
         self.assertIn("build:executor-backed --remote_local_fallback=false", config)
 
-    def test_chapel_action_is_bound_and_non_cacheable_until_hermetic(self) -> None:
+    def test_chapel_action_is_bound_and_non_cacheable_until_keyed(self) -> None:
         rule = (ROOT / "tools" / "bazel" / "chapel" / "defs.bzl").read_text(
             encoding="utf-8"
         )
-        self.assertIn('execution_requirements = {} if toolchain.hermetic else {"no-cache": "1"}', rule)
+        self.assertIn(
+            'execution_requirements = {} if toolchain.cacheable else {"no-cache": "1"}',
+            rule,
+        )
         self.assertIn("toolchain = _CHAPEL_TOOLCHAIN_TYPE", rule)
 
+    def test_darwin_toolchain_is_worker_closure_managed(self) -> None:
+        module = (ROOT / "MODULE.bazel").read_text(encoding="utf-8")
+        wrapper = (
+            ROOT
+            / "tools"
+            / "bazel"
+            / "chapel"
+            / "chpl_from_worker_closure.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("darwin_worker_closure_toolchain", module)
+        self.assertIn("gf-chapel-prompt-toon-ab552d8/bin/chpl", wrapper)
+        self.assertIn(
+            '"source_revision":"ab552d88630823a961cca5db5f693b3511234e6c"',
+            wrapper,
+        )
+        recipes = (ROOT / "Justfile").read_text(encoding="utf-8")
+        self.assertIn('"gf.toolchain-policy": "chapel-ab552d8"', recipes)
+        self.assertIn(
+            "'mnemonic(PtoonNativeSmoke, //src/ptoon:ptoon)'",
+            recipes,
+        )
     def test_stale_vendored_attachment_scripts_are_absent(self) -> None:
         self.assertFalse((ROOT / "scripts" / "cache-attachment-contract.sh").exists())
         self.assertFalse(

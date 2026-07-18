@@ -194,10 +194,11 @@ guidance is mandatory. No weighted score can hide a failure.
 The canonical report contains fixture/case IDs, counts, engine identity, and
 failure codes only. It has no timestamp, absolute path, raw fixture content,
 provider request, or timing. Local `just check` runs the Python oracle. The
-remote Linux parity derivation runs both Python and Chapel, while native remote
-Darwin repeats the Chapel gate in the attended release lane without local
-`chpl` iteration. The pull-request Darwin definition check does not claim this
-native artifact proof.
+remote Linux parity derivation runs both Python and Chapel. The attended Darwin
+bridge runs bounded native `caps`, normalization, one-shot redaction, and
+resident round-trip smoke on the exact GF output and again after byte-preserving
+Nix import, without local `chpl` iteration. The pull-request Darwin definition
+check does not claim this native artifact proof.
 
 An `offline-fixture-pass` proves this fixed transform regression suite only. It
 does not attest arbitrary self-reported corpus ledgers, prove SWE task quality,
@@ -295,7 +296,9 @@ the route. TIN-2705 owns that typed policy-parity follow-up.
 
 ## Build And Runtime Planes
 
-Bazel/GF REAPI remains the hermetic build-and-test execution plane. Bazel's
+Bazel/GF REAPI remains the governed shared build-and-test execution plane;
+hermeticity and cache eligibility are target-class properties, not platform-wide
+claims. Bazel's
 [remote execution overview](https://bazel.build/remote/rbe) describes remote
 actions, consistent environments, and shared outputs; it does not turn a
 local dogfood run into a production service or prove resident concurrency.
