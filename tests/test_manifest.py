@@ -25,6 +25,16 @@ MANIFEST = ROOT / "packaging" / "manifest.json"
 HOME_MANAGER_CONTRACT = ROOT / "packaging" / "home-manager.json"
 sys.path.insert(0, str(ROOT / "tools" / "packaging"))
 import gen_manifest  # noqa: E402
+from tools.packaging.import_gf_ptoon import (  # noqa: E402
+    CAPS_SMOKE_SHA256,
+    NATIVE_SMOKE_EXPECTED,
+    NATIVE_SMOKE_EXPECTED_REPO_PATH,
+    NATIVE_SMOKE_SCRIPT,
+    NATIVE_SMOKE_SCRIPT_REPO_PATH,
+    ONE_SHOT_SMOKE_SHA256,
+    REDACTION_SMOKE_SHA256,
+    RESIDENT_SMOKE_SHA256,
+)
 
 
 def write_test_wheel(
@@ -46,6 +56,133 @@ def write_test_wheel(
             "prompt_toon-0.3.0.dist-info/WHEEL",
             "\n".join(metadata).encode("ascii"),
         )
+
+
+def write_test_bridge_record(
+    path: Path,
+    *,
+    revision: str,
+    closure: Path,
+    entrypoint: Path,
+) -> None:
+    store_path = "/nix/store/" + "a" * 32 + "-ptoon"
+    entrypoint_sha256 = sha256(entrypoint.read_bytes()).hexdigest()
+    proof_result = path.with_name("ptoon-aarch64-darwin.gf-proof-result.json")
+    exported_outputs = path.with_name(
+        "ptoon-aarch64-darwin.gf-exported-outputs.json"
+    )
+    attestation = path.with_name(
+        "ptoon-aarch64-darwin.gf-proof-result.attestation.json"
+    )
+    native_smoke = path.with_name("ptoon-aarch64-darwin.native-smoke.json")
+    proof_result.write_bytes(b'{"fixture":"proof-result"}\n')
+    exported_outputs.write_bytes(b'{"fixture":"exported-outputs"}\n')
+    attestation.write_bytes(b'{"fixture":"attestation-bundle"}\n')
+    native_smoke_result = {
+        "schema_version": 1,
+        "kind": "prompt-toon-darwin-native-smoke",
+        "artifact_sha256": f"sha256:{entrypoint_sha256}",
+        "caps_engine": "chapel",
+        "caps_serve_protocol": 1,
+        "caps_sha256": CAPS_SMOKE_SHA256,
+        "normalize_sha256": sha256(b"A\n").hexdigest(),
+        "one_shot_sha256": ONE_SHOT_SMOKE_SHA256,
+        "redaction_canary_absent": True,
+        "redaction_sha256": REDACTION_SMOKE_SHA256,
+        "resident_round_trip_sha256": RESIDENT_SMOKE_SHA256,
+    }
+    native_smoke.write_text(
+        json.dumps(native_smoke_result, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    record = {
+        "schema_version": 1,
+        "kind": "prompt-toon-gf-darwin-nix-bridge",
+        "gf": {
+            "authority": "tinyland-inc/GloriousFlywheel",
+            "proof_result_filename": proof_result.name,
+            "proof_result_sha256": sha256(proof_result.read_bytes()).hexdigest(),
+            "exported_outputs_filename": exported_outputs.name,
+            "exported_outputs_sha256": sha256(exported_outputs.read_bytes()).hexdigest(),
+            "attestation": {
+                "bundle_filename": attestation.name,
+                "bundle_sha256": sha256(attestation.read_bytes()).hexdigest(),
+                "predicate_type": "https://slsa.dev/provenance/v1",
+                "repository": "tinyland-inc/GloriousFlywheel",
+                "signer_workflow": (
+                    "tinyland-inc/GloriousFlywheel/.github/workflows/"
+                    "gf-reapi-cell-proof.yml"
+                ),
+                "source_ref": "refs/heads/main",
+                "source_digest": "e" * 40,
+            },
+            "request": {
+                "workflow_run_id": "123",
+                "workflow_run_attempt": "1",
+                "workflow_run_url": (
+                    "https://github.com/tinyland-inc/GloriousFlywheel/actions/runs/123"
+                ),
+                "consumer_repository": "Jesssullivan/prompt-toon",
+                "consumer_ref": revision,
+                "target": "//src/ptoon:ptoon",
+                "target_platform": "//tools/bazel/platforms:darwin_aarch64",
+                "bazel_command": "build",
+            },
+            "platform": "gloriousflywheel-rbe-darwin-aarch64",
+            "worker_identity": {
+                "kind": "physical-darwin-worker",
+                "name": "darwin-aarch64-pzm-01",
+                "host": "petting-zoo-mini",
+                "architecture": "arm64",
+                "os": "darwin",
+                "closure_digest": "sha256:" + "f" * 64,
+            },
+        },
+        "exported_output": {
+            "label": "//src/ptoon:ptoon",
+            "path": "exported-outputs/darwin_arm64-fastbuild/bin/src/ptoon/ptoon",
+            "sha256": f"sha256:{entrypoint_sha256}",
+            "size_bytes": entrypoint.stat().st_size,
+            "executable": True,
+            "transfer_filename": entrypoint.name,
+        },
+        "native_smoke": {
+            "evidence_filename": native_smoke.name,
+            "evidence_sha256": sha256(native_smoke.read_bytes()).hexdigest(),
+            "result": native_smoke_result,
+        },
+        "nix": {
+            "store_path": store_path,
+            "entrypoint": {
+                "path": "bin/ptoon",
+                "store_path": f"{store_path}/bin/ptoon",
+                "sha256": entrypoint_sha256,
+            },
+            "closure_export": {
+                "filename": closure.name,
+                "sha256": sha256(closure.read_bytes()).hexdigest(),
+                "size_bytes": closure.stat().st_size,
+            },
+            "store_requisites": [
+                store_path,
+                "/nix/store/" + "e" * 32 + "-chapel-runtime",
+            ],
+            "post_import_smoke": {
+                "script": NATIVE_SMOKE_SCRIPT_REPO_PATH,
+                "script_sha256": sha256(NATIVE_SMOKE_SCRIPT.read_bytes()).hexdigest(),
+                "expected": NATIVE_SMOKE_EXPECTED_REPO_PATH,
+                "expected_sha256": sha256(
+                    NATIVE_SMOKE_EXPECTED.read_bytes()
+                ).hexdigest(),
+                "result_sha256": sha256(native_smoke.read_bytes()).hexdigest(),
+                "byte_identical_to_remote": True,
+            },
+        },
+    }
+    path.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
 
 
 class ManifestTests(unittest.TestCase):
@@ -134,9 +271,7 @@ class ManifestTests(unittest.TestCase):
             },
         )
         self.assertTrue(targets[("prompt_toon", "any")]["root_is_purelib"])
-        self.assertEqual(
-            targets[("prompt_toon", "any")]["wheel_tag"], "py3-none-any"
-        )
+        self.assertEqual(targets[("prompt_toon", "any")]["wheel_tag"], "py3-none-any")
 
     def test_committed_manifest_is_unstamped_and_binaryless(self):
         # The committed form is a pure function of repo content: a committed
@@ -172,11 +307,20 @@ class ManifestTests(unittest.TestCase):
         linux = Path(tmp) / "ptoon-x86_64-linux.nar"
         darwin = Path(tmp) / "ptoon-aarch64-darwin.nar"
         linux_entrypoint = Path(tmp) / "ptoon-x86_64-linux"
-        darwin_entrypoint = Path(tmp) / "ptoon-aarch64-darwin"
+        darwin_entrypoint = Path(tmp) / "ptoon-aarch64-darwin.bin"
+        darwin_bridge = Path(tmp) / "ptoon-aarch64-darwin.gf-nix-bridge.json"
+        revision = "d" * 40
         linux.write_bytes(b"not a real Linux closure")
         darwin.write_bytes(b"not a real Darwin closure")
         linux_entrypoint.write_bytes(b"exact Linux ptoon bytes")
         darwin_entrypoint.write_bytes(b"exact Darwin ptoon bytes")
+        darwin_entrypoint.chmod(0o755)
+        write_test_bridge_record(
+            darwin_bridge,
+            revision=revision,
+            closure=darwin,
+            entrypoint=darwin_entrypoint,
+        )
         wheel = Path(tmp) / "prompt_toon-0.3.0-py3-none-any.whl"
         write_test_wheel(wheel)
         wheel_bytes = wheel.read_bytes()
@@ -186,7 +330,7 @@ class ManifestTests(unittest.TestCase):
                     sys.executable,
                     str(GEN),
                     "--git-rev",
-                    "deadbeef",
+                    revision,
                     "--with-closure",
                     f"x86_64-linux={linux}",
                     "--with-entrypoint",
@@ -195,6 +339,8 @@ class ManifestTests(unittest.TestCase):
                     f"aarch64-darwin={darwin}",
                     "--with-entrypoint",
                     f"aarch64-darwin={darwin_entrypoint}",
+                    "--with-build-provenance",
+                    f"aarch64-darwin={darwin_bridge}",
                     "--with-wheel",
                     str(wheel),
                 ],
@@ -203,7 +349,7 @@ class ManifestTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             stamped = json.loads(proc.stdout.decode("utf-8"))
-            self.assertEqual(stamped["git_rev"], "deadbeef")
+            self.assertEqual(stamped["git_rev"], revision)
             ptoon = {
                 t["platform"]: t for t in stamped["targets"] if t["artifact"] == "ptoon"
             }
@@ -229,13 +375,26 @@ class ManifestTests(unittest.TestCase):
                 ptoon["aarch64-darwin"]["entrypoint_sha256"],
                 sha256(b"exact Darwin ptoon bytes").hexdigest(),
             )
+            provenance = ptoon["aarch64-darwin"]["build_provenance"]
+            self.assertEqual(provenance["kind"], "gf-reapi-nix-bridge")
+            self.assertEqual(provenance["consumer_ref"], revision)
+            self.assertEqual(
+                provenance["record_sha256"],
+                sha256(darwin_bridge.read_bytes()).hexdigest(),
+            )
+            self.assertTrue(
+                provenance["native_smoke"]["result"]["redaction_canary_absent"]
+            )
+            self.assertEqual(
+                provenance["attestation"]["source_digest"],
+                "e" * 40,
+            )
+            self.assertIsNone(ptoon["x86_64-linux"]["build_provenance"])
             prompt_toon = next(
                 t for t in stamped["targets"] if t["artifact"] == "prompt_toon"
             )
             self.assertEqual(prompt_toon["filename"], wheel.name)
-            self.assertEqual(
-                prompt_toon["sha256"], sha256(wheel_bytes).hexdigest()
-            )
+            self.assertEqual(prompt_toon["sha256"], sha256(wheel_bytes).hexdigest())
             self.assertEqual(prompt_toon["size"], len(wheel_bytes))
             self.assertTrue(prompt_toon["root_is_purelib"])
             self.assertEqual(prompt_toon["wheel_tag"], "py3-none-any")
@@ -248,6 +407,9 @@ class ManifestTests(unittest.TestCase):
             darwin.unlink(missing_ok=True)
             linux_entrypoint.unlink(missing_ok=True)
             darwin_entrypoint.unlink(missing_ok=True)
+            darwin_bridge.unlink(missing_ok=True)
+            for replay in Path(tmp).glob("ptoon-aarch64-darwin.*.json"):
+                replay.unlink(missing_ok=True)
             wheel.unlink(missing_ok=True)
             Path(tmp).rmdir()
 
@@ -276,6 +438,31 @@ class ManifestTests(unittest.TestCase):
             valid.write_bytes(b"not a zip archive")
             with self.assertRaisesRegex(SystemExit, "not a valid wheel archive"):
                 gen_manifest.validate_universal_wheel(valid, "0.3.0")
+
+    def test_darwin_build_provenance_rejects_stale_revision(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="ptoon-bridge-test-") as tmp:
+            root = Path(tmp)
+            closure = root / "ptoon-aarch64-darwin.nar"
+            entrypoint = root / "ptoon-aarch64-darwin.bin"
+            record = root / "ptoon-aarch64-darwin.gf-nix-bridge.json"
+            closure.write_bytes(b"closure")
+            entrypoint.write_bytes(b"ptoon")
+            entrypoint.chmod(0o755)
+            write_test_bridge_record(
+                record,
+                revision="a" * 40,
+                closure=closure,
+                entrypoint=entrypoint,
+            )
+            with self.assertRaisesRegex(SystemExit, "consumer revision is stale"):
+                gen_manifest.release_build_provenance(
+                    [f"aarch64-darwin={record}"],
+                    git_rev="b" * 40,
+                    closures={"aarch64-darwin": closure},
+                    entrypoints={"aarch64-darwin": entrypoint},
+                )
 
     def test_stamped_emission_rejects_missing_release_artifacts(self):
         proc = subprocess.run(
@@ -395,9 +582,14 @@ class ManifestTests(unittest.TestCase):
             if target["kind"] == "nix-closure-export":
                 self.assertIn("entrypoint_sha256", target)
                 self.assertIsNone(target["entrypoint_sha256"])
+                self.assertIn("build_provenance", target)
+                self.assertIsNone(target["build_provenance"])
 
     def test_release_lane_requires_and_publishes_c4_proof_artifacts(self):
         justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+        release_recipe = justfile.split("release $version:", 1)[1].split(
+            "\nbuild-ptoon:", 1
+        )[0]
         for required in (
             "git status --porcelain",
             "git ls-remote origin refs/heads/main",
@@ -405,17 +597,32 @@ class ManifestTests(unittest.TestCase):
             "just gateway-harness-probe",
             "just responses-gateway-harness-probe",
             ".#packages.x86_64-linux.ptoon-parity",
-            ".#packages.aarch64-darwin.ptoon",
-            "--max-jobs 0",
+            "PROMPT_TOON_DARWIN_BRIDGE_DIR",
+            "gf-darwin-bridge $evidence $output $native_smoke $revision $gf_revision $bundle:",
+            "tools/packaging/import_gf_ptoon.py",
+            "--native-smoke",
+            "--expected-revision",
+            "--expected-gf-revision",
+            "--entrypoint-export",
+            "import_gf_ptoon.py replay",
+            "PROMPT_TOON_GF_REVISION",
+            "ptoon-aarch64-darwin.gf-nix-bridge.json",
             "uv build --wheel",
             'nix-store --query --requisites "$linux_ptoon_store"',
-            'nix-store --query --requisites "$darwin_ptoon_store"',
+            'cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"',
+            'cp "$darwin_bridge_entrypoint" "$stage/ptoon-aarch64-darwin.bin"',
+            'cp "$darwin_bridge_record" "$stage/ptoon-aarch64-darwin.gf-nix-bridge.json"',
+            'cp "$darwin_bridge_proof" "$stage/ptoon-aarch64-darwin.gf-proof-result.json"',
+            'cp "$darwin_bridge_outputs" "$stage/ptoon-aarch64-darwin.gf-exported-outputs.json"',
+            'cp "$darwin_bridge_attestation" "$stage/ptoon-aarch64-darwin.gf-proof-result.attestation.json"',
+            'cp "$darwin_bridge_smoke" "$stage/ptoon-aarch64-darwin.native-smoke.json"',
             '--with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar"',
             '--with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon"',
             '--with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar"',
-            '--with-entrypoint "aarch64-darwin=$darwin_ptoon_store/bin/ptoon"',
+            '--with-entrypoint "aarch64-darwin=$stage/ptoon-aarch64-darwin.bin"',
+            '--with-build-provenance "aarch64-darwin=$stage/ptoon-aarch64-darwin.gf-nix-bridge.json"',
             '--with-wheel "$wheel"',
-            '"$stage/ptoon-aarch64-darwin.nar" "$wheel"',
+            '"$stage/ptoon-aarch64-darwin.native-smoke.json" "$wheel"',
             'manifest="$stage/manifest-$tag.json"',
             'signing_fingerprint="$(gpg --batch --with-colons',
             'trusted_signing_fingerprint="$(python3 -c',
@@ -423,16 +630,54 @@ class ManifestTests(unittest.TestCase):
             "packaging/release-signing-key.asc",
             'anchored_signing_fingerprint="$(gpg --batch --with-colons --show-keys',
             'nix-store --query --requisites "$linux_ptoon_store" | sort',
-            'nix-store --query --requisites "$darwin_ptoon_store" | sort',
             'git tag -s -u "$signing_key"',
             'git verify-tag "$tag"',
             'gpg --local-user "$signing_key" --armor --detach-sign',
             'gpg --verify "$manifest.asc" "$manifest"',
             '"$manifest" "$manifest.asc"',
-            'OpenPGP signer: $signing_fingerprint',
+            "OpenPGP signer: $signing_fingerprint",
+            "Darwin build_provenance binds the exact forced GF output",
+            "Sigstore-attested GF proof",
+            "remote native caps/normalize/resident smoke",
+            "git push --force-with-lease=",
+            'canonical_repo="Jesssullivan/prompt-toon"',
+            "remote_tag_push_attempted=1",
+            "release_create_attempted=1",
+            'release_marker="<!-- prompt-toon-release-owner:',
+            '--notes-file "$release_notes"',
+            'created_release_id="$(gh release view',
+            'gh release edit "$tag" --repo "$canonical_repo" --draft=false',
         ):
             with self.subTest(required=required):
                 self.assertIn(required, justfile)
+        for forbidden in (
+            "darwin_ptoon_store",
+            ".#packages.aarch64-darwin.ptoon",
+            "--max-jobs 0",
+            'nix-store --query --requisites "$darwin_ptoon_store"',
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, release_recipe)
+        self.assertLess(
+            release_recipe.index(
+                'cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"'
+            ),
+            release_recipe.index("import_gf_ptoon.py replay"),
+        )
+        self.assertLess(
+            release_recipe.index("remote_tag_push_attempted=1"),
+            release_recipe.index(
+                'git push --force-with-lease="refs/tags/$tag:" origin'
+            ),
+        )
+        self.assertLess(
+            release_recipe.index('release_marker="<!-- prompt-toon-release-owner:'),
+            release_recipe.index("release_create_attempted=1"),
+        )
+        self.assertLess(
+            release_recipe.index("release_create_attempted=1"),
+            release_recipe.index('gh release create "$tag"'),
+        )
 
     def test_release_parity_surface_requires_c4d_capacity_proof(self):
         release_surface = "\n".join(

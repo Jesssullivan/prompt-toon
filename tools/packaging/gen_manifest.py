@@ -19,11 +19,12 @@ COMMITTED manifest is a pure function of repo content — `git_rev` is the
 literal "UNSTAMPED", every targets[] sha256/size is null, and every closure
 target's entrypoint_sha256 is null (committed self-hashes would be stale by
 construction). The RELEASE lane re-runs this generator with
---git-rev/--tag/--ci-run/--with-closure/--with-entrypoint/--with-wheel to stamp
-provenance and inject every platform artifact, entrypoint, and wheel digest;
-stamped output rejects incomplete target metadata. Derived lanes (GH Release
-source.json, brew bottle, nfpm rpm/deb) consume THAT stamped emission, keyed by
-the same schema.
+--git-rev/--tag/--ci-run/--with-closure/--with-entrypoint/
+--with-build-provenance/--with-wheel to stamp provenance and inject every
+platform artifact, entrypoint, and wheel digest plus the authenticated GF
+Darwin-to-Nix bridge; stamped output rejects incomplete target metadata.
+Derived lanes (GH Release source.json, brew bottle, nfpm rpm/deb) consume THAT
+stamped emission, keyed by the same schema.
 
 Usage:
   gen_manifest.py                      # write packaging/manifest.json
@@ -34,6 +35,8 @@ Usage:
                   --with-entrypoint x86_64-linux=/nix/store/.../bin/ptoon \
                   --with-closure aarch64-darwin=path/to/ptoon-darwin.nar \
                   --with-entrypoint aarch64-darwin=/nix/store/.../bin/ptoon \
+                  --with-build-provenance \
+                    aarch64-darwin=path/to/ptoon-darwin.gf-nix-bridge.json \
                   --with-wheel path/to/prompt_toon.whl
 """
 
@@ -53,6 +56,11 @@ from zipfile import BadZipFile, ZipFile
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.packaging.import_gf_ptoon import (  # noqa: E402
+    BridgeError,
+    validate_bridge_record,
+)
+
 MANIFEST_PATH = ROOT / "packaging" / "manifest.json"
 HOME_MANAGER_CONTRACT_PATH = ROOT / "packaging" / "home-manager.json"
 RELEASE_SIGNERS_PATH = ROOT / "packaging" / "release-signers.json"
@@ -94,7 +102,11 @@ def assert_declared_versions_agree(version: str) -> None:
 
 
 def file_digest(path: Path) -> str:
-    return sha256(path.read_bytes()).hexdigest()
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def release_signer_entry() -> dict[str, str]:
@@ -153,8 +165,7 @@ def validate_universal_wheel(path: Path, version: str) -> None:
     expected_filename = f"prompt_toon-{version}-{PYTHON_WHEEL_TAG}.whl"
     if path.name != expected_filename:
         raise SystemExit(
-            f"gen_manifest: release wheel must be {expected_filename}, "
-            f"not {path.name}"
+            f"gen_manifest: release wheel must be {expected_filename}, not {path.name}"
         )
     if path.is_symlink() or not path.is_file():
         raise SystemExit("gen_manifest: release wheel must be a regular file")
@@ -176,8 +187,7 @@ def validate_universal_wheel(path: Path, version: str) -> None:
         )
     if metadata.get_all("Tag", []) != [PYTHON_WHEEL_TAG]:
         raise SystemExit(
-            f"gen_manifest: release wheel must declare exactly Tag: "
-            f"{PYTHON_WHEEL_TAG}"
+            f"gen_manifest: release wheel must declare exactly Tag: {PYTHON_WHEEL_TAG}"
         )
 
 
@@ -282,6 +292,47 @@ def release_ptoon_paths(
     return closures, entrypoints
 
 
+def release_build_provenance(
+    specs: list[str],
+    *,
+    git_rev: str | None,
+    closures: dict[str, Path],
+    entrypoints: dict[str, Path],
+) -> dict[str, dict]:
+    """Validate the one authenticated GF Darwin-to-Nix release bridge."""
+
+    records = platform_paths(
+        specs,
+        option="--with-build-provenance",
+        description="build provenance record",
+    )
+    if not records:
+        return {}
+    if set(records) != {"aarch64-darwin"}:
+        raise SystemExit(
+            "gen_manifest: --with-build-provenance currently supports exactly "
+            "aarch64-darwin"
+        )
+    if not git_rev or "aarch64-darwin" not in closures:
+        raise SystemExit(
+            "gen_manifest: Darwin build provenance requires --git-rev plus "
+            "complete closure and entrypoint inputs"
+        )
+    try:
+        return {
+            "aarch64-darwin": validate_bridge_record(
+                records["aarch64-darwin"],
+                expected_revision=git_rev,
+                closure_export=closures["aarch64-darwin"],
+                entrypoint_export=entrypoints["aarch64-darwin"],
+            )
+        }
+    except BridgeError as exc:
+        raise SystemExit(
+            f"gen_manifest: invalid Darwin build provenance: {exc}"
+        ) from exc
+
+
 def validate_stamped_artifacts(manifest: dict) -> None:
     """Reject provenance emissions that leave any release target unauthenticated."""
 
@@ -291,10 +342,17 @@ def validate_stamped_artifacts(manifest: dict) -> None:
         for field in ("sha256", "size"):
             if target.get(field) is None:
                 missing.append(f"{label}.{field}")
-        if target.get("kind") == "nix-closure-export" and target.get(
-            "entrypoint_sha256"
-        ) is None:
+        if (
+            target.get("kind") == "nix-closure-export"
+            and target.get("entrypoint_sha256") is None
+        ):
             missing.append(f"{label}.entrypoint_sha256")
+        if (
+            target.get("artifact") == "ptoon"
+            and target.get("platform") == "aarch64-darwin"
+            and target.get("build_provenance") is None
+        ):
+            missing.append(f"{label}.build_provenance")
     if missing:
         raise SystemExit(
             "gen_manifest: stamped emission requires complete release artifact "
@@ -319,6 +377,12 @@ def build_manifest(args: argparse.Namespace) -> dict:
     release_closures, release_entrypoints = release_ptoon_paths(
         args.with_closure, args.with_entrypoint
     )
+    build_provenance = release_build_provenance(
+        args.with_build_provenance,
+        git_rev=args.git_rev,
+        closures=release_closures,
+        entrypoints=release_entrypoints,
+    )
     ptoon_targets: list[dict] = []
     for platform in PTOON_PLATFORMS:
         target: dict = {
@@ -329,6 +393,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             "closure_format": "nix-store-export-v1",
             "entrypoint": "bin/ptoon",
             "entrypoint_sha256": None,
+            "build_provenance": None,
             "capabilities": {"serve_protocol": 1},
             "sha256": None,
             "size": None,
@@ -338,6 +403,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             target["sha256"] = file_digest(closure)
             target["size"] = closure.stat().st_size
             target["entrypoint_sha256"] = file_digest(release_entrypoints[platform])
+            target["build_provenance"] = build_provenance.get(platform)
         ptoon_targets.append(target)
 
     python_target: dict = {
@@ -377,7 +443,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             "chapel": {
                 "source": "github:Jesssullivan/chapel/llvm-21-support",
                 "flags": "--fast",
-                "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: nix Darwin builder; never local chpl)",
+                "substrate": "native remote-only (x86_64-linux: nix/GF REAPI; aarch64-darwin: exact forced GF output plus byte-preserving Nix bridge; never local chpl)",
             },
             "python": ">=3.11",
         },
@@ -403,7 +469,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             },
             "gh_release": {
                 "enabled": True,
-                "note": "operated via `just release <version>` (native remote ptoon builds, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
+                "note": "operated via `just release <version>` (Linux remote parity/build, Sigstore-attested GF Darwin output and artifact-bound remote native smoke, byte-preserving Nix bridge, replayable GF evidence, full Linux/Darwin Nix closure exports, universal wheel, OpenPGP-signed tag and stamped manifest, detached manifest signature, and GH release); CI tag-push automation stays gated on a publicly reachable chapel cache (operator decision)",
             },
             "brew": {"enabled": False, "note": "C3 phase gate"},
             "rpm_deb": {"enabled": False, "note": "C3 phase gate (nfpm)"},
@@ -447,6 +513,16 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--with-build-provenance",
+        action="append",
+        default=[],
+        metavar="PLATFORM=PATH",
+        help=(
+            "inject an authenticated build-to-package bridge record; v0.3 "
+            "requires exactly one aarch64-darwin record"
+        ),
+    )
+    parser.add_argument(
         "--with-wheel",
         default=None,
         help="inject filename/sha256/size of the built Python wheel",
@@ -459,6 +535,7 @@ def main() -> int:
         or args.ci_run
         or args.with_closure
         or args.with_entrypoint
+        or args.with_build_provenance
         or args.with_wheel
     )
     version = version_from_init()
