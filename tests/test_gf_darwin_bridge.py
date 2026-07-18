@@ -308,6 +308,7 @@ class FakeNixDarwin:
         self.store_root = store_root
         self.imported = store_root / ("a" * 32 + "-ptoon")
         self.dependency = store_root / ("b" * 32 + "-libptoon")
+        self.commands: list[list[str]] = []
         self.local_store_roots: list[Path] = []
         self.clean_store_commands: list[list[str]] = []
         library = self.dependency / "lib" / "libptoon.dylib"
@@ -341,6 +342,7 @@ class FakeNixDarwin:
         from subprocess import CompletedProcess
 
         command = list(command)  # type: ignore[arg-type]
+        self.commands.append(command)
         if command[:2] == ["/usr/bin/lipo", "-archs"]:
             return CompletedProcess(command, 0, b"arm64\n", b"")
         if command[:3] == ["/usr/bin/codesign", "--verify", "--strict"]:
@@ -403,6 +405,10 @@ class FakeNixDarwin:
             return CompletedProcess(command, 0, b"", b"")
         if command[:3] == ["nix", "store", "add"]:
             shutil.copytree(Path(command[3]), self.imported)
+            return CompletedProcess(command, 0, f"{self.imported}\n".encode(), b"")
+        if command[:2] == ["nix-store", "--add-root"] and "--realise" in command:
+            gc_root = Path(command[command.index("--add-root") + 1])
+            gc_root.symlink_to(self.imported)
             return CompletedProcess(command, 0, f"{self.imported}\n".encode(), b"")
         if command[:3] == ["nix-store", "--query", "--requisites"]:
             return CompletedProcess(
@@ -640,6 +646,7 @@ class GfDarwinBridgeTests(unittest.TestCase):
     def test_rejects_legacy_or_unbound_worker_execution_proof(self) -> None:
         cases = (
             ("schema_version", 1, "schema_version must be 2"),
+            ("schema_version", True, "schema_version must be 2"),
             (
                 "exported_outputs_manifest_sha256",
                 "sha256:" + "0" * 64,
@@ -662,6 +669,57 @@ class GfDarwinBridgeTests(unittest.TestCase):
                     bad["worker_execution_evidence"][field] = value
                 write_json(proof_path, bad)
                 with self.assertRaisesRegex(BridgeError, expected_error):
+                    verify_fixture(evidence_dir)
+
+    def test_verify_rejects_duplicate_keys_in_all_evidence_records(self) -> None:
+        cases = (
+            ("proof-result.json", '"schema_version":2,', None),
+            ("exported-outputs.json", '"schema":1,', None),
+            (
+                SMOKE_CLAIM_PATH,
+                '"schema_version":1,',
+                SMOKE_CLAIM_PATH,
+            ),
+        )
+        for filename, duplicate, refresh_claim in cases:
+            with (
+                self.subTest(filename=filename),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                evidence_dir, _ = evidence_fixture(Path(temporary))
+                path = evidence_dir / filename
+                original = path.read_text(encoding="utf-8")
+                path.write_text("{" + duplicate + original[1:], encoding="utf-8")
+                if refresh_claim is not None:
+                    refresh_output_claim(evidence_dir, refresh_claim)
+                with self.assertRaisesRegex(BridgeError, "duplicate JSON key"):
+                    verify_fixture(evidence_dir)
+
+    def test_boolean_export_and_native_smoke_schemas_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence_dir, _ = evidence_fixture(Path(temporary))
+            exports_path = evidence_dir / "exported-outputs.json"
+            exports = json.loads(exports_path.read_text(encoding="utf-8"))
+            exports["schema"] = True
+            write_json(exports_path, exports)
+            with self.assertRaisesRegex(BridgeError, "schema or kind mismatch"):
+                verify_fixture(evidence_dir)
+
+        for field in ("schema_version", "caps_serve_protocol"):
+            with (
+                self.subTest(field=field),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                evidence_dir, _ = evidence_fixture(Path(temporary))
+                smoke_path = evidence_dir / SMOKE_CLAIM_PATH
+                smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+                smoke[field] = True
+                write_json(smoke_path, smoke)
+                refresh_output_claim(evidence_dir, SMOKE_CLAIM_PATH)
+                with self.assertRaisesRegex(
+                    BridgeError,
+                    "does not bind a passing ptoon run",
+                ):
                     verify_fixture(evidence_dir)
 
     def test_accepts_multiple_files_for_one_label_and_rejects_duplicate_path(
@@ -723,6 +781,7 @@ class GfDarwinBridgeTests(unittest.TestCase):
                 runner=fake,
                 store_root=store_root,
             )
+            commands = list(fake.commands)
             rendered = record_path.read_bytes()
             expected_sha256 = sha256_file(executable)
             transferred_bytes = transferred.read_bytes()
@@ -777,6 +836,80 @@ class GfDarwinBridgeTests(unittest.TestCase):
         self.assertTrue(
             record["nix"]["post_import_smoke"]["byte_identical_to_remote"]
         )
+        add_index = next(
+            index
+            for index, command in enumerate(commands)
+            if command[:3] == ["nix", "store", "add"]
+        )
+        root_index = next(
+            index
+            for index, command in enumerate(commands)
+            if command[:2] == ["nix-store", "--add-root"]
+            and "--realise" in command
+        )
+        query_index = next(
+            index
+            for index, command in enumerate(commands)
+            if command[:3] == ["nix-store", "--query", "--requisites"]
+        )
+        export_index = next(
+            index
+            for index, command in enumerate(commands)
+            if command[:2] == ["nix-store", "--export"]
+        )
+        self.assertLess(add_index, root_index)
+        self.assertLess(root_index, query_index)
+        self.assertLess(query_index, export_index)
+        self.assertIn("--add-root", commands[root_index])
+        self.assertIn("--indirect", commands[root_index])
+
+    def test_release_replay_rejects_duplicate_or_boolean_bridge_schema(self) -> None:
+        cases = ("duplicate", "boolean")
+        for mutation in cases:
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                evidence_dir, _ = evidence_fixture(root)
+                evidence = verify_fixture(evidence_dir)
+                store_root = root / "nix" / "store"
+                fake = FakeNixDarwin(store_root)
+                output = root / "out"
+                closure = output / "ptoon-aarch64-darwin.nar"
+                entrypoint = output / "ptoon-aarch64-darwin.bin"
+                record_path = output / "ptoon-aarch64-darwin.gf-nix-bridge.json"
+                import_verified_output(
+                    evidence,
+                    closure_export=closure,
+                    entrypoint_export=entrypoint,
+                    record_path=record_path,
+                    runner=fake,
+                    store_root=store_root,
+                )
+                if mutation == "duplicate":
+                    original = record_path.read_text(encoding="utf-8")
+                    record_path.write_text(
+                        '{"schema_version":1,' + original[1:],
+                        encoding="utf-8",
+                    )
+                    expected_error = "duplicate JSON key"
+                else:
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                    record["schema_version"] = True
+                    write_json(record_path, record)
+                    expected_error = "schema_version must be 1"
+
+                with self.assertRaisesRegex(BridgeError, expected_error):
+                    replay_bridge_bundle(
+                        record_path=record_path,
+                        closure_export=closure,
+                        entrypoint_export=entrypoint,
+                        expected_revision=REVISION,
+                        expected_gf_revision=GF_REVISION,
+                        runner=FakeReplay(fake),
+                        store_root=store_root,
+                    )
 
     def test_import_rejects_identity_signature(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
