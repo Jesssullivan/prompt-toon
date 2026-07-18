@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -118,7 +120,7 @@ class FlywheelContractTest(unittest.TestCase):
         self.assertIn("darwin_worker_closure_toolchain", module)
         self.assertIn("gf-chapel-prompt-toon-ab552d8/bin/chpl", wrapper)
         self.assertIn(
-            '"source_revision":"ab552d88630823a961cca5db5f693b3511234e6c"',
+            "ac1a9d5a93cb85b2aec2b74bf2af21c8cfb0ce01ced7dc3222a9cf5532f12e09",
             wrapper,
         )
         recipes = (ROOT / "Justfile").read_text(encoding="utf-8")
@@ -127,6 +129,74 @@ class FlywheelContractTest(unittest.TestCase):
             "'mnemonic(PtoonNativeSmoke, //src/ptoon:ptoon)'",
             recipes,
         )
+
+    def test_darwin_toolchain_metadata_is_bound_byte_for_byte(self) -> None:
+        wrapper = (
+            ROOT
+            / "tools"
+            / "bazel"
+            / "chapel"
+            / "chpl_from_worker_closure.sh"
+        )
+        canonical = (
+            '{"compiler_build_profile":"OPTIMIZE=0 DEBUG=0",'
+            '"compiler_reported_version":"2.8.0 pre-release",'
+            '"consumer_issue":"TIN-2949",'
+            '"eligibility":"worker-image-candidate-not-broad-rbe",'
+            '"nix_package_version":"2.7.0","schema_version":1,'
+            '"source":"github:Jesssullivan/chapel",'
+            '"source_revision":"ab552d88630823a961cca5db5f693b3511234e6c",'
+            '"system":"aarch64-darwin"}\n'
+        )
+        decoy_claims = {
+            "schema_version": 1,
+            "system": "aarch64-darwin",
+            "compiler_build_profile": "OPTIMIZE=0 DEBUG=0",
+            "compiler_reported_version": "2.8.0 pre-release",
+            "nix_package_version": "2.7.0",
+            "source": "github:Jesssullivan/chapel",
+            "source_revision": "ab552d88630823a961cca5db5f693b3511234e6c",
+        }
+        rejected = (
+            json.dumps(
+                {"schema_version": 2, "claims": decoy_claims},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n",
+            canonical.replace('"schema_version":1', '"schema_version":1,"extra":0'),
+            canonical.replace(
+                '"schema_version":1',
+                '"schema_version":1,"schema_version":1',
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            metadata = Path(temporary) / "chapel-toolchain.json"
+            metadata.write_text(canonical, encoding="utf-8")
+            accepted = subprocess.run(
+                ["/bin/sh", str(wrapper), "--validate-metadata-only", str(metadata)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            for value in rejected:
+                with self.subTest(metadata=value):
+                    metadata.write_text(value, encoding="utf-8")
+                    result = subprocess.run(
+                        [
+                            "/bin/sh",
+                            str(wrapper),
+                            "--validate-metadata-only",
+                            str(metadata),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 125)
+                    self.assertIn("metadata digest mismatch", result.stderr)
+
     def test_stale_vendored_attachment_scripts_are_absent(self) -> None:
         self.assertFalse((ROOT / "scripts" / "cache-attachment-contract.sh").exists())
         self.assertFalse(

@@ -83,6 +83,15 @@ class BridgeError(ValueError):
     """Raised when an evidence or import contract fails closed."""
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise BridgeError(f"duplicate JSON key: {key}")
+        value[key] = item
+    return value
+
+
 @dataclass(frozen=True)
 class ExportedOutput:
     label: str
@@ -140,7 +149,10 @@ def _require_regular_file(path: Path, description: str) -> os.stat_result:
 def _read_json(path: Path, description: str) -> dict[str, Any]:
     _require_regular_file(path, description)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_unique_json_object,
+        )
     except (OSError, json.JSONDecodeError) as exc:
         raise BridgeError(f"invalid {description} JSON: {path}") from exc
     if not isinstance(value, dict):
@@ -510,7 +522,11 @@ def _verify_proof(
 def _validated_output_claims(exports: dict[str, Any]) -> list[dict[str, Any]]:
     if set(exports) != {"schema", "kind", "outputs"}:
         raise BridgeError("exported-outputs key set mismatch")
-    if exports.get("schema") != 1 or exports.get("kind") != "gf-reapi-exported-outputs":
+    if (
+        type(exports.get("schema")) is not int
+        or exports["schema"] != 1
+        or exports.get("kind") != "gf-reapi-exported-outputs"
+    ):
         raise BridgeError("exported-outputs schema or kind mismatch")
     outputs = exports.get("outputs")
     if not isinstance(outputs, list) or not outputs:
@@ -612,11 +628,13 @@ def _validated_native_smoke(
     if set(smoke) != expected_keys:
         raise BridgeError("GF Darwin native smoke key set mismatch")
     if (
-        smoke.get("schema_version") != 1
+        type(smoke.get("schema_version")) is not int
+        or smoke["schema_version"] != 1
         or smoke.get("kind") != "prompt-toon-darwin-native-smoke"
         or smoke.get("artifact_sha256") != f"sha256:{binary_output.sha256}"
         or smoke.get("caps_engine") != "chapel"
-        or smoke.get("caps_serve_protocol") != 1
+        or type(smoke.get("caps_serve_protocol")) is not int
+        or smoke["caps_serve_protocol"] != 1
         or smoke.get("caps_sha256") != CAPS_SMOKE_SHA256
         or smoke.get("normalize_sha256") != NORMALIZE_SMOKE_SHA256
         or smoke.get("one_shot_sha256") != ONE_SHOT_SMOKE_SHA256
@@ -912,7 +930,7 @@ def validate_bridge_record(
         "nix",
     }:
         raise BridgeError("GF Darwin bridge record key set mismatch")
-    if record.get("schema_version") != 1:
+    if type(record.get("schema_version")) is not int or record["schema_version"] != 1:
         raise BridgeError("GF Darwin bridge record schema_version must be 1")
     if record.get("kind") != "prompt-toon-gf-darwin-nix-bridge":
         raise BridgeError("GF Darwin bridge record kind mismatch")
@@ -1150,10 +1168,12 @@ def validate_bridge_record(
     if set(native_smoke) != smoke_keys:
         raise BridgeError("GF Darwin bridge native_smoke key set mismatch")
     if (
-        native_smoke["schema_version"] != 1
+        type(native_smoke["schema_version"]) is not int
+        or native_smoke["schema_version"] != 1
         or native_smoke["kind"] != "prompt-toon-darwin-native-smoke"
         or native_smoke["artifact_sha256"] != f"sha256:{exported_sha256}"
         or native_smoke["caps_engine"] != "chapel"
+        or type(native_smoke["caps_serve_protocol"]) is not int
         or native_smoke["caps_serve_protocol"] != 1
         or native_smoke["caps_sha256"] != CAPS_SMOKE_SHA256
         or native_smoke["normalize_sha256"] != NORMALIZE_SMOKE_SHA256
@@ -1696,8 +1716,6 @@ def import_verified_output(
         )
         if sha256_file(entrypoint) != evidence.output.sha256:
             raise BridgeError("staged bin/ptoon bytes changed before Nix import")
-        # `nix store add` does not create a GC root. Keep its returned path live
-        # by querying and exporting the closure immediately in this scope.
         imported_output = (
             _run(runner, ["nix", "store", "add", str(package_tree)])
             .decode("utf-8", "replace")
@@ -1707,6 +1725,36 @@ def import_verified_output(
         if len(imported_output) != 1:
             raise BridgeError("nix store add must return exactly one store path")
         imported_store_path = _store_path(imported_output[0], store_root)
+        # Retain the imported path until closure export leaves this temp scope.
+        gc_root = Path(temporary) / "ptoon-gc-root"
+        rooted_output = (
+            _run(
+                runner,
+                [
+                    "nix-store",
+                    "--add-root",
+                    str(gc_root),
+                    "--indirect",
+                    "--realise",
+                    str(imported_store_path),
+                ],
+            )
+            .decode("utf-8", "replace")
+            .strip()
+            .splitlines()
+        )
+        if rooted_output != [str(imported_store_path)]:
+            raise BridgeError("temporary GC root did not realise the imported path")
+        try:
+            gc_root_details = gc_root.lstat()
+            gc_root_target = os.readlink(gc_root)
+        except OSError as exc:
+            raise BridgeError("temporary GC root was not created") from exc
+        if not stat.S_ISLNK(gc_root_details.st_mode) or gc_root_target != str(
+            imported_store_path
+        ):
+            raise BridgeError("temporary GC root does not bind the imported path")
+
         imported_entrypoint = imported_store_path / "bin" / "ptoon"
         _require_regular_file(imported_entrypoint, "imported bin/ptoon")
         imported_sha256 = sha256_file(imported_entrypoint)
