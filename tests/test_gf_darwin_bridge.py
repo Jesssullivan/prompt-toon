@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -479,6 +480,10 @@ class GfDarwinBridgeTests(unittest.TestCase):
             GF_REVISION,
         )
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "native smoke script requires the Darwin system toolchain",
+    )
     def test_native_smoke_rejects_caps_with_trailing_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
