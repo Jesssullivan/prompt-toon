@@ -84,15 +84,22 @@ TIN-2949 owns the remaining live proof: commission the authorized physical
 `gloriousflywheel-rbe-darwin-aarch64` worker and endpoint, force the Chapel
 action remotely, and export its BEP-declared output plus an artifact-bound
 native smoke result. The implemented attended bridge verifies the
-Sigstore-attested GF proof, physical worker identity, exact output, and remote
-`caps`, normalization, one-shot redaction, and resident-service round trip. On
-Darwin it performs Mach-O/signature/linkage inspection, a byte-preserving
-`nix store add`, and then the fixed offline native-smoke contract from the
-imported store path. The publisher does not compile Chapel locally or send
-smoke inputs to a provider. `just release` requires that replayed bridge bundle
-and refuses an independent Darwin rebuild. TIN-2542 is complete and is no
-longer the blocking issue. Linux retains exhaustive byte parity and the
-64-stream capacity gate.
+Sigstore-attested GF proof with the exact GF commit passed to
+`gh attestation verify --source-digest`, physical worker identity, exact output,
+and remote `caps`, normalization, one-shot redaction, and resident-service
+round trip. The importer requires proof-result schema v2: the requested worker
+closure must equal the authenticated PZM closure, the dispatch-cell digest must
+remain separate, and the schema-v3 action/BEP/export binding must hash the exact
+exported-output index. On Darwin it performs Mach-O/signature/linkage inspection, a
+byte-preserving `nix store add`, and then imports the complete closure into a
+fresh canonical local-store root. Replay recursively maps the Mach-O dependency
+graph to those imported files and runs the fixed native-smoke contract under a
+Darwin sandbox that denies reads from the publisher's live `/nix/store`; if
+that isolation cannot be established, release fails closed. The publisher does
+not compile Chapel locally or send smoke inputs to a provider. `just release`
+requires that replayed bridge bundle and refuses an independent Darwin rebuild.
+TIN-2542 is complete and is no longer the blocking issue. Linux retains
+exhaustive byte parity and the 64-stream capacity gate.
 
 The v0.3 Darwin deliverable is a CLI distributed as a complete Nix closure, not
 an `.app`, `.pkg`, or disk image. Apple Silicon still requires executable code
@@ -144,3 +151,11 @@ artifact expires. The lab consumer must import the authenticated release
 closure and select its recorded store path; rebuilding only from the tagged
 flake is a distinct provenance path. Raw executables are linked to their
 Nix-store runtime closure and are not portable standalone assets.
+
+The publisher snapshots the exact release revision with `git archive`, adds the
+source tree and wheel source archive to the Nix store, and derives Linux Nix
+artifacts, bridge replay, the wheel, and the stamped manifest from those
+immutable paths. It rechecks the checkout before tagging. If release creation
+fails after the signed tag is pushed, automated cleanup never deletes that
+local or remote tag; ambiguous or partial GitHub state retains the trust anchor
+for explicit operator recovery.

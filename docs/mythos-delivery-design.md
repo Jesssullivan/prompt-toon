@@ -696,16 +696,26 @@ execution proof. Neo remains excluded.
 
 The source bridge contract is implemented but no v0.3 artifact or release is
 claimed yet. It consumes one authenticated GF proof and BEP-declared output,
-requires a Sigstore attestation from the reviewed GF main workflow and a
-physical-worker closure identity, and verifies an exact artifact-bound native
-`caps`, normalization, one-shot redaction, and resident round-trip result. The
-Darwin publisher first inspects the arm64/ad-hoc-signed executable and linkage,
-adds the same bytes to the Nix store, and then executes only the fixed offline
-native-smoke contract from that imported store path. It validates closure
-linkage and exports the complete closure without a Nix fixup or independent
-Darwin rebuild. The signed manifest binds that bridge record, while the release
-retains the GF proof, exported-output index, attestation bundle, and smoke
-record for replay. The ad-hoc signature carries no Developer ID identity.
+requires a Sigstore attestation from the reviewed GF main workflow with the
+exact source commit certificate-enforced by `gh attestation verify
+--source-digest`, and requires a physical-worker closure identity. It verifies
+schema-v2 separation between dispatch-cell provenance and the requested
+physical PZM closure, plus the schema-v3 exact Action/BEP/export binding. It
+then verifies an exact artifact-bound native `caps`, normalization, one-shot
+redaction, and resident round-trip result. The Darwin publisher first inspects the
+arm64/ad-hoc-signed executable and linkage, adds the same bytes to the Nix
+store, and then imports the closure into a fresh canonical local-store root.
+The release replay recursively maps Mach-O dependencies to imported physical
+files and executes only the fixed offline native-smoke contract under a Darwin
+sandbox that denies the live `/nix/store`. It fails closed if that execution
+boundary cannot be established. It validates closure linkage and exports the
+complete closure without a Nix fixup or independent Darwin rebuild. The signed
+manifest binds that bridge record, while the release retains the GF proof,
+exported-output index, attestation bundle, and smoke record for replay. Linux
+artifacts, bridge replay, the wheel, and manifest stamping consume immutable
+Nix-store snapshots of the exact tagged source revision. Failed publication
+retains any already-pushed signed tag for operator recovery. The ad-hoc
+signature carries no Developer ID identity.
 Publisher identity comes from the OpenPGP-signed Git tag and detached manifest
 signature. Apple Developer ID signing and notarization are not on its critical
 path; they become project release gates for a future target that claims a

@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
+import textwrap
 import unittest
 from hashlib import sha256
 from pathlib import Path
@@ -126,9 +128,11 @@ def write_test_bridge_record(
                 "consumer_ref": revision,
                 "target": "//src/ptoon:ptoon",
                 "target_platform": "//tools/bazel/platforms:darwin_aarch64",
+                "worker_closure_digest": "sha256:" + "f" * 64,
                 "bazel_command": "build",
             },
             "platform": "gloriousflywheel-rbe-darwin-aarch64",
+            "dispatch_cell_image_digest": "sha256:" + "d" * 64,
             "worker_identity": {
                 "kind": "physical-darwin-worker",
                 "name": "darwin-aarch64-pzm-01",
@@ -136,6 +140,20 @@ def write_test_bridge_record(
                 "architecture": "arm64",
                 "os": "darwin",
                 "closure_digest": "sha256:" + "f" * 64,
+            },
+            "worker_execution_evidence": {
+                "schema_version": 3,
+                "evidence_sha256": "sha256:" + "1" * 64,
+                "remote_grpc_log_sha256": "sha256:" + "2" * 64,
+                "execution_log_sha256": "sha256:" + "3" * 64,
+                "bep_sha256": "sha256:" + "4" * 64,
+                "eligibility_manifest_sha256": "sha256:" + "5" * 64,
+                "exported_outputs_manifest_sha256": (
+                    "sha256:" + sha256(exported_outputs.read_bytes()).hexdigest()
+                ),
+                "target": "//src/ptoon:ptoon",
+                "tool_invocation_id": "fixture-invocation",
+                "remote_execution_count": 1,
             },
         },
         "exported_output": {
@@ -183,6 +201,105 @@ def write_test_bridge_record(
         json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
+
+
+def run_release_cleanup_fault(
+    case: str,
+) -> tuple[subprocess.CompletedProcess[bytes], str]:
+    justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+    recipe = justfile.split("release $version:", 1)[1].split("\nbuild-ptoon:", 1)[0]
+    functions = recipe[
+        recipe.index("    confirm_release_absent() {") : recipe.index(
+            "    trap cleanup_release EXIT"
+        )
+    ]
+    functions = textwrap.dedent(functions)
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        command_log = root / "commands.log"
+        script = root / "cleanup.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\n"
+            "set +e\n"
+            f"CASE={case!r}\n"
+            f"COMMAND_LOG={str(command_log)!r}\n"
+            "gh() {\n"
+            '  printf \'gh %s\\n\' "$*" >> "$COMMAND_LOG"\n'
+            "  if [ \"$1 $2\" = 'release view' ]; then\n"
+            '    if [[ "$CASE" == delete-* ]]; then\n'
+            '      printf \'%s\\n\' \'{"id":"release-1","body":"owned"}\'\n'
+            "      return 0\n"
+            "    fi\n"
+            "    return 1\n"
+            "  fi\n"
+            "  if [ \"$1 $2\" = 'release delete' ]; then\n"
+            '    [ "$CASE" != delete-failure ]\n'
+            "    return\n"
+            "  fi\n"
+            '  if [ "$1" = api ]; then\n'
+            '    if [ "$CASE" = delete-success ]; then\n'
+            "      printf '%s\\n' 'HTTP/2.0 404 Not Found'\n"
+            "      return 1\n"
+            "    fi\n"
+            '    if [ "$CASE" = view-failure ]; then\n'
+            "      printf '%s\\n' 'network unavailable'\n"
+            "      return 1\n"
+            "    fi\n"
+            "    printf '%s\\n' 'HTTP/2.0 200 OK'\n"
+            "    return 0\n"
+            "  fi\n"
+            "  return 99\n"
+            "}\n"
+            "jq() {\n"
+            "  /bin/cat >/dev/null\n"
+            "  if [[ \"$*\" == *'.id // empty'* ]]; then\n"
+            "    printf '%s\\n' release-1\n"
+            "  else\n"
+            "    printf '%s\\n' \"$release_marker\"\n"
+            "  fi\n"
+            "}\n"
+            "git() {\n"
+            '  printf \'git %s\\n\' "$*" >> "$COMMAND_LOG"\n'
+            '  if [ "$1" = ls-remote ]; then\n'
+            '    printf \'%s\\t%s\\n\' "$local_tag_object" "refs/tags/$tag"\n'
+            '    printf \'%s\\t%s\\n\' "$rev" "refs/tags/$tag^{}"\n'
+            "    return 0\n"
+            "  fi\n"
+            '  if [ "$1" = push ]; then\n'
+            "    return 0\n"
+            "  fi\n"
+            '  if [ "$1" = rev-parse ]; then\n'
+            "    printf '%s\\n' \"$local_tag_object\"\n"
+            "    return 0\n"
+            "  fi\n"
+            '  if [ "$1" = tag ]; then\n'
+            "    return 0\n"
+            "  fi\n"
+            "  return 99\n"
+            "}\n"
+            "tag=v0.3.0\n"
+            "stage=''\n"
+            f"rev={'a' * 40!r}\n"
+            f"local_tag_object={'b' * 40!r}\n"
+            "remote_tag_push_attempted=1\n"
+            "release_create_attempted=1\n"
+            "created_release_id=release-1\n"
+            "release_marker='<!-- prompt-toon-release-owner:v0.3.0:test -->'\n"
+            "release_completed=0\n"
+            "canonical_repo=Jesssullivan/prompt-toon\n"
+            + functions
+            + "\nfalse\ncleanup_release\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            ["/bin/bash", str(script)],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        log = command_log.read_text(encoding="utf-8")
+    return result, log
 
 
 class ManifestTests(unittest.TestCase):
@@ -596,7 +713,6 @@ class ManifestTests(unittest.TestCase):
             "just check",
             "just gateway-harness-probe",
             "just responses-gateway-harness-probe",
-            ".#packages.x86_64-linux.ptoon-parity",
             "PROMPT_TOON_DARWIN_BRIDGE_DIR",
             "gf-darwin-bridge $evidence $output $native_smoke $revision $gf_revision $bundle:",
             "tools/packaging/import_gf_ptoon.py",
@@ -604,10 +720,19 @@ class ManifestTests(unittest.TestCase):
             "--expected-revision",
             "--expected-gf-revision",
             "--entrypoint-export",
-            "import_gf_ptoon.py replay",
             "PROMPT_TOON_GF_REVISION",
             "ptoon-aarch64-darwin.gf-nix-bridge.json",
             "uv build --wheel",
+            'git archive "$rev" | tar -x -C "$stage/source"',
+            'git archive --format=tar.gz --prefix="prompt-toon-$version/" "$rev"',
+            'release_source_store="$(nix store add',
+            'release_source_archive_store="$(nix store add --mode flat',
+            'release_flake="path:$release_source_store"',
+            'nix build "$release_flake#packages.x86_64-linux.ptoon-parity"',
+            'uv build --wheel --out-dir "$stage" "$release_source_archive_store"',
+            'python3 "$release_source_store/tools/packaging/import_gf_ptoon.py"',
+            'python3 "$release_source_store/tools/packaging/gen_manifest.py"',
+            "assert_release_checkout",
             'nix-store --query --requisites "$linux_ptoon_store"',
             'cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"',
             'cp "$darwin_bridge_entrypoint" "$stage/ptoon-aarch64-darwin.bin"',
@@ -655,6 +780,7 @@ class ManifestTests(unittest.TestCase):
             ".#packages.aarch64-darwin.ptoon",
             "--max-jobs 0",
             'nix-store --query --requisites "$darwin_ptoon_store"',
+            "nix build .#packages.x86_64-linux",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, release_recipe)
@@ -662,7 +788,9 @@ class ManifestTests(unittest.TestCase):
             release_recipe.index(
                 'cp "$darwin_bridge_closure" "$stage/ptoon-aarch64-darwin.nar"'
             ),
-            release_recipe.index("import_gf_ptoon.py replay"),
+            release_recipe.index(
+                'python3 "$release_source_store/tools/packaging/import_gf_ptoon.py"'
+            ),
         )
         self.assertLess(
             release_recipe.index("remote_tag_push_attempted=1"),
@@ -678,6 +806,33 @@ class ManifestTests(unittest.TestCase):
             release_recipe.index("release_create_attempted=1"),
             release_recipe.index('gh release create "$tag"'),
         )
+        self.assertLess(
+            release_recipe.index('release_source_store="$(nix store add'),
+            release_recipe.index(
+                'nix build "$release_flake#packages.x86_64-linux.ptoon-parity"'
+            ),
+        )
+
+    def test_release_cleanup_retains_signed_tag_when_release_state_is_uncertain(
+        self,
+    ):
+        for case in ("view-failure", "delete-failure"):
+            with self.subTest(case=case):
+                result, command_log = run_release_cleanup_fault(case)
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("git push ", command_log)
+                self.assertNotIn("git tag -d", command_log)
+                self.assertIn("git rev-parse", command_log)
+
+    def test_release_cleanup_retains_signed_tag_after_owned_release_deletion(
+        self,
+    ):
+        result, command_log = run_release_cleanup_fault("delete-success")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("gh release delete", command_log)
+        self.assertIn("gh api --include", command_log)
+        self.assertNotIn("git push ", command_log)
+        self.assertNotIn("git tag -d", command_log)
 
     def test_release_parity_surface_requires_c4d_capacity_proof(self):
         release_surface = "\n".join(
