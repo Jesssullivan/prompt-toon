@@ -19,6 +19,7 @@ from prompt_toon.cli import (
     rough_token_count,
 )
 from prompt_toon.dogfood import (
+    COMPACT_HANDOFF_FORMAT,
     MAX_DOGFOOD_BUDGET_MS,
     MAX_DOGFOOD_DOCUMENTS,
     MAX_DOGFOOD_INPUT_BYTES,
@@ -132,6 +133,9 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(ledger["execution"]["engine_resolved"], "python")
             self.assertEqual(ledger["execution"]["shape"], "python-sequential-oracle")
             self.assertEqual(
+                ledger["execution"]["handoff_format"], COMPACT_HANDOFF_FORMAT
+            )
+            self.assertEqual(
                 ledger["execution"]["budget_enforcement"],
                 "bounded-input-only-python-oracle",
             )
@@ -150,6 +154,9 @@ class DogfoodTests(unittest.TestCase):
             self.assertIn("not delegation-policy", ledger["attribution"]["binding"])
             self.assertEqual(
                 manifest["format_analysis"]["token_estimator"], LEXICAL_ESTIMATOR_ID
+            )
+            self.assertEqual(
+                manifest["settings"]["handoff_format"], COMPACT_HANDOFF_FORMAT
             )
             self.assertEqual(manifest["outputs"]["efficiency"], "efficiency.json")
             self.assertEqual(
@@ -188,7 +195,7 @@ class DogfoodTests(unittest.TestCase):
             if decision["gate"] == "below-threshold":
                 self.assertIsNone(decision["recommended_handoff"])
 
-    def test_handoff_recommendation_fails_closed_on_recognized_recall_loss(self):
+    def test_handoff_recommendation_rejects_lossy_summary_for_safe_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "input.md"
@@ -231,15 +238,21 @@ class DogfoodTests(unittest.TestCase):
                 recall["handoffs"]["summary_plus_authoritative_cards"][
                     "retained"
                 ],
-                {"critical_constraints": 1, "open_questions": 0},
+                {"critical_constraints": 1, "open_questions": 1},
             )
             decision = ledger["handoff_decision"]
             self.assertTrue(decision["savings_eligible_handoffs"])
-            self.assertEqual(decision["eligible_handoffs"], [])
-            self.assertEqual(decision["gate"], "recall-loss")
-            self.assertIsNone(decision["recommended_handoff"])
+            self.assertEqual(
+                decision["eligible_handoffs"],
+                ["summary_plus_authoritative_cards"],
+            )
+            self.assertEqual(decision["gate"], "pass")
+            self.assertEqual(
+                decision["recommended_handoff"],
+                "summary_plus_authoritative_cards",
+            )
 
-    def test_recall_gate_can_choose_larger_authoritative_handoff(self):
+    def test_recall_gate_prefers_compact_summary_when_anchor_fits_cap(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "input.md"
@@ -269,14 +282,102 @@ class DogfoodTests(unittest.TestCase):
 
             ledger = json.loads((out_dir / "efficiency.json").read_text())
             recall = ledger["handoff_recall"]["handoffs"]
-            self.assertEqual(recall["summary_only"]["status"], "recall-loss")
+            self.assertEqual(recall["summary_only"]["status"], "pass")
             self.assertEqual(
                 recall["summary_plus_authoritative_cards"]["status"], "pass"
             )
             self.assertEqual(ledger["handoff_decision"]["gate"], "pass")
             self.assertEqual(
                 ledger["handoff_decision"]["recommended_handoff"],
-                "summary_plus_authoritative_cards",
+                "summary_only",
+            )
+
+    def test_anchor_priority_yields_recall_safe_positive_handoff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            source.write_text(
+                "# Release readiness\n"
+                + ("Background context without a policy marker.\n" * 500)
+                + "Deployment MUST preserve provenance.\n"
+                + "Open question: which operator owns rollback?\n",
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "2",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            summary_recall = ledger["handoff_recall"]["handoffs"]["summary_only"]
+            self.assertEqual(summary_recall["status"], "pass")
+            self.assertEqual(summary_recall["retained_total"], 2)
+            self.assertEqual(ledger["handoff_decision"]["gate"], "pass")
+            self.assertEqual(
+                ledger["handoff_decision"]["recommended_handoff"], "summary_only"
+            )
+            summary = (out_dir / "summary.md").read_text(encoding="utf-8")
+            self.assertEqual(summary.count("Deployment MUST preserve provenance."), 1)
+            self.assertEqual(
+                summary.count("Open question: which operator owns rollback?"), 1
+            )
+
+    def test_summary_preserves_code_backticks_with_dynamic_fence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "input.md"
+            claim = "Deployment MUST preserve `origin/main`."
+            source.write_text(
+                claim + "\n" + ("Background context.\n" * 500),
+                encoding="utf-8",
+            )
+            out_dir = root / "out"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "1",
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    ),
+                    0,
+                )
+
+            ledger = json.loads((out_dir / "efficiency.json").read_text())
+            self.assertEqual(
+                ledger["handoff_recall"]["handoffs"]["summary_only"]["status"],
+                "pass",
+            )
+            summary = (out_dir / "summary.md").read_text(encoding="utf-8")
+            self.assertEqual(summary.count(claim), 1)
+            self.assertIn(f"`` {claim} ``", summary)
+            toon = (out_dir / "source-cards.toon").read_text(encoding="utf-8")
+            self.assertNotIn("`", toon)
+            self.assertIn("'origin/main'", toon)
+            self.assertEqual(
+                ledger["handoff_recall"]["handoffs"][
+                    "summary_plus_toon_compact_view"
+                ]["status"],
+                "recall-loss",
             )
 
     def test_summary_recall_does_not_credit_a_defanged_claim(self):
@@ -312,12 +413,18 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(
                 recall["summary_plus_authoritative_cards"]["status"], "pass"
             )
+            self.assertEqual(
+                recall["summary_plus_toon_compact_view"]["status"], "recall-loss"
+            )
             self.assertNotIn(
                 "summary_only", ledger["handoff_decision"]["eligible_handoffs"]
             )
             summary = (out_dir / "summary.md").read_text(encoding="utf-8")
             self.assertNotIn("https://example.test", summary)
             self.assertIn("hxxps://example.test", summary)
+            toon = (out_dir / "source-cards.toon").read_text(encoding="utf-8")
+            self.assertNotIn("https://example.test", toon)
+            self.assertIn("hxxps://example.test", toon)
 
     def test_one_card_cannot_satisfy_repeated_source_occurrences(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -358,6 +465,28 @@ class DogfoodTests(unittest.TestCase):
             self.assertEqual(ledger["handoff_decision"]["gate"], "recall-loss")
             self.assertIsNone(ledger["handoff_decision"]["recommended_handoff"])
 
+            second_out = root / "out-two"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "dogfood",
+                            str(source),
+                            "--engine",
+                            "python",
+                            "--max-cards",
+                            "2",
+                            "--output-dir",
+                            str(second_out),
+                        ]
+                    ),
+                    0,
+                )
+            second = json.loads((second_out / "efficiency.json").read_text())
+            for recall in second["handoff_recall"]["handoffs"].values():
+                self.assertEqual(recall["retained"]["critical_constraints"], 2)
+                self.assertEqual(recall["status"], "pass")
+
     def test_chapel_engine_uses_full_batch_condense_surface(self):
         class FakeChapel:
             def __init__(self) -> None:
@@ -396,6 +525,7 @@ class DogfoodTests(unittest.TestCase):
                     "mixed_trust_tiers": False,
                     "settings": {
                         "format": "jsonl",
+                        "handoff_format": COMPACT_HANDOFF_FORMAT,
                         "max_cards_per_input": kwargs["max_cards"],
                         "min_toon_savings": json.loads(kwargs["min_toon_savings"]),
                         "trust_tier": kwargs["default_trust_tier"],
@@ -525,6 +655,7 @@ class DogfoodTests(unittest.TestCase):
                     "mixed_trust_tiers": False,
                     "settings": {
                         "format": "jsonl",
+                        "handoff_format": COMPACT_HANDOFF_FORMAT,
                         "max_cards_per_input": kwargs["max_cards"],
                         "min_toon_savings": json.loads(kwargs["min_toon_savings"]),
                         "trust_tier": kwargs["default_trust_tier"],

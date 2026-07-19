@@ -25,6 +25,11 @@ HANDOFF_RECALL_CLAIM_BOUNDARY = (
     "source lines; safety transformations that alter text are not credited, and "
     "this is not semantic-equivalence or task-quality proof."
 )
+LEGACY_HANDOFF_FORMAT = "legacy-duplicated-summary-v1"
+COMPACT_HANDOFF_FORMAT = "compact-source-index-v1"
+SUPPORTED_HANDOFF_FORMATS = frozenset(
+    {LEGACY_HANDOFF_FORMAT, COMPACT_HANDOFF_FORMAT}
+)
 CORPUS_KEY_SCHEME = "prompt-toon-ordered-input-metadata-v1"
 CORPUS_DIVERSITY_SCHEME = "prompt-toon-input-multiset-v1"
 
@@ -398,6 +403,7 @@ def build_efficiency_ledger(
             "engine_requested": engine_requested,
             "engine_resolved": engine_resolved,
             "shape": execution_shape,
+            "handoff_format": COMPACT_HANDOFF_FORMAT,
             "engine_wall_ms": round(engine_wall_ms, 3),
             "engine_wall_scope": (
                 "in-memory condensation through optional TOON format selection"

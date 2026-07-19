@@ -75,7 +75,9 @@ C4 online IO gateway:
   content-free per-handoff classifier-line recall gate so token savings cannot
   recommend a handoff that drops recognized constraints or open questions;
   schema-v3 requires the gate, while schema-v2 remains isolated as
-  legacy-unmeasured evidence.
+  legacy-unmeasured evidence. The current TIN-2820 increment adds
+  `compact-source-index-v1`, selects recognized anchors before findings, renders
+  each claim once, and isolates legacy/compact summary economics by cohort.
 - `TIN-2807`: reconcile the locked Chapel source's version provenance and
   upgrade to current 2.9. The Nix package metadata says 2.7.0, while remote
   `chpl --version` reports 2.8.0 pre-release; neither may be rewritten as 2.9.

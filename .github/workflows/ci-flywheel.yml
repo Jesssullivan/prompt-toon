@@ -108,7 +108,10 @@ jobs:
           nix develop --command just flywheel-chapel-proof "${log}" "${execution_log}"
 
       - name: Upload executor proof log
-        if: always() && (steps.proof.outputs.log != '' || steps.chapel.outputs.log != '')
+        if: >-
+          always() &&
+          github.event_name != 'pull_request' &&
+          (steps.proof.outputs.log != '' || steps.chapel.outputs.log != '')
         uses: actions/upload-artifact@v7
         with:
           name: prompt-toon-rbe-log-${{ github.run_id }}-${{ github.run_attempt }}

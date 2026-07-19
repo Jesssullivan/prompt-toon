@@ -110,16 +110,21 @@ module Defang {
     return acc;
   }
 
-  /* Port of prompt_toon/cli.py defang_text (cli.py:129-135). Neutralizes
-   * markdown/URI exfil vectors before model-facing emission (INV-4). */
-  proc defangText(text: string): string {
+  /* Model-facing claim transform. Dynamic code-span fencing in Summary keeps
+   * literal backticks inert, so this layer only neutralizes links and URIs. */
+  proc defangClaimText(text: string): string {
     var result = text;
     result = defangImages(result);
     result = defangLinks(result);
     result = defangDangerousUris(result);
     result = result.replace("https://", "hxxps://");
     result = result.replace("http://", "hxxp://");
-    result = result.replace("`", "'");
     return result;
+  }
+
+  /* Port of prompt_toon/cli.py defang_text. The standalone primitive retains
+   * its byte-parity contract, including backtick replacement. */
+  proc defangText(text: string): string {
+    return defangClaimText(text).replace("`", "'");
   }
 }

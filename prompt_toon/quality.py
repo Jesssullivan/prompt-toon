@@ -282,25 +282,45 @@ def _source_name(value: Any, label: str) -> str:
     return name
 
 
-def _summary_section(summary: str, heading: str) -> str:
+def _raw_summary_section(summary: str, heading: str) -> list[str]:
     lines = summary.splitlines()
     marker = f"## {heading}"
     try:
         start = lines.index(marker) + 1
     except ValueError:
-        return ""
+        return []
     end = len(lines)
     for index in range(start, len(lines)):
         if lines[index].startswith("## "):
             end = index
             break
-    return "\n".join(lines[start:end])
+    return lines[start:end]
+
+
+def _summary_section(summary: str, heading: str) -> str:
+    section = _raw_summary_section(summary, heading)
+    if heading == "Claims":
+        return "\n".join(section)
+
+    claims: dict[str, str] = {}
+    for line in _raw_summary_section(summary, "Claims"):
+        match = re.match(r"^- (\S+)\s+L\d+-\d+.*?:\s+(.*)$", line)
+        if match:
+            claims[match.group(1)] = line
+
+    resolved = list(section)
+    for line in section:
+        match = re.fullmatch(r"- (\S+)(?: \[[^\]]*\])*", line)
+        if match and match.group(1) in claims:
+            resolved.append(claims[match.group(1)])
+    return "\n".join(resolved)
 
 
 def _claim_contains(anchor: str, claim: Any) -> bool:
     if not isinstance(claim, str):
         return False
-    # Model-facing defanging renders code-span backticks as apostrophes.
+    # Accept legacy apostrophe rendering and the compact format's safe
+    # dynamically fenced literal backticks.
     return anchor.replace("`", "'") in claim.replace("`", "'")
 
 

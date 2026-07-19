@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 import os
 import tempfile
@@ -9,10 +10,12 @@ from unittest import mock
 
 from prompt_toon.cli import (
     build_parser,
+    cards_from_text,
     encode_rows_to_toon,
     find_uniform_rows,
     main,
     redact_text,
+    resolve_engine,
     rough_token_count,
 )
 
@@ -128,6 +131,96 @@ class PromptToonTests(unittest.TestCase):
             self.assertIn("Never send", summary)
             self.assertNotIn("ghp_", cards)
             self.assertIn("injection-shaped", cards)
+
+    def test_compact_summary_indexes_sources_and_renders_each_claim_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first.md"
+            second = root / "second.md"
+            first.write_text("Deployment MUST preserve provenance.\n", encoding="utf-8")
+            second.write_text(
+                "Open question: who owns rollback?\n", encoding="utf-8"
+            )
+            out_dir = root / "out"
+            self.assertEqual(
+                main(
+                    [
+                        "condense",
+                        str(first),
+                        str(second),
+                        "--output-dir",
+                        str(out_dir),
+                    ]
+                ),
+                0,
+            )
+
+            summary = (out_dir / "summary.md").read_text(encoding="utf-8")
+            first_digest = hashlib.sha256(first.read_bytes()).hexdigest()
+            second_digest = hashlib.sha256(second.read_bytes()).hexdigest()
+            self.assertIn(
+                f"- s1 [untrusted_tool_output] sha256={first_digest}", summary
+            )
+            self.assertIn(
+                f"- s2 [untrusted_tool_output] sha256={second_digest}", summary
+            )
+            self.assertIn("- c1@s1/src-001 L1-1:", summary)
+            self.assertIn("- c2@s2/src-001 L1-1:", summary)
+            self.assertEqual(summary.count("Deployment MUST preserve provenance."), 1)
+            self.assertEqual(summary.count("Open question: who owns rollback?"), 1)
+            self.assertNotIn(str(first), summary)
+            self.assertNotIn(str(second), summary)
+
+    def test_recognized_anchor_is_not_truncated_at_legacy_claim_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "long.md"
+            claim = "Deployment MUST preserve " + ("x" * 300)
+            source.write_text(claim + "\n", encoding="utf-8")
+            out_dir = root / "out"
+            self.assertEqual(
+                main(["condense", str(source), "--output-dir", str(out_dir)]),
+                0,
+            )
+            card = json.loads(
+                (out_dir / "source-cards.jsonl").read_text(encoding="utf-8")
+            )
+            self.assertEqual(card["claim"], claim)
+            self.assertEqual(
+                (out_dir / "summary.md")
+                .read_text(encoding="utf-8")
+                .count(claim),
+                1,
+            )
+
+    def test_anchor_priority_matches_python_ignorecase_unicode_equivalents(self):
+        text = (
+            "\n".join(f"- finding-{index}" for index in range(19))
+            + "\nun\u212anown owner\n"
+            + "bloc\u212aed on review\n"
+            + "open que\u017ftion owner\n"
+            + "open quest\u0130on owner\n"
+            + "open quest\u0131on owner\n"
+        )
+        engine = resolve_engine("python")
+        cards = cards_from_text(
+            "unicode.md",
+            text,
+            hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "untrusted_tool_output",
+            5,
+            engine,
+        )
+        self.assertEqual(
+            [card.claim for card in cards],
+            [
+                "unKnown owner",
+                "blocKed on review",
+                "open question owner",
+                "open quest\u0130on owner",
+                "open quest\u0131on owner",
+            ],
+        )
 
     def test_analyze_recommends_toon_for_large_flat_rows(self):
         rows = [
