@@ -213,6 +213,7 @@ def condense_body(request: Request, max_docs: int, max_request: int, max_label: 
                 "mixed_trust_tiers": len({tier for _, tier, _ in docs}) > 1,
                 "settings": {
                     "format": "jsonl",
+                    "handoff_format": "compact-source-index-v1",
                     "max_cards_per_input": request.max_cards,
                     "min_toon_savings": header["min_toon_savings"],
                     "trust_tier": header["default_tier"],
