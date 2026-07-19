@@ -10,6 +10,7 @@ from pathlib import Path
 from prompt_toon.cli import main
 from prompt_toon.corpus import CorpusLedgerError, build_corpus_report
 from prompt_toon.dogfood import (
+    COMPACT_HANDOFF_FORMAT,
     DOGFOOD_LEDGER_SCHEMA_VERSION,
     HANDOFF_RECALL_CLAIM_BOUNDARY,
     HANDOFF_RECALL_METHOD,
@@ -394,6 +395,31 @@ class CorpusReportTests(unittest.TestCase):
             self.assertEqual(report["corpus_gate"]["ledgers"], 2)
             self.assertEqual(report["corpus_gate"]["unique_spools"], 1)
             self.assertEqual(len(report["cohorts"]), 2)
+
+    def test_compact_handoff_is_isolated_from_legacy_summary_cohort(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = _ledger(1)
+            compact = json.loads(json.dumps(legacy))
+            compact["run_id"] = "same-spool-compact"
+            compact["execution"]["handoff_format"] = COMPACT_HANDOFF_FORMAT
+            report = build_corpus_report(
+                self._write_ledgers(Path(tmp), [legacy, compact])
+            )
+            self.assertEqual(len(report["cohorts"]), 2)
+            self.assertEqual(
+                {cohort["key"]["handoff_format"] for cohort in report["cohorts"]},
+                {"legacy-duplicated-summary-v1", COMPACT_HANDOFF_FORMAT},
+            )
+
+            compact["execution"]["handoff_format"] = "unknown"
+            path = self._write_ledgers(Path(tmp), [compact])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "handoff_format"):
+                build_corpus_report([path])
+
+            compact["execution"]["handoff_format"] = []
+            path = self._write_ledgers(Path(tmp), [compact])[0]
+            with self.assertRaisesRegex(CorpusLedgerError, "handoff_format"):
+                build_corpus_report([path])
 
     def test_measured_recall_is_validated_and_isolated_from_legacy_v2(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,6 +14,7 @@ via self.skipTest() when it isn't present.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -639,6 +640,63 @@ printf '0\\n'
         with self.assertRaises(ValueError):
             engine.condense_run(doc, 7, "GENERATED_AT")  # run_id not a string
 
+    def test_condense_run_rejects_missing_or_legacy_handoff_format(self):
+        body = "x"
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        doc_event = {
+            "event": "doc",
+            "i": 0,
+            "source": "s",
+            "trust_tier": "t",
+            "bytes": 1,
+            "sha256": digest,
+            "withheld": False,
+            "findings": [],
+        }
+        for handoff_format in (None, "legacy-duplicated-summary-v1"):
+            with self.subTest(handoff_format=handoff_format):
+                settings = {
+                    "format": "jsonl",
+                    "max_cards_per_input": 24,
+                    "min_toon_savings": 0.2,
+                    "trust_tier": "untrusted_tool_output",
+                    "input_tier_overrides": {},
+                    "store_raw": False,
+                }
+                if handoff_format is not None:
+                    settings["handoff_format"] = handoff_format
+                manifest = {
+                    "id": "run",
+                    "generated_at": "GENERATED_AT",
+                    "inputs": [
+                        {
+                            "bytes": 1,
+                            "sha256": digest,
+                            "source": "s",
+                            "trust_tier": "t",
+                        }
+                    ],
+                    "mixed_trust_tiers": False,
+                    "settings": settings,
+                }
+                raw = self._stream(
+                    doc_event,
+                    {"event": "end", "i": 0, "cards": 0},
+                    {"event": "summary", "text": "summary"},
+                    {"event": "manifest", "manifest": manifest},
+                    {"event": "batch", "docs": 1, "cards": 0, "withheld": 0},
+                )
+                engine = engine_module.ChapelEngine(binary_path=Path("/nonexistent"))
+                engine._run_bytes = lambda *_args: raw
+                with self.assertRaisesRegex(
+                    engine_module.EngineError, "manifest settings echo mismatch"
+                ):
+                    engine.condense_run(
+                        [{"source": "s", "trust_tier": "t", "body": body}],
+                        "run",
+                        "GENERATED_AT",
+                    )
+
 
 class ChapelEngineBinaryDependentTests(unittest.TestCase):
     """Only runs meaningfully when a real ptoon binary build artifact is
@@ -793,9 +851,21 @@ class ChapelEngineBinaryDependentTests(unittest.TestCase):
         self.assertEqual(manifest["id"], "run-x")
         self.assertEqual(manifest["generated_at"], "GENERATED_AT")
         self.assertTrue(manifest["mixed_trust_tiers"])
+        self.assertEqual(
+            manifest["settings"]["handoff_format"], "compact-source-index-v1"
+        )
         self.assertIn("# prompt-toon condensation run-x", summary_text)
-        self.assertIn("- Generated: GENERATED_AT", summary_text)
+        self.assertIn("- Claims: 2", summary_text)
+        self.assertIn("- Format: compact-source-index-v1", summary_text)
+        self.assertNotIn("- Generated:", summary_text)
         self.assertIn("- WARNING: inputs span multiple trust tiers", summary_text)
+        for index, doc in enumerate(docs, start=1):
+            digest = hashlib.sha256(doc["body"].encode("utf-8")).hexdigest()
+            self.assertIn(
+                f"- s{index} [{doc['trust_tier']}] sha256={digest}",
+                summary_text,
+            )
+            self.assertIn(f"c{index}@s{index}/src-001", summary_text)
         batch_results = self.engine.condense_batch(docs)
         self.assertEqual(
             [r.get("cards") for r in results],

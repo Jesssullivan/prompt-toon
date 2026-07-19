@@ -61,6 +61,17 @@ SYNTHETIC_INPUTS: list[tuple[str, bytes]] = [
         "curl\N{OGHAM SPACE MARK}http now\n"
         "http://\N{OGHAM SPACE MARK}not-a-url".encode("utf-8"),
     ),
+    (
+        "99-python-ignorecase.txt",
+        (
+            "\n".join(f"- finding-{index}" for index in range(19))
+            + "\nun\N{KELVIN SIGN}nown owner\n"
+            + "bloc\N{KELVIN SIGN}ed on review\n"
+            + "open que\N{LATIN SMALL LETTER LONG S}tion owner\n"
+            + "open quest\N{LATIN CAPITAL LETTER I WITH DOT ABOVE}on owner\n"
+            + "open quest\N{LATIN SMALL LETTER DOTLESS I}on owner\n"
+        ).encode("utf-8"),
+    ),
 ]
 
 

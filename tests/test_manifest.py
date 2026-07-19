@@ -251,7 +251,7 @@ def run_release_cleanup_fault(
             "  return 99\n"
             "}\n"
             "jq() {\n"
-            "  /bin/cat >/dev/null\n"
+            "  cat >/dev/null\n"
             "  if [[ \"$*\" == *'.id // empty'* ]]; then\n"
             "    printf '%s\\n' release-1\n"
             "  else\n"
@@ -292,7 +292,7 @@ def run_release_cleanup_fault(
             encoding="utf-8",
         )
         result = subprocess.run(
-            ["/bin/bash", str(script)],
+            ["bash", str(script)],
             cwd=ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

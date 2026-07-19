@@ -94,9 +94,29 @@ def _run_case(engine: ChapelEngine, count: int) -> None:
     summary_lines = set(summary.splitlines())
     _require(f"- Inputs: {count}" in summary_lines, f"{count} documents: summary input drift")
     _require(
-        f"- Source cards: {count}" in summary_lines,
-        f"{count} documents: summary card drift",
+        f"- Claims: {count}" in summary_lines,
+        f"{count} documents: summary claim-count drift",
     )
+    _require(
+        "- Format: compact-source-index-v1" in summary_lines,
+        f"{count} documents: summary format drift",
+    )
+    for index, doc in enumerate(docs):
+        digest = hashlib.sha256(doc["body"].encode("utf-8")).hexdigest()
+        ref = f"c{index + 1}@s{index + 1}/src-001"
+        claim = _body(index).removeprefix("- ").strip()
+        _require(
+            f"- s{index + 1} [{TRUST_TIER}] sha256={digest}" in summary_lines,
+            f"{count} documents: source index drift at document {index}",
+        )
+        _require(
+            f"- {ref} L1-1: ` {claim} `" in summary_lines,
+            f"{count} documents: compact claim drift at document {index}",
+        )
+        _require(
+            f"- {ref} [{TRUST_TIER}]" in summary_lines,
+            f"{count} documents: constraint reference drift at document {index}",
+        )
     inputs = manifest.get("inputs")
     _require(isinstance(inputs, list), f"{count} documents: manifest inputs missing")
     _require(

@@ -426,8 +426,8 @@ module Stream {
 
   private proc runSummaryEventJson(n: int, const ref header: CondenseRunHeader,
                                    const ref aggregate: CondenseRunAggregate): string throws {
-    const summaryText = renderSummary(header.runId, header.generatedAt, n,
-                                      aggregate.mixed, aggregate.allCards);
+    const summaryText = renderSummary(header.runId, aggregate.inputs, aggregate.mixed,
+                                      aggregate.allCards);
     return '{"event":"summary","text":"' + escapeJson(summaryText) + '"}\n';
   }
 

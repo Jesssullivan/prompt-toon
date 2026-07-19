@@ -749,6 +749,17 @@ skipped for a larger retaining handoff, or the recommendation fails closed with
 `recall-loss`. This is classifier-line recall, not semantic equivalence or
 task-quality proof.
 
+The current model handoff is `compact-source-index-v1`: source hash/trust
+provenance appears once, each selected claim appears once, and category sections
+carry run-unique references plus explicit trust tier and flags. Recognized
+constraints/questions are selected before findings and retain exact claim text
+up to a 4,096-character bound when mandatory link/URI defanging does not alter
+it. Dynamic Markdown fences preserve literal code backticks safely. Full
+evidence remains in
+`source-cards.jsonl`; the compact handoff does not replace that archival
+authority. The optional, unwrapped TOON leaf continues to replace backticks and
+cannot claim exact recall when that mandatory safety transform changes a claim.
+
 ### C4f corpus evidence contract
 
 `prompt-toon corpus-report` accepts explicit schema-v3 or legacy schema-v2
@@ -763,7 +774,9 @@ cross-plane timing blends.
 The corpus gate requires 20 unique spools within a 50-ledger cap. Nearest-rank
 distributions and weighted aggregates remain separate, as do format-local TOON
 rates and whole-handoff pass rates. Engine, execution shape, budget mode,
-policy thresholds, card limits, and recall method form distinct cohorts.
+handoff format, policy thresholds, card limits, and recall method form distinct
+cohorts. Historical ledgers without a format discriminator remain isolated as
+`legacy-duplicated-summary-v1`.
 Schema-v3 requires recall evidence. Pre-recall schema-v2 ledgers remain readable
 only as isolated `legacy-unmeasured-v2` evidence and never contribute a
 handoff-pass result; ambiguous v2/v3 hybrids fail closed.
