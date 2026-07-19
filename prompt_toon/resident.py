@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from prompt_toon.dogfood import COMPACT_HANDOFF_FORMAT
 from prompt_toon.engine import ChapelEngine, EngineError, resolve_binary_path
 
 
@@ -659,6 +660,7 @@ class ResidentEngine:
         if (
             not isinstance(settings, dict)
             or settings.get("format") != "jsonl"
+            or settings.get("handoff_format") != COMPACT_HANDOFF_FORMAT
             or settings.get("max_cards_per_input") != pending.max_cards
             or settings.get("min_toon_savings") != pending.parsed_savings
             or settings.get("trust_tier") != pending.default_trust_tier

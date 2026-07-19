@@ -41,18 +41,16 @@ argv it printed.
 
 Given a fixed `--id` and fixed input bytes, `condense`'s only
 non-deterministic output is `now_utc()`, which is read once per run and
-appears in exactly two places:
+appears in `manifest.json`:
 
 - `manifest.json`'s top-level `"generated_at"` key. This is masked
   *structurally*: the JSON is parsed, `generated_at` is overwritten with
   the literal string `"GENERATED_AT"`, and the object is re-serialized
   with `json.dumps(sort_keys=True, indent=2)` for byte-stable output --
   never a regex over the raw JSON text.
-- `summary.md`'s `- Generated: <timestamp>` line, which embeds the same
-  value in prose. Since summary.md is unstructured markdown, this one
-  *is* a regex mask: `TIMESTAMP_RE` matches `now_utc()`'s exact shape
-  (`YYYY-MM-DDTHH:MM:SSZ`, seconds precision, no microseconds, `Z`
-  suffix) and replaces it with the placeholder `GENERATED_AT`.
+The summary no longer repeats the timestamp. `mask_summary_text` retains
+the historical regex mask so this generator remains able to compare
+legacy summary fixtures during format transitions.
 
 `sha256` digests in `manifest.json`/`source-cards.jsonl` are a pure hash
 of fixed input bytes, so they are already deterministic given a fixed

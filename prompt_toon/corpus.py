@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .dogfood import (
+    LEGACY_HANDOFF_FORMAT,
+    SUPPORTED_HANDOFF_FORMATS,
     DOGFOOD_LEDGER_SCHEMA_VERSION,
     HANDOFF_RECALL_CLAIM_BOUNDARY,
     HANDOFF_RECALL_KINDS,
@@ -238,6 +240,14 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
     engine_resolved = _string(
         execution.get("engine_resolved"), "execution.engine_resolved"
     )
+    handoff_format = _string(
+        execution.get("handoff_format", LEGACY_HANDOFF_FORMAT),
+        "execution.handoff_format",
+    )
+    if handoff_format not in SUPPORTED_HANDOFF_FORMATS:
+        raise CorpusLedgerError(
+            "execution.handoff_format is not a supported model-handoff format"
+        )
     budget_enforcement = _string(
         execution.get("budget_enforcement"), "execution.budget_enforcement"
     )
@@ -720,6 +730,7 @@ def _validate_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
             "chapel_wall_clock_budget_ms": chapel_budget_ms,
             "engine_resolved": engine_resolved,
             "execution_shape": shape,
+            "handoff_format": handoff_format,
             "handoff_recall": recall_cohort,
             "minimum_handoff_savings": min_handoff_savings,
             "minimum_toon_savings": min_toon_savings,

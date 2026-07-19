@@ -140,6 +140,46 @@ module Cards {
   proc hasCritical(const ref s: string): bool throws {
     return pySearchBounded(s, criticalGen);
   }
+
+  private inline proc pyIgnoreCaseAsciiCp(cp: int(32)): int(32) {
+    if cp >= 0x41 && cp <= 0x5A then return cp + 0x20;
+    // Python re.IGNORECASE adds these four non-ASCII equivalences for
+    // ASCII letters: dotted/dotless i, long s, and Kelvin sign.
+    if cp == 0x0130 || cp == 0x0131 then return 0x69;
+    if cp == 0x017F then return 0x73;
+    if cp == 0x212A then return 0x6B;
+    return cp;
+  }
+
+  private proc matchesLiteralAt(const ref cps: list(int(32)), at: int,
+                                lit: string): bool {
+    var j = at;
+    for lc in lit.codepoints() {
+      if j >= cps.size then return false;
+      if pyIgnoreCaseAsciiCp(cps[j]) != lc: int(32) then return false;
+      j += 1;
+    }
+    return true;
+  }
+
+  /* OPEN_QUESTION_RE: (?i)(^|\s)(todo|open question|unknown|unclear|
+   * blocked|\?), with Python Unicode-whitespace semantics. */
+  proc hasOpenQuestion(const ref s: string): bool {
+    var cps = new list(int(32));
+    for cp in s.codepoints() do cps.pushBack(cp: int(32));
+    const n = cps.size;
+    for i in 0..<n {
+      if i > 0 && !isPyWhitespace(cps[i - 1]) then continue;
+      if cps[i] == 0x3F then return true;
+      if matchesLiteralAt(cps, i, "todo") then return true;
+      if matchesLiteralAt(cps, i, "open question") then return true;
+      if matchesLiteralAt(cps, i, "unknown") then return true;
+      if matchesLiteralAt(cps, i, "unclear") then return true;
+      if matchesLiteralAt(cps, i, "blocked") then return true;
+    }
+    return false;
+  }
+
   private proc hasInjection(const ref s: string): bool throws {
     return pySearchBounded(s, injectionGen) || hasCurlHttpPyWhitespace(s);
   }
@@ -190,9 +230,9 @@ module Cards {
            cp == 0x2E || (cp >= 0x30 && cp <= 0x39) || isPyWhitespace(cp);
   }
 
-  /* clean_claim (cli.py:215-220): strip, drop the ^[-*#>\s0-9.]+ marker
-   * prefix, strip again, truncate to 220 codepoints with a "..." tail. */
-  private proc cleanClaim(const ref line: string): string throws {
+  /* clean_claim: strip, drop the ^[-*#>\s0-9.]+ marker prefix, strip again,
+   * then truncate to the caller's codepoint limit with a "..." tail. */
+  private proc cleanClaim(const ref line: string, limit: int = 220): string throws {
     var s = stripPy(line);
     var drop = 0;
     for (cp, item) in zip(s.codepoints(), s.items()) {
@@ -204,11 +244,11 @@ module Cards {
     }
     if drop > 0 then s = s.this((drop: byteIndex)..);
     s = stripPy(s);
-    if s.size > 220 {
+    if s.size > limit {
       var acc: string;
       var count = 0;
       for item in s.items() {
-        if count == 219 then break;
+        if count == limit - 1 then break;
         acc += item;
         count += 1;
       }
@@ -257,15 +297,21 @@ module Cards {
     const lines = splitLinesPy(redacted);
     var cards = new list(Card);
 
-    var candidates = new list(int);
+    var anchors = new list(int);
+    var findings = new list(int);
     for j in 0..<lines.size {
       const stripped = stripPy(lines[j]);
       if stripped.size == 0 then continue;
-      if hasCritical(stripped) || hasUrl(stripped) ||
-         stripped.startsWith("-") || stripped.startsWith("*") ||
-         stripped.startsWith("#") then
-        candidates.pushBack(j);
+      if hasCritical(stripped) || hasOpenQuestion(stripped) {
+        anchors.pushBack(j);
+      } else if hasUrl(stripped) || stripped.startsWith("-") ||
+                stripped.startsWith("*") || stripped.startsWith("#") {
+        findings.pushBack(j);
+      }
     }
+    var candidates = new list(int);
+    for j in anchors do candidates.pushBack(j);
+    for j in findings do candidates.pushBack(j);
     if candidates.size == 0 {
       for j in 0..<lines.size {
         if candidates.size >= maxCards then break;
@@ -276,12 +322,14 @@ module Cards {
     var seen = new set(string);
     for j in candidates {
       if cards.size >= maxCards then break;
-      const claim = cleanClaim(lines[j]);
-      if claim.size == 0 || seen.contains(claim) then continue;
-      seen.add(claim);
+      const stripped = stripPy(lines[j]);
+      const isAnchor = hasCritical(stripped) || hasOpenQuestion(stripped);
+      const claim = cleanClaim(lines[j], if isAnchor then 4096 else 220);
+      if claim.size == 0 || (!isAnchor && seen.contains(claim)) then continue;
+      if !isAnchor then seen.add(claim);
       const (ls, le, evidence) = lineExcerpt(lines, j);
       const confidence =
-        if hasCritical(claim) || hasUrl(claim) then "medium" else "low";
+        if isAnchor || hasUrl(claim) then "medium" else "low";
       cards.pushBack(new Card(cardId(cards.size + 1), source, trustTier,
                               digest, ls, le, claim, evidence, confidence,
                               flagsFor(evidence, docHasRedactions)));
