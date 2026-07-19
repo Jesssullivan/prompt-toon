@@ -55,6 +55,7 @@ class FlywheelContractTest(unittest.TestCase):
             'chapel_counts["remote_processes"] <= 0',
             "Chapel build did not record remote execution",
             "name: Upload executor proof log",
+            "github.event_name != 'pull_request'",
             "steps.proof.outputs.log != '' || steps.chapel.outputs.log != ''",
             "uses: actions/upload-artifact@v7",
         ):
