@@ -65,7 +65,10 @@ local suites skip only that test when no compatible `ptoon` is installed.
 
 The run directory contains:
 
-- `summary.md`: minimized synthesis handoff.
+- `summary.md`: minimized synthesis handoff. The
+  `compact-source-index-v1` layout records each source hash/trust tier once,
+  renders each selected claim once, and uses run-unique references from the
+  constraint/question/finding indexes.
 - `source-cards.jsonl`: authoritative cards with evidence and source hashes.
 - `manifest.json`: input provenance, trust tiers, policy settings, and output
   names.
@@ -95,6 +98,14 @@ with `--min-handoff-savings`; the configured value is recorded in the ledger.
 
 Recommendation also requires complete recall of every source-line occurrence
 recognized by the existing critical-constraint and open-question classifiers.
+Recognized lines are selected before discretionary findings. Their model-facing
+claim is retained exactly up to 4,096 characters when mandatory link/URI
+defanging does not alter it; dynamic Markdown fences preserve literal code
+backticks without creating a closing delimiter. Longer lines remain available
+with full evidence in authoritative JSONL but are not falsely credited as exact
+summary recall. The unwrapped TOON leaf retains the stricter backtick
+replacement and therefore receives no exact-recall credit for a changed claim.
+Repeated recognized occurrences remain distinct cards.
 Recall is measured separately for the summary, summary plus authoritative
 JSONL, and optional summary plus TOON view. One emitted card cannot satisfy
 multiple identical source occurrences, and a safety transformation that changes
@@ -124,6 +135,11 @@ contribute a handoff-pass result. Their byte/token measurements remain available
 for historical diagnostics. Corpus reports carrying these new fields use report
 schema v2.
 
+New ledgers also record `execution.handoff_format`. Historical ledgers without
+that field are treated as `legacy-duplicated-summary-v1`; current runs use
+`compact-source-index-v1`. Handoff formats form separate cohorts, so compact
+results cannot be blended with the duplicated-summary baseline.
+
 Pass explicit ledger files to the checked reporter:
 
 ```sh
@@ -143,10 +159,10 @@ diagnostic; 20 or more unique spools within the 50-ledger cap satisfy the
 sample-count gate.
 
 Estimator ID, pattern, and unit must match exactly. Engine, one-shot shape,
-budget enforcement, card cap, Chapel budget, both savings thresholds, and the
-recall method form the execution cohort, so Python-oracle, Chapel one-shot,
-legacy-unmeasured, and policy variants never share percentiles. Resident gateway
-evidence is rejected and remains in
+budget enforcement, handoff format, card cap, Chapel budget, both savings
+thresholds, and the recall method form the execution cohort, so Python-oracle,
+Chapel one-shot, legacy-unmeasured, and policy variants never share percentiles.
+Resident gateway evidence is rejected and remains in
 `just gateway-capacity`. Each cohort reports nearest-rank p50/p90 only at five
 or more runs; smaller cohorts retain sorted values with an
 `insufficient-cohort` status. Withheld and zero-token-baseline runs remain in

@@ -47,6 +47,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .dogfood import COMPACT_HANDOFF_FORMAT
+
 
 class EngineError(RuntimeError):
     """Raised when the ptoon binary exits nonzero or writes to stderr."""
@@ -418,6 +420,7 @@ class ChapelEngine:
         if (
             not isinstance(settings, dict)
             or settings.get("format") != "jsonl"
+            or settings.get("handoff_format") != COMPACT_HANDOFF_FORMAT
             or settings.get("max_cards_per_input") != max_cards
             or settings.get("min_toon_savings") != parsed_savings
             or settings.get("trust_tier") != default_trust_tier

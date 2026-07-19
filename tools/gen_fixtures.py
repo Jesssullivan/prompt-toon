@@ -239,12 +239,12 @@ QUALITY_MANIFEST = {
                 "constraints": [
                     "The gateway MUST enforce a limit of 100 requests/minute per API key.",
                     "Deadline: 2026-08-15. Owner: platform-team.",
-                    "Only the '/v2/ingest' route is exempt from the limit today.",
+                    "Only the `/v2/ingest` route is exempt from the limit today.",
                 ],
                 "forbidden_constraints": [],
                 "open_questions": [
                     "TODO: confirm whether burst allowance applies per key or per org.",
-                    "Unclear whether the exemption for '/v2/ingest' survives the rollout.",
+                    "Unclear whether the exemption for `/v2/ingest` survives the rollout.",
                 ],
                 "redacted_claims": [],
                 "forbidden_fragments": [],
@@ -264,7 +264,7 @@ QUALITY_MANIFEST = {
                         "line_end": 11,
                     },
                     {
-                        "claim": "Only the '/v2/ingest' route is exempt from the limit today.",
+                        "claim": "Only the `/v2/ingest` route is exempt from the limit today.",
                         "source": "13-research-note.md",
                         "line_start": 10,
                         "line_end": 12,
@@ -276,7 +276,7 @@ QUALITY_MANIFEST = {
                         "line_end": 18,
                     },
                     {
-                        "claim": "Unclear whether the exemption for '/v2/ingest' survives the rollout.",
+                        "claim": "Unclear whether the exemption for `/v2/ingest` survives the rollout.",
                         "source": "13-research-note.md",
                         "line_start": 17,
                         "line_end": 19,
