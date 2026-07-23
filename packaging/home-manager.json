@@ -209,21 +209,49 @@
     },
     "closure_format": "nix-store-export-v1",
     "manifest_asset_pattern": "manifest-v{version}.json",
+    "manifest_bindings": {
+      "manifest.derived_lanes.home_manager.contract": "contract.contract_path",
+      "manifest.derived_lanes.home_manager.sha256": "sha256_file(contract.contract_path)",
+      "manifest.git_rev": "openpgp_tag.peeled_commit",
+      "manifest.provenance.tag": "release.tag",
+      "manifest.version": "contract.version",
+      "release.tag": "v{manifest.version}"
+    },
     "manifest_signature_asset_pattern": "manifest-v{version}.json.asc",
     "minimum_version": "0.3.0",
     "platform_verify": {
       "aarch64-darwin": [
-        "build_provenance.nix.store_path",
-        "build_provenance.nix.entrypoint.store_path"
+        "nix.store_path",
+        "nix.entrypoint.store_path",
+        "build_provenance.nix_store_path"
+      ],
+      "x86_64-linux": [
+        "nix.store_path",
+        "nix.entrypoint.store_path"
       ]
     },
     "release_signers": "packaging/release-signers.json",
     "required": true,
+    "runtime_binding": {
+      "allow_path_lookup": false,
+      "binary": "<ptoon-binary>",
+      "managed_service_argument": "--ptoon",
+      "require_absolute": true,
+      "source": "selected_target.nix.entrypoint.store_path",
+      "user_cli": {
+        "delivery": "wrapper",
+        "environment": {
+          "PROMPT_TOON_PTOON": "<ptoon-binary>"
+        },
+        "override_ambient": true
+      }
+    },
     "source_manifest": "packaging/manifest.json",
     "tagged_flake_rebuild_satisfies_byte_identity": false,
     "verify": [
       "openpgp_tag",
       "openpgp_manifest_signature",
+      "manifest_bindings",
       "target_archive_sha256",
       "entrypoint_sha256"
     ]
@@ -275,6 +303,7 @@
       ],
       "environment": {
         "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+        "PROMPT_TOON_PTOON": "<ptoon-binary>",
         "QT_NUM_SHEPHERDS": "1",
         "QT_NUM_WORKERS_PER_SHEPHERD": "2"
       },
@@ -311,6 +340,7 @@
       ],
       "environment": {
         "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
+        "PROMPT_TOON_PTOON": "<ptoon-binary>",
         "QT_NUM_SHEPHERDS": "1",
         "QT_NUM_WORKERS_PER_SHEPHERD": "2"
       },
