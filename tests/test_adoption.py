@@ -68,9 +68,15 @@ class HomeManagerAdoptionTests(unittest.TestCase):
             {
                 "required": True,
                 "minimum_version": "0.3.0",
-                "manifest": "packaging/manifest.json",
+                "source_manifest": "packaging/manifest.json",
+                "manifest_asset_pattern": "manifest-v{version}.json",
+                "manifest_signature_asset_pattern": "manifest-v{version}.json.asc",
                 "release_signers": "packaging/release-signers.json",
                 "closure_format": "nix-store-export-v1",
+                "closure_assets": {
+                    "aarch64-darwin": "ptoon-aarch64-darwin.nar",
+                    "x86_64-linux": "ptoon-x86_64-linux.nar",
+                },
                 "verify": [
                     "openpgp_tag",
                     "openpgp_manifest_signature",

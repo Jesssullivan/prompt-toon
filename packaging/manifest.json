@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "A disabled lab consumer exists; enabled becomes true only after it pins the authenticated release closure and an attended host activation records the required evidence.",
-      "sha256": "fe43254d372fb90277568d144f1e8b335b6eea12735dfcba41b0bc8c8eabefc7"
+      "sha256": "e0fd7446956430b3b15da7c3b5623ee51c3dd54dd895e97309cb3c9a321a870a"
     },
     "nix": {
       "enabled": true
