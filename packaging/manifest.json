@@ -25,8 +25,8 @@
       "contract": "packaging/home-manager.json",
       "contract_ready": true,
       "enabled": false,
-      "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "20ed2a31e03024b7f15879b675f03b451396deead55e328d0a6d35cf149b918c"
+      "note": "A disabled lab consumer exists; enabled becomes true only after it pins the authenticated release closure and an attended host activation records the required evidence.",
+      "sha256": "fe43254d372fb90277568d144f1e8b335b6eea12735dfcba41b0bc8c8eabefc7"
     },
     "nix": {
       "enabled": true

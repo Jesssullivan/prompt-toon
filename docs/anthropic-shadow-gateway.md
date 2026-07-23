@@ -183,7 +183,10 @@ upstream. It defaults to `https://api.anthropic.com`; use
 Passthrough credentials remain harness-owned. Managed credentials follow the
 split-custody contract above. The current source does not export
 `ANTHROPIC_BASE_URL` globally and does not install a managed service; that
-separate lab Home Manager unit remains disabled until review.
+separate lab Home Manager unit exists but remains disabled until an
+authenticated v0.3-or-newer release closure is pinned and an attended
+activation records the required ownership, readiness, counter, and rollback
+evidence.
 
 Before authorizing provider spend, run the deterministic harness proof:
 
