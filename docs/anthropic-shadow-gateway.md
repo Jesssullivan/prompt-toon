@@ -235,9 +235,10 @@ credential, request body, tool result, model answer, or session ID.
   Chapel owns parallel normalization/redaction/defanging/card generation.
 - C4b source and fixtures do not make this a fleet default. v0.2.0 predates C4;
   v0.3.0 is prepared as the first C4-capable release line but is not a release
-  until its tag and stamped manifest exist. C4d now publishes a disabled,
-  drift-gated consumption contract; the lab service and host observations have
-  not landed.
+  until its tag and stamped manifest exist. C4d publishes a disabled,
+  drift-gated consumption contract, and the disabled lab consumer has landed;
+  authenticated release pinning, host activation, and host observations have
+  not.
 - `model_gateway.enabled` and the global enforcement gate remain false. No
   request is rewritten. Promotion requires measured canaries, a reviewed
   replacement grammar, and the existing policy gates.
