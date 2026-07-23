@@ -61,6 +61,32 @@ class HomeManagerAdoptionTests(unittest.TestCase):
         self.assertEqual(activation["mode"], "shadow")
         self.assertIs(activation["enforcement"]["locked"], True)
 
+    def test_release_artifact_requires_authenticated_nix_closure(self) -> None:
+        artifact = self.contract["release_artifact"]
+        self.assertEqual(
+            artifact,
+            {
+                "required": True,
+                "minimum_version": "0.3.0",
+                "manifest": "packaging/manifest.json",
+                "release_signers": "packaging/release-signers.json",
+                "closure_format": "nix-store-export-v1",
+                "verify": [
+                    "openpgp_tag",
+                    "openpgp_manifest_signature",
+                    "target_archive_sha256",
+                    "entrypoint_sha256",
+                ],
+                "platform_verify": {
+                    "aarch64-darwin": [
+                        "build_provenance.nix.store_path",
+                        "build_provenance.nix.entrypoint.store_path",
+                    ],
+                },
+                "tagged_flake_rebuild_satisfies_byte_identity": False,
+            },
+        )
+
     def test_services_pin_loopback_ports_and_gateway_flags(self) -> None:
         services = {service["id"]: service for service in self.contract["services"]}
         self.assertEqual(set(services), {"anthropic", "openai"})
