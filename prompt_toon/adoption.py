@@ -118,6 +118,26 @@ def build_home_manager_contract(
                 "reason": "C4d publishes a consumption contract only; enforcement remains gated by the IO policy.",
             },
         },
+        "release_artifact": {
+            "required": True,
+            "minimum_version": "0.3.0",
+            "manifest": "packaging/manifest.json",
+            "release_signers": "packaging/release-signers.json",
+            "closure_format": "nix-store-export-v1",
+            "verify": [
+                "openpgp_tag",
+                "openpgp_manifest_signature",
+                "target_archive_sha256",
+                "entrypoint_sha256",
+            ],
+            "platform_verify": {
+                "aarch64-darwin": [
+                    "build_provenance.nix.store_path",
+                    "build_provenance.nix.entrypoint.store_path",
+                ],
+            },
+            "tagged_flake_rebuild_satisfies_byte_identity": False,
+        },
         "services": [
             {
                 "id": "anthropic",

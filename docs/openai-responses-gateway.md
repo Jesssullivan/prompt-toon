@@ -180,7 +180,8 @@ probe, which is mandatory in the release preflight.
   Promotion still requires provider-backed transform, token, and SWE-quality
   evidence from a purpose-built tool sandbox.
 - C4d publishes a disabled, drift-gated multi-platform/Home Manager source
-  contract. The consuming lab unit and host rollout remain separate work.
+  contract. A disabled lab consumer exists; authenticated release pinning and
+  attended host rollout remain separate work.
 
 ## Protocol grounding
 

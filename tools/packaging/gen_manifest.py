@@ -457,7 +457,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
                 "contract_ready": True,
                 "contract": "packaging/home-manager.json",
                 "sha256": home_manager_sha256,
-                "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
+                "note": "A disabled lab consumer exists; enabled becomes true only after it pins the authenticated release closure and an attended host activation records the required evidence.",
             },
             "pipx": {
                 "enabled": False,
