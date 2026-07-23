@@ -130,17 +130,47 @@ def build_home_manager_contract(
                 "aarch64-darwin": "ptoon-aarch64-darwin.nar",
                 "x86_64-linux": "ptoon-x86_64-linux.nar",
             },
+            "manifest_bindings": {
+                "manifest.version": "contract.version",
+                "release.tag": "v{manifest.version}",
+                "manifest.provenance.tag": "release.tag",
+                "manifest.git_rev": "openpgp_tag.peeled_commit",
+                "manifest.derived_lanes.home_manager.contract": (
+                    "contract.contract_path"
+                ),
+                "manifest.derived_lanes.home_manager.sha256": (
+                    "sha256_file(contract.contract_path)"
+                ),
+            },
             "verify": [
                 "openpgp_tag",
                 "openpgp_manifest_signature",
+                "manifest_bindings",
                 "target_archive_sha256",
                 "entrypoint_sha256",
             ],
             "platform_verify": {
-                "aarch64-darwin": [
-                    "build_provenance.nix.store_path",
-                    "build_provenance.nix.entrypoint.store_path",
+                "x86_64-linux": [
+                    "nix.store_path",
+                    "nix.entrypoint.store_path",
                 ],
+                "aarch64-darwin": [
+                    "nix.store_path",
+                    "nix.entrypoint.store_path",
+                    "build_provenance.nix_store_path",
+                ],
+            },
+            "runtime_binding": {
+                "binary": _PTOON_BINARY,
+                "source": "selected_target.nix.entrypoint.store_path",
+                "require_absolute": True,
+                "allow_path_lookup": False,
+                "managed_service_argument": "--ptoon",
+                "user_cli": {
+                    "delivery": "wrapper",
+                    "environment": {"PROMPT_TOON_PTOON": _PTOON_BINARY},
+                    "override_ambient": True,
+                },
             },
             "tagged_flake_rebuild_satisfies_byte_identity": False,
         },
@@ -152,7 +182,10 @@ def build_home_manager_contract(
                 "auth_mode": "split",
                 "listen": {"host": "127.0.0.1", "port": 8787},
                 "reviewed_upstream_default": "https://api.anthropic.com",
-                "environment": BOUNDED_CHAPEL_RUNTIME_ENV,
+                "environment": {
+                    **BOUNDED_CHAPEL_RUNTIME_ENV,
+                    "PROMPT_TOON_PTOON": _PTOON_BINARY,
+                },
                 "command": _gateway_command(
                     subcommand="gateway",
                     port=8787,
@@ -168,7 +201,10 @@ def build_home_manager_contract(
                 "auth_mode": "split",
                 "listen": {"host": "127.0.0.1", "port": 8788},
                 "reviewed_upstream_default": "https://api.openai.com/v1",
-                "environment": BOUNDED_CHAPEL_RUNTIME_ENV,
+                "environment": {
+                    **BOUNDED_CHAPEL_RUNTIME_ENV,
+                    "PROMPT_TOON_PTOON": _PTOON_BINARY,
+                },
                 "command": _gateway_command(
                     subcommand="responses-gateway",
                     port=8788,

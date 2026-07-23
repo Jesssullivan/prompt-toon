@@ -33,6 +33,7 @@ Usage:
   gen_manifest.py --git-rev SHA --tag v0.2.0 --ci-run 123 \
                   --with-closure x86_64-linux=path/to/ptoon-linux.nar \
                   --with-entrypoint x86_64-linux=/nix/store/.../bin/ptoon \
+                  --with-nix-store-path x86_64-linux=/nix/store/... \
                   --with-closure aarch64-darwin=path/to/ptoon-darwin.nar \
                   --with-entrypoint aarch64-darwin=/nix/store/.../bin/ptoon \
                   --with-build-provenance \
@@ -66,6 +67,9 @@ HOME_MANAGER_CONTRACT_PATH = ROOT / "packaging" / "home-manager.json"
 RELEASE_SIGNERS_PATH = ROOT / "packaging" / "release-signers.json"
 SCHEMA_VERSION = 2
 SAFE_PACKAGE_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+NIX_STORE_COMPONENT_RE = re.compile(
+    r"^[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+$"
+)
 PTOON_PLATFORMS = ("x86_64-linux", "aarch64-darwin")
 PYTHON_WHEEL_TAG = "py3-none-any"
 
@@ -292,6 +296,48 @@ def release_ptoon_paths(
     return closures, entrypoints
 
 
+def release_nix_store_paths(
+    specs: list[str], *, closures: dict[str, Path]
+) -> dict[str, str]:
+    """Require the canonical Linux store root recorded in a stamped release."""
+
+    result: dict[str, str] = {}
+    for spec in specs:
+        if "=" not in spec:
+            raise SystemExit(
+                "gen_manifest: --with-nix-store-path must be PLATFORM=/nix/store/PATH"
+            )
+        platform, raw_path = spec.split("=", 1)
+        if platform != "x86_64-linux":
+            raise SystemExit(
+                "gen_manifest: --with-nix-store-path currently supports exactly "
+                "x86_64-linux; Darwin identity comes from build provenance"
+            )
+        if platform in result:
+            raise SystemExit(
+                "gen_manifest: duplicate --with-nix-store-path for x86_64-linux"
+            )
+        path = Path(raw_path)
+        if (
+            raw_path != str(path)
+            or path.parent != Path("/nix/store")
+            or NIX_STORE_COMPONENT_RE.fullmatch(path.name) is None
+        ):
+            raise SystemExit(
+                "gen_manifest: x86_64-linux Nix store path must be one canonical "
+                "/nix/store/<hash>-<name> path"
+            )
+        result[platform] = str(path)
+
+    expected = {"x86_64-linux"} if closures else set()
+    if set(result) != expected:
+        raise SystemExit(
+            "gen_manifest: stamped ptoon closures require exactly one "
+            "--with-nix-store-path for x86_64-linux"
+        )
+    return result
+
+
 def release_build_provenance(
     specs: list[str],
     *,
@@ -347,6 +393,13 @@ def validate_stamped_artifacts(manifest: dict) -> None:
             and target.get("entrypoint_sha256") is None
         ):
             missing.append(f"{label}.entrypoint_sha256")
+        if target.get("kind") == "nix-closure-export":
+            nix = target.get("nix")
+            if not isinstance(nix, dict) or not nix.get("store_path"):
+                missing.append(f"{label}.nix.store_path")
+            entrypoint = nix.get("entrypoint") if isinstance(nix, dict) else None
+            if not isinstance(entrypoint, dict) or not entrypoint.get("store_path"):
+                missing.append(f"{label}.nix.entrypoint.store_path")
         if (
             target.get("artifact") == "ptoon"
             and target.get("platform") == "aarch64-darwin"
@@ -377,6 +430,9 @@ def build_manifest(args: argparse.Namespace) -> dict:
     release_closures, release_entrypoints = release_ptoon_paths(
         args.with_closure, args.with_entrypoint
     )
+    release_store_paths = release_nix_store_paths(
+        args.with_nix_store_path, closures=release_closures
+    )
     build_provenance = release_build_provenance(
         args.with_build_provenance,
         git_rev=args.git_rev,
@@ -393,6 +449,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
             "closure_format": "nix-store-export-v1",
             "entrypoint": "bin/ptoon",
             "entrypoint_sha256": None,
+            "nix": None,
             "build_provenance": None,
             "capabilities": {"serve_protocol": 1},
             "sha256": None,
@@ -404,6 +461,24 @@ def build_manifest(args: argparse.Namespace) -> dict:
             target["size"] = closure.stat().st_size
             target["entrypoint_sha256"] = file_digest(release_entrypoints[platform])
             target["build_provenance"] = build_provenance.get(platform)
+            if platform in build_provenance:
+                store_path = build_provenance[platform]["nix_store_path"]
+                target["nix"] = {
+                    "store_path": store_path,
+                    "entrypoint": {"store_path": f"{store_path}/bin/ptoon"},
+                }
+            else:
+                entrypoint = release_entrypoints[platform]
+                if entrypoint.name != "ptoon" or entrypoint.parent.name != "bin":
+                    raise SystemExit(
+                        "gen_manifest: x86_64-linux entrypoint must be a "
+                        "store-root bin/ptoon path"
+                    )
+                store_path = release_store_paths[platform]
+                target["nix"] = {
+                    "store_path": store_path,
+                    "entrypoint": {"store_path": f"{store_path}/bin/ptoon"},
+                }
         ptoon_targets.append(target)
 
     python_target: dict = {
@@ -523,6 +598,16 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--with-nix-store-path",
+        action="append",
+        default=[],
+        metavar="PLATFORM=/nix/store/PATH",
+        help=(
+            "record the canonical imported closure root; v0.3 requires exactly "
+            "one x86_64-linux path while Darwin derives it from bridge provenance"
+        ),
+    )
+    parser.add_argument(
         "--with-wheel",
         default=None,
         help="inject filename/sha256/size of the built Python wheel",
@@ -535,6 +620,7 @@ def main() -> int:
         or args.ci_run
         or args.with_closure
         or args.with_entrypoint
+        or args.with_nix_store_path
         or args.with_build_provenance
         or args.with_wheel
     )

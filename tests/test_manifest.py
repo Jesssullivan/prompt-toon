@@ -423,10 +423,13 @@ class ManifestTests(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="ptoon-manifest-test-")
         linux = Path(tmp) / "ptoon-x86_64-linux.nar"
         darwin = Path(tmp) / "ptoon-aarch64-darwin.nar"
-        linux_entrypoint = Path(tmp) / "ptoon-x86_64-linux"
+        linux_store = Path(tmp) / ("a" * 32 + "-ptoon-0.3.0")
+        linux_entrypoint = linux_store / "bin" / "ptoon"
+        recorded_linux_store = "/nix/store/" + "a" * 32 + "-ptoon-0.3.0"
         darwin_entrypoint = Path(tmp) / "ptoon-aarch64-darwin.bin"
         darwin_bridge = Path(tmp) / "ptoon-aarch64-darwin.gf-nix-bridge.json"
         revision = "d" * 40
+        linux_entrypoint.parent.mkdir(parents=True)
         linux.write_bytes(b"not a real Linux closure")
         darwin.write_bytes(b"not a real Darwin closure")
         linux_entrypoint.write_bytes(b"exact Linux ptoon bytes")
@@ -452,6 +455,8 @@ class ManifestTests(unittest.TestCase):
                     f"x86_64-linux={linux}",
                     "--with-entrypoint",
                     f"x86_64-linux={linux_entrypoint}",
+                    "--with-nix-store-path",
+                    f"x86_64-linux={recorded_linux_store}",
                     "--with-closure",
                     f"aarch64-darwin={darwin}",
                     "--with-entrypoint",
@@ -482,6 +487,15 @@ class ManifestTests(unittest.TestCase):
                 sha256(b"exact Linux ptoon bytes").hexdigest(),
             )
             self.assertEqual(
+                ptoon["x86_64-linux"]["nix"],
+                {
+                    "store_path": recorded_linux_store,
+                    "entrypoint": {
+                        "store_path": f"{recorded_linux_store}/bin/ptoon"
+                    },
+                },
+            )
+            self.assertEqual(
                 ptoon["aarch64-darwin"]["sha256"],
                 sha256(b"not a real Darwin closure").hexdigest(),
             )
@@ -493,6 +507,15 @@ class ManifestTests(unittest.TestCase):
                 sha256(b"exact Darwin ptoon bytes").hexdigest(),
             )
             provenance = ptoon["aarch64-darwin"]["build_provenance"]
+            self.assertEqual(
+                ptoon["aarch64-darwin"]["nix"],
+                {
+                    "store_path": provenance["nix_store_path"],
+                    "entrypoint": {
+                        "store_path": f"{provenance['nix_store_path']}/bin/ptoon"
+                    },
+                },
+            )
             self.assertEqual(provenance["kind"], "gf-reapi-nix-bridge")
             self.assertEqual(provenance["consumer_ref"], revision)
             self.assertEqual(
@@ -523,6 +546,8 @@ class ManifestTests(unittest.TestCase):
             linux.unlink(missing_ok=True)
             darwin.unlink(missing_ok=True)
             linux_entrypoint.unlink(missing_ok=True)
+            linux_entrypoint.parent.rmdir()
+            linux_store.rmdir()
             darwin_entrypoint.unlink(missing_ok=True)
             darwin_bridge.unlink(missing_ok=True)
             for replay in Path(tmp).glob("ptoon-aarch64-darwin.*.json"):
@@ -619,6 +644,27 @@ class ManifestTests(unittest.TestCase):
         self.assertIn(b"all-or-none", proc.stderr)
         self.assertIn(b"aarch64-darwin", proc.stderr)
 
+    def test_release_nix_store_path_is_explicit_and_canonical(self):
+        closure = {"x86_64-linux": Path("/tmp/linux.nar")}
+        valid = "/nix/store/" + "a" * 32 + "-ptoon-0.3.0"
+        self.assertEqual(
+            gen_manifest.release_nix_store_paths(
+                [f"x86_64-linux={valid}"], closures=closure
+            ),
+            {"x86_64-linux": valid},
+        )
+        for specs in (
+            [],
+            ["x86_64-linux=/tmp/ptoon"],
+            ["x86_64-linux=/nix/store/" + "e" * 32 + "-ptoon-0.3.0"],
+            [f"x86_64-linux=/nix//store/{'a' * 32}-ptoon-0.3.0"],
+            [f"x86_64-linux={valid}/"],
+            [f"aarch64-darwin={valid}"],
+            [f"x86_64-linux={valid}", f"x86_64-linux={valid}"],
+        ):
+            with self.subTest(specs=specs), self.assertRaises(SystemExit):
+                gen_manifest.release_nix_store_paths(specs, closures=closure)
+
     def test_stamped_closure_and_entrypoint_options_must_match(self):
         import tempfile
 
@@ -699,6 +745,8 @@ class ManifestTests(unittest.TestCase):
             if target["kind"] == "nix-closure-export":
                 self.assertIn("entrypoint_sha256", target)
                 self.assertIsNone(target["entrypoint_sha256"])
+                self.assertIn("nix", target)
+                self.assertIsNone(target["nix"])
                 self.assertIn("build_provenance", target)
                 self.assertIsNone(target["build_provenance"])
 
@@ -730,6 +778,12 @@ class ManifestTests(unittest.TestCase):
             'release_flake="path:$release_source_store"',
             'nix build "$release_flake#packages.x86_64-linux.ptoon-parity"',
             'uv build --wheel --out-dir "$stage" "$release_source_archive_store"',
+            'PROMPT_TOON_PTOON="$darwin_bridge_entrypoint"',
+            '--id release-installed-dogfood',
+            '--engine auto',
+            '.execution.engine_resolved == "chapel"',
+            '.execution.shape == "chapel-one-shot-coforall-batch"',
+            ".claim_boundary.provider_requests == 0",
             'python3 "$release_source_store/tools/packaging/import_gf_ptoon.py"',
             'python3 "$release_source_store/tools/packaging/gen_manifest.py"',
             "assert_release_checkout",
@@ -743,6 +797,7 @@ class ManifestTests(unittest.TestCase):
             'cp "$darwin_bridge_smoke" "$stage/ptoon-aarch64-darwin.native-smoke.json"',
             '--with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar"',
             '--with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon"',
+            '--with-nix-store-path "x86_64-linux=$linux_ptoon_store"',
             '--with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar"',
             '--with-entrypoint "aarch64-darwin=$stage/ptoon-aarch64-darwin.bin"',
             '--with-build-provenance "aarch64-darwin=$stage/ptoon-aarch64-darwin.gf-nix-bridge.json"',

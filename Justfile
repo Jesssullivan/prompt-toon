@@ -379,10 +379,24 @@ release $version:
     UV_CACHE_DIR="$stage/uv-cache" uv venv "$stage/venv"
     UV_CACHE_DIR="$stage/uv-cache" uv pip install --python "$stage/venv/bin/python" "$wheel"
     (cd "$stage" && "$stage/venv/bin/prompt-toon" --version && "$stage/venv/bin/prompt-toon" corpus-report --help >/dev/null && "$stage/venv/bin/prompt-toon" claude-profile direct > claude-profile.json && "$stage/venv/bin/prompt-toon" codex-profile direct > codex-profile.json)
+    PROMPT_TOON_PTOON="$darwin_bridge_entrypoint" \
+      "$stage/venv/bin/prompt-toon" dogfood \
+      "$release_source_store/fixtures/inputs/13-research-note.md" \
+      "$release_source_store/fixtures/inputs/10-clean-doc.txt" \
+      --id release-installed-dogfood \
+      --output-dir "$stage/installed-dogfood" \
+      --engine auto > "$stage/installed-dogfood.json"
+    jq -e '
+      .execution.engine_requested == "auto" and
+      .execution.engine_resolved == "chapel" and
+      .execution.shape == "chapel-one-shot-coforall-batch" and
+      .claim_boundary.provider_requests == 0
+    ' "$stage/installed-dogfood/efficiency.json" >/dev/null
     manifest="$stage/manifest-$tag.json"
     python3 "$release_source_store/tools/packaging/gen_manifest.py" --git-rev "$rev" --tag "$tag" \
       --with-closure "x86_64-linux=$stage/ptoon-x86_64-linux.nar" \
       --with-entrypoint "x86_64-linux=$linux_ptoon_store/bin/ptoon" \
+      --with-nix-store-path "x86_64-linux=$linux_ptoon_store" \
       --with-closure "aarch64-darwin=$stage/ptoon-aarch64-darwin.nar" \
       --with-entrypoint "aarch64-darwin=$stage/ptoon-aarch64-darwin.bin" \
       --with-build-provenance "aarch64-darwin=$stage/ptoon-aarch64-darwin.gf-nix-bridge.json" \

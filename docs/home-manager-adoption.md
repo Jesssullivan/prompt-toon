@@ -144,10 +144,18 @@ the fingerprint for convenience but are not the trust root.
 `packaging/home-manager.json` distinguishes the committed unstamped source
 manifest from the signed release assets `manifest-v{version}.json` and
 `manifest-v{version}.json.asc`, and names each platform closure archive
-explicitly.
+explicitly. Consumers must bind the signed manifest version and tag to the
+selected release, bind `git_rev` to the peeled signed-tag commit, and require
+`derived_lanes.home_manager.sha256` to equal the exact contract bytes they
+consume.
 Import a closure with `nix-store --import`; its platform target and archive
 digest are recorded in manifest schema v2, together with the SHA-256 of its
-`bin/ptoon` entrypoint. Darwin `build_provenance` binds the GF workflow,
+`bin/ptoon` entrypoint and the canonical root and entrypoint store paths.
+The managed service command and `PROMPT_TOON_PTOON` environment must both use
+that authenticated entrypoint. Home Manager must wrap the user CLI with an
+overriding `PROMPT_TOON_PTOON` value; ambient `PATH` lookup and default-only
+environment bindings are not release evidence.
+Darwin `build_provenance` binds the GF workflow,
 consumer revision, physical worker closure identity, Sigstore bundle,
 exported-output digest, remote native smoke, exact Nix store path, and bridge
 record. The release retains those replay records after the temporary Actions

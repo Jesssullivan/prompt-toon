@@ -77,17 +77,47 @@ class HomeManagerAdoptionTests(unittest.TestCase):
                     "aarch64-darwin": "ptoon-aarch64-darwin.nar",
                     "x86_64-linux": "ptoon-x86_64-linux.nar",
                 },
+                "manifest_bindings": {
+                    "manifest.version": "contract.version",
+                    "release.tag": "v{manifest.version}",
+                    "manifest.provenance.tag": "release.tag",
+                    "manifest.git_rev": "openpgp_tag.peeled_commit",
+                    "manifest.derived_lanes.home_manager.contract": (
+                        "contract.contract_path"
+                    ),
+                    "manifest.derived_lanes.home_manager.sha256": (
+                        "sha256_file(contract.contract_path)"
+                    ),
+                },
                 "verify": [
                     "openpgp_tag",
                     "openpgp_manifest_signature",
+                    "manifest_bindings",
                     "target_archive_sha256",
                     "entrypoint_sha256",
                 ],
                 "platform_verify": {
-                    "aarch64-darwin": [
-                        "build_provenance.nix.store_path",
-                        "build_provenance.nix.entrypoint.store_path",
+                    "x86_64-linux": [
+                        "nix.store_path",
+                        "nix.entrypoint.store_path",
                     ],
+                    "aarch64-darwin": [
+                        "nix.store_path",
+                        "nix.entrypoint.store_path",
+                        "build_provenance.nix_store_path",
+                    ],
+                },
+                "runtime_binding": {
+                    "binary": "<ptoon-binary>",
+                    "source": "selected_target.nix.entrypoint.store_path",
+                    "require_absolute": True,
+                    "allow_path_lookup": False,
+                    "managed_service_argument": "--ptoon",
+                    "user_cli": {
+                        "delivery": "wrapper",
+                        "environment": {"PROMPT_TOON_PTOON": "<ptoon-binary>"},
+                        "override_ambient": True,
+                    },
                 },
                 "tagged_flake_rebuild_satisfies_byte_identity": False,
             },
@@ -113,6 +143,7 @@ class HomeManagerAdoptionTests(unittest.TestCase):
                         "CHPL_RT_NUM_THREADS_PER_LOCALE": "2",
                         "QT_NUM_SHEPHERDS": "1",
                         "QT_NUM_WORKERS_PER_SHEPHERD": "2",
+                        "PROMPT_TOON_PTOON": "<ptoon-binary>",
                     },
                 )
                 self.assertIn(subcommand, command)
