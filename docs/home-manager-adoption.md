@@ -141,6 +141,10 @@ not raw executables. The reviewed OpenPGP trust anchor is
 key. Verify the signed tag and detached manifest signature against that pinned
 full fingerprint before trusting artifact digests. GitHub release notes repeat
 the fingerprint for convenience but are not the trust root.
+`packaging/home-manager.json` distinguishes the committed unstamped source
+manifest from the signed release assets `manifest-v{version}.json` and
+`manifest-v{version}.json.asc`, and names each platform closure archive
+explicitly.
 Import a closure with `nix-store --import`; its platform target and archive
 digest are recorded in manifest schema v2, together with the SHA-256 of its
 `bin/ptoon` entrypoint. Darwin `build_provenance` binds the GF workflow,

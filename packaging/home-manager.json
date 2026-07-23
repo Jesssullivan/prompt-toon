@@ -203,8 +203,13 @@
     }
   },
   "release_artifact": {
+    "closure_assets": {
+      "aarch64-darwin": "ptoon-aarch64-darwin.nar",
+      "x86_64-linux": "ptoon-x86_64-linux.nar"
+    },
     "closure_format": "nix-store-export-v1",
-    "manifest": "packaging/manifest.json",
+    "manifest_asset_pattern": "manifest-v{version}.json",
+    "manifest_signature_asset_pattern": "manifest-v{version}.json.asc",
     "minimum_version": "0.3.0",
     "platform_verify": {
       "aarch64-darwin": [
@@ -214,6 +219,7 @@
     },
     "release_signers": "packaging/release-signers.json",
     "required": true,
+    "source_manifest": "packaging/manifest.json",
     "tagged_flake_rebuild_satisfies_byte_identity": false,
     "verify": [
       "openpgp_tag",
