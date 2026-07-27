@@ -11,13 +11,23 @@ fable-class model tokens (expensive, not always available, can be slow,
 compute costly). Everything cheaper — haiku/sonnet/opus bandwidth and
 deterministic infra — is spent freely to protect them.
 
-The machine-readable SSOT is `policy/delegation.json` (typed Dhall source in
-`policy/dhall/`). Read it rather than restating it:
+The machine-readable SSOT is `policy/delegation.json` **in
+`Jesssullivan/prompt-toon`** (typed Dhall source in `policy/dhall/`, document
+shape in `policy/delegation.schema.json`). Read it rather than restating it:
 
 ```sh
+# inside a Jesssullivan/prompt-toon checkout
+jq '.seats[] | {id, cost_tier, default_personas}' policy/delegation.json
 jq '.personas[] | {id, model_classes, forbidden_tasks}' policy/delegation.json
 jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.json
+
+# no checkout handy
+curl -fsSL https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/delegation.json
 ```
+
+> **Do not confuse repos.** `tinyland-inc/lab` also has a
+> `policy/delegation.json`; it is the interview-HITL delegation policy with a
+> different schema and is not this routing SSOT.
 
 ## Routing rules
 
@@ -35,6 +45,13 @@ jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.jso
 6. Leave harness default model selection provider-managed; never pin a model
    globally without a host-level justification.
 
+## Seats
+
+`fable`, `opus`, `sonnet`, and `haiku` are first-class seat records under
+`.seats[]`, each carrying a cost tier, the personas it serves by default, and
+the personas it must never serve. `operator` is not a seat: it means the
+operator takes the lane personally.
+
 ## Attribution
 
 Attribute every synthesis/recon session to a lane in session notes (lab
@@ -43,6 +60,8 @@ Attribute every synthesis/recon session to a lane in session notes (lab
 
 ## Enforcement
 
-`tests/test_delegation_policy.py` fails closed on: adversarial lanes
-resolving to fable, missing fable task prohibitions, missing purpose strings,
-and Dhall/JSON drift on load-bearing IDs. It runs in `just check`.
+`tests/test_delegation_policy.py` in `Jesssullivan/prompt-toon` fails closed
+on: adversarial lanes resolving to fable, missing fable task prohibitions,
+missing purpose strings, JSON that does not validate against
+`policy/delegation.schema.json`, seats that serve a persona excluding them,
+and Dhall/JSON drift on load-bearing IDs. It runs in that repo's `just check`.
