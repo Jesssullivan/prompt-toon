@@ -1,5 +1,5 @@
 {
-  "$comment": "Validated transition artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall). Hand-synced while dhall tooling is absent from the dev shell (normal degraded mode per lab test/dhall convention). Invariants enforced by tests/test_delegation_policy.py.",
+  "$comment": "Validated transition artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall). Hand-synced while dhall tooling is absent from the dev shell (normal degraded mode per lab test/dhall convention). Document shape is described by policy/delegation.schema.json. Invariants enforced by tests/test_delegation_policy.py.",
   "attribution": {
     "convention": "Attribute every synthesis/recon session to a lane in session notes, following lab docs/agent-notes/INDEX.md.",
     "values": [
@@ -32,6 +32,11 @@
       "id": "cheap-lane-escalation",
       "rule": "A research or mechanical lane routed to fable warns; escalation requires explicit operator justification.",
       "severity": "warn"
+    },
+    {
+      "id": "seat-registry-complete",
+      "rule": "Every model class a persona routes to, other than the operator, has an explicit seat record in seats; a seat never appears in the default personas of a persona that excludes its model class, and never serves a persona it lists as forbidden.",
+      "severity": "error"
     },
     {
       "id": "provider-managed-defaults",
@@ -148,5 +153,55 @@
       "notes": "Fable-class model tokens: expensive, not always available, can be slow, compute costly, token-limited. Spend on the synthesis seat only."
     }
   ],
-  "schema_version": 1
+  "schema_version": 2,
+  "seats": [
+    {
+      "cost_tier": "scarce",
+      "default_personas": [
+        "fable"
+      ],
+      "forbidden_personas": [
+        "adversarial"
+      ],
+      "id": "fable",
+      "model_class": "fable",
+      "notes": "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment, and review alongside the operator. Never the adversarial seat."
+    },
+    {
+      "cost_tier": "high",
+      "default_personas": [
+        "adversarial",
+        "research"
+      ],
+      "forbidden_personas": [],
+      "id": "opus",
+      "model_class": "opus",
+      "notes": "Adversarial, purple-team, and deepest-research seat. Default escalation target whenever fable tokens must be protected."
+    },
+    {
+      "cost_tier": "medium",
+      "default_personas": [
+        "research"
+      ],
+      "forbidden_personas": [
+        "adversarial"
+      ],
+      "id": "sonnet",
+      "model_class": "sonnet",
+      "notes": "Mid-cost research seat: pattern extraction, structured recon, and medium-depth sweeps."
+    },
+    {
+      "cost_tier": "low",
+      "default_personas": [
+        "mechanical",
+        "research"
+      ],
+      "forbidden_personas": [
+        "adversarial"
+      ],
+      "id": "haiku",
+      "model_class": "haiku",
+      "notes": "Cheapest seat: locators, inventories, shallow greps, format conversions, and checklist execution."
+    }
+  ]
 }

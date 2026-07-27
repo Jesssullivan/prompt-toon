@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/delegation.schema.json",
+  "title": "Toon of Mythos delegation policy",
+  "description": "Shape of policy/delegation.json, the validated transition artifact generated from policy/dhall/delegation.dhall. Owner: TIN-2698. This describes the Jesssullivan/prompt-toon delegation policy only; tinyland-inc/lab ships a same-named policy/delegation.json with an unrelated interview-HITL schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$comment",
+    "schema_version",
+    "metadata",
+    "scarce_resources",
+    "seats",
+    "personas",
+    "lanes",
+    "enforcement",
+    "attribution"
+  ],
+  "properties": {
+    "$comment": {
+      "$ref": "#/$defs/nonEmptyString",
+      "description": "Provenance banner naming the Dhall source of truth and its regeneration command."
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 2
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "owner_linear_issue", "founding_docs"],
+      "properties": {
+        "name": { "$ref": "#/$defs/nonEmptyString" },
+        "owner_linear_issue": {
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]+$"
+        },
+        "founding_docs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "scarce_resources": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "notes"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "kind": { "enum": ["human", "model"] },
+          "notes": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "seats": {
+      "description": "First-class seat records. Seat names are load-bearing routing identities, not free-form model_classes strings.",
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "model_class",
+          "cost_tier",
+          "default_personas",
+          "forbidden_personas",
+          "notes"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/seatId" },
+          "model_class": { "$ref": "#/$defs/seatId" },
+          "cost_tier": { "enum": ["scarce", "high", "medium", "low"] },
+          "default_personas": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          },
+          "forbidden_personas": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          },
+          "notes": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "personas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "model_classes",
+          "purpose",
+          "doctrine",
+          "forbidden_tasks"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "model_classes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/modelClass" }
+          },
+          "purpose": { "$ref": "#/$defs/nonEmptyString" },
+          "doctrine": { "$ref": "#/$defs/nonEmptyString" },
+          "forbidden_tasks": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["route", "persona", "purpose"],
+        "properties": {
+          "route": {
+            "type": "string",
+            "pattern": "^mythos(\\.[a-z0-9-]+)+$"
+          },
+          "persona": { "$ref": "#/$defs/identifier" },
+          "purpose": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "enforcement": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "rule"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "severity": { "enum": ["error", "warn"] },
+          "rule": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["convention", "values"],
+      "properties": {
+        "convention": { "$ref": "#/$defs/nonEmptyString" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "seatId": {
+      "description": "First-class seat names. Adding a seat is a policy change, not a string edit.",
+      "enum": ["fable", "opus", "sonnet", "haiku"]
+    },
+    "modelClass": {
+      "description": "A seat name, or the operator taking the lane personally.",
+      "enum": ["fable", "opus", "sonnet", "haiku", "operator"]
+    }
+  }
+}
