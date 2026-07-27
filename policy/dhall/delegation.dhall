@@ -12,8 +12,8 @@ artifact and tests/test_delegation_policy.py enforces its invariants.
 let T = ./DelegationPolicy.dhall
 
 in    { `$comment` =
-          "Validated transition artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall). Hand-synced while dhall tooling is absent from the dev shell (normal degraded mode per lab test/dhall convention). Invariants enforced by tests/test_delegation_policy.py."
-      , schema_version = 1
+          "Validated transition artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall). Hand-synced while dhall tooling is absent from the dev shell (normal degraded mode per lab test/dhall convention). Document shape is described by policy/delegation.schema.json. Invariants enforced by tests/test_delegation_policy.py."
+      , schema_version = 2
       , metadata =
           { name = "toon-of-mythos-delegation"
           , owner_linear_issue = "TIN-2698"
@@ -30,6 +30,40 @@ in    { `$comment` =
             , kind = "model"
             , notes =
                 "Fable-class model tokens: expensive, not always available, can be slow, compute costly, token-limited. Spend on the synthesis seat only."
+            }
+          ]
+      , seats =
+          [ { id = "fable"
+            , model_class = "fable"
+            , cost_tier = "scarce"
+            , default_personas = [ "fable" ]
+            , forbidden_personas = [ "adversarial" ]
+            , notes =
+                "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment, and review alongside the operator. Never the adversarial seat."
+            }
+          , { id = "opus"
+            , model_class = "opus"
+            , cost_tier = "high"
+            , default_personas = [ "adversarial", "research" ]
+            , forbidden_personas = [] : List Text
+            , notes =
+                "Adversarial, purple-team, and deepest-research seat. Default escalation target whenever fable tokens must be protected."
+            }
+          , { id = "sonnet"
+            , model_class = "sonnet"
+            , cost_tier = "medium"
+            , default_personas = [ "research" ]
+            , forbidden_personas = [ "adversarial" ]
+            , notes =
+                "Mid-cost research seat: pattern extraction, structured recon, and medium-depth sweeps."
+            }
+          , { id = "haiku"
+            , model_class = "haiku"
+            , cost_tier = "low"
+            , default_personas = [ "mechanical", "research" ]
+            , forbidden_personas = [ "adversarial" ]
+            , notes =
+                "Cheapest seat: locators, inventories, shallow greps, format conversions, and checklist execution."
             }
           ]
       , personas =
@@ -124,6 +158,11 @@ in    { `$comment` =
             , severity = "warn"
             , rule =
                 "A research or mechanical lane routed to fable warns; escalation requires explicit operator justification."
+            }
+          , { id = "seat-registry-complete"
+            , severity = "error"
+            , rule =
+                "Every model class a persona routes to, other than the operator, has an explicit seat record in seats; a seat never appears in the default personas of a persona that excludes its model class, and never serves a persona it lists as forbidden."
             }
           , { id = "provider-managed-defaults"
             , severity = "warn"
