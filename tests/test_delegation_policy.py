@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 POLICY_PATH = ROOT / "policy" / "delegation.json"
+SCHEMA_PATH = ROOT / "policy" / "delegation.schema.json"
 DHALL_TYPE_PATH = ROOT / "policy" / "dhall" / "DelegationPolicy.dhall"
 DHALL_SOURCE_PATH = ROOT / "policy" / "dhall" / "delegation.dhall"
 SKILL_PATH = ROOT / ".agents" / "skills" / "mythos-delegation" / "SKILL.md"
@@ -19,19 +20,98 @@ FABLE_FORBIDDEN = {
     "bulk-execution",
 }
 
+# First-class seat names. Not model_classes strings: adding or renaming a seat
+# is a policy change that has to move the Dhall, the JSON, and this set.
+SEAT_IDS = {"fable", "opus", "sonnet", "haiku"}
+
 
 def load_policy():
     return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+
+
+def load_schema():
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def structural_schema_violations(instance, schema, path="$"):
+    """Minimal fail-closed subset validator for degraded envs without jsonschema.
+
+    Covers only what the delegation schema uses: type, const, enum, required,
+    additionalProperties=false, properties, items, minItems, minLength, and
+    local $ref into $defs. Unknown constructs are ignored rather than passed
+    silently as valid, which is why jsonschema stays the preferred path.
+    """
+    defs = schema.get("$defs", {})
+
+    def resolve(node):
+        ref = node.get("$ref")
+        if not ref:
+            return node
+        if not ref.startswith("#/$defs/"):
+            return node
+        merged = dict(defs[ref[len("#/$defs/") :]])
+        merged.update({k: v for k, v in node.items() if k != "$ref"})
+        return merged
+
+    def walk(value, node, where):
+        node = resolve(node)
+        errors = []
+        expected = node.get("type")
+        if expected == "object" and not isinstance(value, dict):
+            return [f"{where}: expected object"]
+        if expected == "array" and not isinstance(value, list):
+            return [f"{where}: expected array"]
+        if expected == "string" and not isinstance(value, str):
+            return [f"{where}: expected string"]
+        if expected == "integer" and not isinstance(value, int):
+            return [f"{where}: expected integer"]
+        if "const" in node and value != node["const"]:
+            errors.append(f"{where}: expected const {node['const']!r}")
+        if "enum" in node and value not in node["enum"]:
+            errors.append(f"{where}: {value!r} not in {node['enum']}")
+        if isinstance(value, str) and len(value) < node.get("minLength", 0):
+            errors.append(f"{where}: shorter than minLength")
+        if isinstance(value, str) and "pattern" in node:
+            if not re.search(node["pattern"], value):
+                errors.append(f"{where}: {value!r} fails {node['pattern']}")
+        if isinstance(value, dict):
+            for key in node.get("required", []):
+                if key not in value:
+                    errors.append(f"{where}: missing required {key!r}")
+            properties = node.get("properties", {})
+            if node.get("additionalProperties") is False:
+                for key in value:
+                    if key not in properties:
+                        errors.append(f"{where}: unexpected property {key!r}")
+            for key, subschema in properties.items():
+                if key in value:
+                    errors.extend(walk(value[key], subschema, f"{where}.{key}"))
+        if isinstance(value, list):
+            if len(value) < node.get("minItems", 0):
+                errors.append(f"{where}: fewer than minItems")
+            if node.get("uniqueItems") and len(
+                {json.dumps(item, sort_keys=True) for item in value}
+            ) != len(value):
+                errors.append(f"{where}: duplicate items")
+            item_schema = node.get("items")
+            if item_schema:
+                for index, item in enumerate(value):
+                    errors.extend(walk(item, item_schema, f"{where}[{index}]"))
+        return errors
+
+    return walk(instance, schema, path)
 
 
 class DelegationPolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.policy = load_policy()
+        cls.schema = load_schema()
         cls.personas = {p["id"]: p for p in cls.policy["personas"]}
+        cls.seats = {s["id"]: s for s in cls.policy["seats"]}
 
     def test_schema_version(self):
-        self.assertEqual(self.policy["schema_version"], 1)
+        self.assertEqual(self.policy["schema_version"], 2)
 
     def test_owner_linear_issue_shape(self):
         self.assertRegex(self.policy["metadata"]["owner_linear_issue"], r"^[A-Z]+-\d+$")
@@ -43,9 +123,75 @@ class DelegationPolicyTests(unittest.TestCase):
     def test_dhall_source_of_truth_exists(self):
         self.assertTrue(DHALL_TYPE_PATH.is_file())
         self.assertTrue(DHALL_SOURCE_PATH.is_file())
+        self.assertIn("seats : List Seat", DHALL_TYPE_PATH.read_text(encoding="utf-8"))
 
     def test_json_declares_dhall_regeneration_target(self):
         self.assertIn("dhall-to-json", self.policy["$comment"])
+
+    def test_json_declares_schema_document(self):
+        self.assertTrue(SCHEMA_PATH.is_file())
+        self.assertIn("policy/delegation.schema.json", self.policy["$comment"])
+        self.assertEqual(
+            self.schema["$schema"], "https://json-schema.org/draft/2020-12/schema"
+        )
+
+    def test_policy_validates_against_schema(self):
+        try:
+            import jsonschema
+        except ImportError:
+            violations = structural_schema_violations(self.policy, self.schema)
+            self.assertEqual(violations, [], "structural schema violations")
+            return
+        jsonschema.validate(instance=self.policy, schema=self.schema)
+
+    def test_structural_validator_rejects_a_known_bad_document(self):
+        # Guards the degraded-mode path itself: it must fail closed, not
+        # silently pass every document handed to it.
+        broken = json.loads(json.dumps(self.policy))
+        broken["seats"][0]["cost_tier"] = "free"
+        broken["seats"][0]["unexpected_key"] = True
+        del broken["attribution"]
+        self.assertTrue(structural_schema_violations(broken, self.schema))
+
+    def test_seat_ids_are_first_class(self):
+        self.assertEqual(set(self.seats), SEAT_IDS)
+        for seat in self.policy["seats"]:
+            self.assertEqual(seat["id"], seat["model_class"], seat["id"])
+            self.assertTrue(seat["notes"].strip(), seat["id"])
+
+    def test_every_routed_model_class_has_a_seat(self):
+        routed = {
+            model_class
+            for persona in self.policy["personas"]
+            for model_class in persona["model_classes"]
+            if model_class != "operator"
+        }
+        self.assertTrue(routed.issubset(set(self.seats)), routed - set(self.seats))
+
+    def test_seat_default_personas_accept_that_seat(self):
+        for seat in self.policy["seats"]:
+            for persona_id in seat["default_personas"]:
+                self.assertIn(persona_id, self.personas, seat["id"])
+                self.assertIn(
+                    seat["model_class"],
+                    self.personas[persona_id]["model_classes"],
+                    f"{seat['id']} defaults to {persona_id} which excludes it",
+                )
+
+    def test_seat_forbidden_personas_are_consistent(self):
+        for seat in self.policy["seats"]:
+            for persona_id in seat["forbidden_personas"]:
+                self.assertIn(persona_id, self.personas, seat["id"])
+                self.assertNotIn(
+                    seat["model_class"],
+                    self.personas[persona_id]["model_classes"],
+                    f"{seat['id']} forbids {persona_id} but is listed in its model classes",
+                )
+                self.assertNotIn(persona_id, seat["default_personas"], seat["id"])
+
+    def test_fable_seat_never_serves_adversarial(self):
+        self.assertIn("adversarial", self.seats["fable"]["forbidden_personas"])
+        self.assertEqual(self.seats["fable"]["cost_tier"], "scarce")
 
     def test_every_persona_has_purpose_and_doctrine(self):
         for persona in self.policy["personas"]:
@@ -77,7 +223,12 @@ class DelegationPolicyTests(unittest.TestCase):
     def test_error_rules_present(self):
         errors = {r["id"] for r in self.policy["enforcement"] if r["severity"] == "error"}
         self.assertTrue(
-            {"no-adversarial-on-fable", "fable-forbidden-tasks", "purpose-required"}.issubset(errors)
+            {
+                "no-adversarial-on-fable",
+                "fable-forbidden-tasks",
+                "purpose-required",
+                "seat-registry-complete",
+            }.issubset(errors)
         )
 
     def test_rule_severities_are_known(self):
@@ -114,6 +265,8 @@ class DelegationPolicyTests(unittest.TestCase):
         dhall_text = DHALL_SOURCE_PATH.read_text(encoding="utf-8")
         for persona in self.personas:
             self.assertIn(f'id = "{persona}"', dhall_text, persona)
+        for seat in self.seats:
+            self.assertIn(f'model_class = "{seat}"', dhall_text, seat)
         for lane in self.policy["lanes"]:
             self.assertIn(f'route = "{lane["route"]}"', dhall_text, lane["route"])
         for rule in self.policy["enforcement"]:

@@ -47,7 +47,11 @@ this repository's product and dependency boundaries.
 
 - SSOT: `policy/delegation.json` (typed Dhall source in `policy/dhall/`; the
   JSON is the validated transition artifact until dhall tooling lands in the
-  dev shell).
+  dev shell). Document shape: `policy/delegation.schema.json`.
+- `fable`, `opus`, `sonnet`, and `haiku` are first-class seat records under
+  `.seats[]`, not free-form `model_classes` strings. `operator` is not a seat.
+- `tinyland-inc/lab` has a same-named `policy/delegation.json` for
+  interview-HITL work; different schema, not this routing SSOT.
 - Fable-class models take the synthesis/architecture/review seat only. Never
   route adversarial, purple-team, red-team, or deep-iteration hammering work
   to fable; those lanes belong to opus or the operator.

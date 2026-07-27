@@ -26,6 +26,15 @@ let Persona =
       , forbidden_tasks : List Text
       }
 
+let Seat =
+      { id : Text
+      , model_class : Text
+      , cost_tier : Text
+      , default_personas : List Text
+      , forbidden_personas : List Text
+      , notes : Text
+      }
+
 let Lane =
       { route : Text
       , persona : Text
@@ -48,6 +57,7 @@ let Policy =
       , schema_version : Natural
       , metadata : Metadata
       , scarce_resources : List ScarceResource
+      , seats : List Seat
       , personas : List Persona
       , lanes : List Lane
       , enforcement : List Rule
@@ -56,6 +66,7 @@ let Policy =
 
 in  { Metadata
     , ScarceResource
+    , Seat
     , Persona
     , Lane
     , Rule
