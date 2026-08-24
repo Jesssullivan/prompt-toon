@@ -195,7 +195,7 @@
   "policy": {
     "delegation": {
       "file": "policy/delegation.json",
-      "sha256": "78bf2a992e865f27d26f0140205ed15b5a338cffcb1037fd6b027690913536b8"
+      "sha256": "66a8b9c756026524c5b9cbc65e72732305abf5004ff3767a957b0c8228fae370"
     },
     "io": {
       "file": "policy/io.json",
