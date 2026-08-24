@@ -24,6 +24,20 @@ FABLE_FORBIDDEN = {
 # is a policy change that has to move the Dhall, the JSON, and this set.
 SEAT_IDS = {"fable", "opus", "sonnet", "haiku"}
 
+# Harness seats are dispatch identities, not model classes. Same rule: adding
+# or renaming one moves the Dhall, the JSON, the schema enum, and this set.
+HARNESS_SEAT_IDS = {"pi", "pi-k3"}
+
+# The two legs a harness seat can never own, whatever else it is trusted with.
+# Ratification is the operator's WORD; refutation-of-record is the adversarial
+# persona's. A harness seat only ever produces evidence for the fable seat.
+HARNESS_FORBIDDEN = {
+    "word-leg-ratification",
+    "adversarial-refutation-of-record",
+}
+
+HARNESS_POSTURE = "evidentiary-only"
+
 
 def load_policy():
     return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
@@ -109,6 +123,7 @@ class DelegationPolicyTests(unittest.TestCase):
         cls.schema = load_schema()
         cls.personas = {p["id"]: p for p in cls.policy["personas"]}
         cls.seats = {s["id"]: s for s in cls.policy["seats"]}
+        cls.harness_seats = {s["id"]: s for s in cls.policy["harness_seats"]}
 
     def test_schema_version(self):
         self.assertEqual(self.policy["schema_version"], 2)
@@ -123,7 +138,9 @@ class DelegationPolicyTests(unittest.TestCase):
     def test_dhall_source_of_truth_exists(self):
         self.assertTrue(DHALL_TYPE_PATH.is_file())
         self.assertTrue(DHALL_SOURCE_PATH.is_file())
-        self.assertIn("seats : List Seat", DHALL_TYPE_PATH.read_text(encoding="utf-8"))
+        type_text = DHALL_TYPE_PATH.read_text(encoding="utf-8")
+        self.assertIn("seats : List Seat", type_text)
+        self.assertIn("harness_seats : List HarnessSeat", type_text)
 
     def test_json_declares_dhall_regeneration_target(self):
         self.assertIn("dhall-to-json", self.policy["$comment"])
@@ -193,6 +210,68 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertIn("adversarial", self.seats["fable"]["forbidden_personas"])
         self.assertEqual(self.seats["fable"]["cost_tier"], "scarce")
 
+    def test_harness_seat_ids_are_first_class(self):
+        self.assertEqual(set(self.harness_seats), HARNESS_SEAT_IDS)
+        for seat in self.policy["harness_seats"]:
+            self.assertTrue(seat["purpose"].strip(), seat["id"])
+            self.assertTrue(seat["model_lane"].strip(), seat["id"])
+            self.assertTrue(seat["dispatch_surface"].strip(), seat["id"])
+
+    def test_harness_seats_are_evidentiary_only(self):
+        for seat in self.policy["harness_seats"]:
+            self.assertEqual(seat["posture"], HARNESS_POSTURE, seat["id"])
+
+    def test_harness_seats_never_own_the_word_or_refutation_legs(self):
+        for seat in self.policy["harness_seats"]:
+            forbidden = set(seat["forbidden_tasks"])
+            self.assertTrue(
+                HARNESS_FORBIDDEN.issubset(forbidden),
+                f"{seat['id']} must forbid {sorted(HARNESS_FORBIDDEN - forbidden)}",
+            )
+
+    def test_harness_delegable_and_forbidden_are_disjoint(self):
+        for seat in self.policy["harness_seats"]:
+            delegable = set(seat["delegable_tasks"])
+            forbidden = set(seat["forbidden_tasks"])
+            self.assertTrue(delegable, seat["id"])
+            self.assertEqual(
+                delegable & forbidden,
+                set(),
+                f"{seat['id']} both delegates and forbids "
+                f"{sorted(delegable & forbidden)}",
+            )
+
+    def test_harness_dispatch_is_bounded_launchers_not_raw_binaries(self):
+        for seat in self.policy["harness_seats"]:
+            surface = seat["dispatch_surface"]
+            self.assertIn("launcher", surface.lower(), seat["id"])
+            self.assertIn(f"{seat['harness']}-*", surface, seat["id"])
+
+    def test_kimi_reviewer_rides_the_pi_harness(self):
+        # The native kimi CLI has no dispatch envelope, so the Kimi reviewer is
+        # a pi-harness seat. If that ever stops being true the seat record has
+        # to change, not the doctrine quietly.
+        k3 = self.harness_seats["pi-k3"]
+        self.assertEqual(k3["harness"], "pi")
+        self.assertIn("kimi", k3["model_lane"].lower())
+        self.assertEqual(
+            set(k3["delegable_tasks"]),
+            set(self.harness_seats["pi"]["delegable_tasks"]),
+            "pi-k3 must ride the identical technical-review envelope as pi",
+        )
+
+    def test_harness_seats_are_not_model_classes(self):
+        # A harness seat is a dispatch identity. Leaking one into a persona's
+        # model_classes or the model-class seat registry would let it inherit a
+        # routing authority it must never have.
+        self.assertEqual(HARNESS_SEAT_IDS & set(self.seats), set())
+        for persona in self.policy["personas"]:
+            self.assertEqual(
+                HARNESS_SEAT_IDS & set(persona["model_classes"]),
+                set(),
+                persona["id"],
+            )
+
     def test_every_persona_has_purpose_and_doctrine(self):
         for persona in self.policy["personas"]:
             self.assertTrue(persona["purpose"].strip(), persona["id"])
@@ -203,8 +282,30 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertTrue(lane["purpose"].strip(), lane["route"])
 
     def test_lane_personas_resolve(self):
+        # A lane routes to a model-class persona or, for mythos.delegate.*, to
+        # a harness seat. Nothing else resolves.
         for lane in self.policy["lanes"]:
-            self.assertIn(lane["persona"], self.personas, lane["route"])
+            self.assertIn(
+                lane["persona"],
+                set(self.personas) | HARNESS_SEAT_IDS,
+                lane["route"],
+            )
+
+    def test_harness_lanes_and_harness_personas_imply_each_other(self):
+        # The mythos.delegate.* namespace and harness-seat routing are the same
+        # fact stated twice; drift either way is a routing lie.
+        for lane in self.policy["lanes"]:
+            delegate_route = lane["route"].startswith("mythos.delegate.")
+            harness_persona = lane["persona"] in self.harness_seats
+            self.assertEqual(delegate_route, harness_persona, lane["route"])
+
+    def test_harness_lanes_carry_only_evidentiary_work(self):
+        for lane in self.policy["lanes"]:
+            if lane["persona"] not in self.harness_seats:
+                continue
+            seat = self.harness_seats[lane["persona"]]
+            self.assertEqual(seat["posture"], HARNESS_POSTURE, lane["route"])
+            self.assertTrue(lane["purpose"].strip(), lane["route"])
 
     def test_fable_forbids_adversarial_work(self):
         fable = self.personas["fable"]
@@ -216,6 +317,15 @@ class DelegationPolicyTests(unittest.TestCase):
 
     def test_adversarial_lanes_never_route_to_fable(self):
         for lane in self.policy["lanes"]:
+            if lane["persona"] in self.harness_seats:
+                # A harness seat has no model_classes to leak fable through,
+                # and is barred from the refutation-of-record leg outright.
+                self.assertIn(
+                    "adversarial-refutation-of-record",
+                    self.harness_seats[lane["persona"]]["forbidden_tasks"],
+                    lane["route"],
+                )
+                continue
             persona = self.personas[lane["persona"]]
             if lane["persona"] == "adversarial" or "adversarial" in lane["route"]:
                 self.assertNotIn("fable", persona["model_classes"], lane["route"])
@@ -228,8 +338,36 @@ class DelegationPolicyTests(unittest.TestCase):
                 "fable-forbidden-tasks",
                 "purpose-required",
                 "seat-registry-complete",
+                "harness-delegation-envelope",
+                "harness-dispatch-bounded-only",
             }.issubset(errors)
         )
+
+    def test_warn_rules_present(self):
+        warns = {r["id"] for r in self.policy["enforcement"] if r["severity"] == "warn"}
+        self.assertTrue(
+            {"cheap-lane-escalation", "serial-workflow-on-fan-out"}.issubset(warns)
+        )
+
+    def test_fan_out_rule_demands_parallel_lanes_and_names_the_checkpoint(self):
+        # The rule exists to stop a serial mega-workflow from swallowing the
+        # per-lane operator interview checkpoint, so it has to say both halves.
+        rule = next(
+            r for r in self.policy["enforcement"] if r["id"] == "serial-workflow-on-fan-out"
+        )
+        text = rule["rule"].lower()
+        self.assertIn("parallel", text)
+        self.assertIn("never one serial workflow", text)
+        self.assertIn("interview checkpoint", text)
+
+    def test_harness_envelope_rule_names_both_withheld_legs(self):
+        rule = next(
+            r for r in self.policy["enforcement"] if r["id"] == "harness-delegation-envelope"
+        )
+        text = rule["rule"].lower()
+        self.assertIn("delegable_tasks", text)
+        self.assertIn("word", text)
+        self.assertIn("adversarial-refutation-of-record", text)
 
     def test_rule_severities_are_known(self):
         for rule in self.policy["enforcement"]:
@@ -249,6 +387,16 @@ class DelegationPolicyTests(unittest.TestCase):
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
         self.assertIn("policy/delegation.json", skill_text)
 
+    def test_skill_documents_harness_delegation_and_fan_out(self):
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        self.assertIn("harness_seats", skill_text)
+        self.assertIn("## Harness delegation", skill_text)
+        self.assertIn("## Fan-out doctrine", skill_text)
+        for seat_id in HARNESS_SEAT_IDS:
+            self.assertIn(seat_id, skill_text, seat_id)
+        # The cross-repo warning is load-bearing; a rewrite must not drop it.
+        self.assertIn("Do not confuse repos", skill_text)
+
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")
         if dhall_to_json is None:
@@ -267,6 +415,8 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertIn(f'id = "{persona}"', dhall_text, persona)
         for seat in self.seats:
             self.assertIn(f'model_class = "{seat}"', dhall_text, seat)
+        for harness_seat in self.harness_seats:
+            self.assertIn(f'id = "{harness_seat}"', dhall_text, harness_seat)
         for lane in self.policy["lanes"]:
             self.assertIn(f'route = "{lane["route"]}"', dhall_text, lane["route"])
         for rule in self.policy["enforcement"]:

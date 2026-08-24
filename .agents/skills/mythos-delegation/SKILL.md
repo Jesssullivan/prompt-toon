@@ -18,6 +18,7 @@ shape in `policy/delegation.schema.json`). Read it rather than restating it:
 ```sh
 # inside a Jesssullivan/prompt-toon checkout
 jq '.seats[] | {id, cost_tier, default_personas}' policy/delegation.json
+jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks}' policy/delegation.json
 jq '.personas[] | {id, model_classes, forbidden_tasks}' policy/delegation.json
 jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.json
 
@@ -52,6 +53,57 @@ curl -fsSL https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/polic
 the personas it must never serve. `operator` is not a seat: it means the
 operator takes the lane personally.
 
+`pi` and `pi-k3` are **harness** seats under `.harness_seats[]` — dispatch
+identities, not model classes. See "Harness delegation" below.
+
+## Fan-out doctrine
+
+When the operator asks to fan out, that means **parallel ultracode lanes** —
+separate concurrent Workflow invocations — not one serial workflow that walks
+the same work end to end.
+
+The reason is orchestration, not throughput. Parallel lanes return
+independently, and **each return is a Fable↔operator interview checkpoint**:
+plans, todos, and assertions update live, the dialog continues, and HITL stays
+active for review and ratification of merges, `gh api` merges, and priorities.
+A serial mega-workflow hands off for extended periods and suppresses exactly
+that live orchestration — the operator gets one arrival at the end instead of a
+checkpoint per lane.
+
+Decomposing to serial when fan-out was asked for is the warn-class
+`serial-workflow-on-fan-out` violation.
+
+## Harness delegation
+
+Fable may delegate technical and code-quality work — GitHub PR review, review
+commentary, mechanical code-quality output — to the **pi harness seats** under
+`.harness_seats[]`.
+
+```sh
+jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks, dispatch_surface}' policy/delegation.json
+```
+
+- **Posture is evidentiary-only.** A harness review is `adversarial_review_pass`
+  evidence for the synthesis seat. It is never the operator WORD leg, and it
+  never owns the adversarial-refutation-of-record. Each seat's
+  `forbidden_tasks` names both prohibitions explicitly.
+- **Kimi rides `pi-k3`.** The native kimi CLI has no dispatch envelope, so the
+  Kimi reviewer runs on the pi harness as the `pi-k3` seat, on the identical
+  task envelope and posture as `pi`.
+- **Dispatch is exclusively via lab's bounded `pi-*` launchers.** Never execute
+  a raw agent binary as a dispatch or probe surface — that is the error-class
+  `harness-dispatch-bounded-only` violation. (Lab's GUI-launch guard hook
+  denies some raw binaries, `codex` included, but not `pi` — the prohibition
+  here is the policy, not the hook; the lab AGENTS.md sanction line names the
+  bounded launchers as the only dispatch path.)
+- A harness seat may only receive tasks in its own `delegable_tasks`
+  (`harness-delegation-envelope`, error class). Harness seats are dispatch
+  identities, not model classes: they never appear in a persona's
+  `model_classes`.
+
+The `mythos.delegate.review` and `mythos.delegate.mechanical` lanes route to
+harness seats rather than to model-class personas.
+
 ## Attribution
 
 Attribute every synthesis/recon session to a lane in session notes (lab
@@ -64,4 +116,6 @@ Attribute every synthesis/recon session to a lane in session notes (lab
 on: adversarial lanes resolving to fable, missing fable task prohibitions,
 missing purpose strings, JSON that does not validate against
 `policy/delegation.schema.json`, seats that serve a persona excluding them,
-and Dhall/JSON drift on load-bearing IDs. It runs in that repo's `just check`.
+harness seats that claim a ratification or refutation-of-record task, or drop
+the evidentiary-only posture, and Dhall/JSON drift on load-bearing IDs. It runs
+in that repo's `just check`.
