@@ -11,6 +11,7 @@
     "metadata",
     "scarce_resources",
     "seats",
+    "harness_seats",
     "personas",
     "lanes",
     "enforcement",
@@ -90,6 +91,49 @@
         }
       }
     },
+    "harness_seats": {
+      "description": "Agent-harness dispatch identities Fable may delegate bounded technical work to. A harness seat is not a model class and never appears in a persona's model_classes: it names the harness, the model lane it rides, the exact task envelope it may receive, the launcher surface dispatch must go through, and its evidentiary-only posture.",
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "harness",
+          "model_lane",
+          "purpose",
+          "delegable_tasks",
+          "forbidden_tasks",
+          "dispatch_surface",
+          "posture"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/harnessSeatId" },
+          "harness": { "$ref": "#/$defs/harnessId" },
+          "model_lane": { "$ref": "#/$defs/nonEmptyString" },
+          "purpose": { "$ref": "#/$defs/nonEmptyString" },
+          "delegable_tasks": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          },
+          "forbidden_tasks": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          },
+          "dispatch_surface": { "$ref": "#/$defs/nonEmptyString" },
+          "posture": {
+            "description": "Harness output is evidence for the synthesis seat. There is no other posture: a harness seat never carries the operator WORD leg.",
+            "enum": ["evidentiary-only"]
+          }
+        }
+      }
+    },
     "personas": {
       "type": "array",
       "minItems": 1,
@@ -133,7 +177,10 @@
             "type": "string",
             "pattern": "^mythos(\\.[a-z0-9-]+)+$"
           },
-          "persona": { "$ref": "#/$defs/identifier" },
+          "persona": {
+            "description": "A persona id, or a harness seat id for a mythos.delegate.* lane.",
+            "$ref": "#/$defs/identifier"
+          },
           "purpose": { "$ref": "#/$defs/nonEmptyString" }
         }
       }
@@ -180,6 +227,14 @@
     "seatId": {
       "description": "First-class seat names. Adding a seat is a policy change, not a string edit.",
       "enum": ["fable", "opus", "sonnet", "haiku"]
+    },
+    "harnessSeatId": {
+      "description": "First-class harness-seat names. Adding one is a policy change, not a string edit.",
+      "enum": ["pi", "pi-k3"]
+    },
+    "harnessId": {
+      "description": "The agent harness a seat dispatches through. Kimi has no dispatch envelope of its own, so the Kimi reviewer rides the pi harness as pi-k3.",
+      "enum": ["pi"]
     },
     "modelClass": {
       "description": "A seat name, or the operator taking the lane personally.",

@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "ebde3dea7216b3009eadc6bf32462232142ecd0aa4273fc1825f331902395039"
+      "sha256": "4d1a255560dcf4f0500cfa1462d4240f1e079cd497624b3a72ee26aba62731f1"
     },
     "nix": {
       "enabled": true
@@ -45,11 +45,11 @@
   "policy": [
     {
       "file": "policy/delegation.json",
-      "sha256": "78bf2a992e865f27d26f0140205ed15b5a338cffcb1037fd6b027690913536b8"
+      "sha256": "66a8b9c756026524c5b9cbc65e72732305abf5004ff3767a957b0c8228fae370"
     },
     {
       "file": "policy/delegation.schema.json",
-      "sha256": "b067047ac1556c3ceb06f0cb3b65ae6ee8919cf24c4ae4b03209747dae415290"
+      "sha256": "9bb3ed0ee6ffcb93ebe169e8a646f062d3629b1b11a58136db0e54b7e7d361df"
     },
     {
       "file": "policy/io.json",
