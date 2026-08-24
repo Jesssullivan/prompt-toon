@@ -1,18 +1,22 @@
 {-
 Toon of Mythos delegation policy — typed source of truth.
 
-Regeneration target once dhall tooling is in the dev shell:
+policy/delegation.json is generated from this file. dhall-json ships in the
+flake dev shell, so the regeneration path is live:
 
-    dhall-to-json --file policy/dhall/delegation.dhall > policy/delegation.json
+    just gen-policy
+    # == dhall-to-json --pretty --file policy/dhall/delegation.dhall
 
-Until then policy/delegation.json is the hand-synced validated transition
-artifact and tests/test_delegation_policy.py enforces its invariants.
+Degraded mode (dhall-to-json off PATH) is still supported: hand-sync the JSON
+to this source byte-for-byte, per the lab test/dhall convention.
+tests/test_delegation_policy.py enforces the invariants either way, and
+compares generated-vs-committed whenever dhall-to-json is reachable.
 -}
 
 let T = ./DelegationPolicy.dhall
 
 in    { `$comment` =
-          "Validated transition artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall). Hand-synced while dhall tooling is absent from the dev shell (normal degraded mode per lab test/dhall convention). Document shape is described by policy/delegation.schema.json. Invariants enforced by tests/test_delegation_policy.py."
+          "Generated artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall); dhall-json ships in the flake dev shell. Degraded mode when dhall-to-json is off PATH: hand-sync this file to the Dhall byte-for-byte, per the lab test/dhall convention. Document shape is described by policy/delegation.schema.json. Invariants enforced by tests/test_delegation_policy.py."
       , schema_version = 2
       , metadata =
           { name = "toon-of-mythos-delegation"
@@ -64,6 +68,42 @@ in    { `$comment` =
             , forbidden_personas = [ "adversarial" ]
             , notes =
                 "Cheapest seat: locators, inventories, shallow greps, format conversions, and checklist execution."
+            }
+          ]
+      , harness_seats =
+          [ { id = "pi"
+            , harness = "pi"
+            , model_lane = "provider-managed"
+            , purpose =
+                "Bounded technical-review harness seat. Fable delegates GitHub PR review, review commentary, and mechanical code-quality output here and reads the result back as evidence."
+            , delegable_tasks =
+                [ "technical-review", "pr-review", "code-quality-mechanical" ]
+            , forbidden_tasks =
+                [ "word-leg-ratification"
+                , "adversarial-refutation-of-record"
+                , "final-synthesis"
+                , "secret-mutation"
+                ]
+            , dispatch_surface =
+                "lab-managed bounded pi-* launchers (never raw binaries)"
+            , posture = "evidentiary-only"
+            }
+          , { id = "pi-k3"
+            , harness = "pi"
+            , model_lane = "kimi-coding/k3"
+            , purpose =
+                "This IS the Kimi reviewer lane: Kimi rides the pi harness because the native kimi CLI has no dispatch envelope. Same bounded technical-review envelope and same evidentiary-only posture as the pi seat."
+            , delegable_tasks =
+                [ "technical-review", "pr-review", "code-quality-mechanical" ]
+            , forbidden_tasks =
+                [ "word-leg-ratification"
+                , "adversarial-refutation-of-record"
+                , "final-synthesis"
+                , "secret-mutation"
+                ]
+            , dispatch_surface =
+                "lab-managed bounded pi-* launchers (never raw binaries)"
+            , posture = "evidentiary-only"
             }
           ]
       , personas =
@@ -137,6 +177,16 @@ in    { `$comment` =
             , persona = "mechanical"
             , purpose = "File, directory, and config locators and inventories."
             }
+          , { route = "mythos.delegate.review"
+            , persona = "pi"
+            , purpose =
+                "Technical review delegated to a harness seat: GitHub PR review and review commentary, returned as adversarial_review_pass evidence for the fable synthesis seat. Kimi rides pi-k3 on the identical envelope. Never the operator WORD leg."
+            }
+          , { route = "mythos.delegate.mechanical"
+            , persona = "pi"
+            , purpose =
+                "Mechanical code-quality output delegated to a harness seat: lint-shaped findings, structural nits, and checklist sweeps over a diff. Evidence only; the ruling stays with the operator and the fable seat."
+            }
           ]
       , enforcement =
           [ { id = "no-adversarial-on-fable"
@@ -168,6 +218,21 @@ in    { `$comment` =
             , severity = "warn"
             , rule =
                 "Harness default model selection stays provider-managed; do not pin fable, opus, sonnet, or haiku globally unless a host-level override is explicitly justified."
+            }
+          , { id = "harness-delegation-envelope"
+            , severity = "error"
+            , rule =
+                "A harness seat may only receive tasks listed in its own delegable_tasks. It never owns the operator WORD/ratification leg and never owns the adversarial-refutation-of-record; harness output is evidence for the fable synthesis seat, never the ruling. A lane routed to a harness seat therefore carries evidentiary work only."
+            }
+          , { id = "harness-dispatch-bounded-only"
+            , severity = "error"
+            , rule =
+                "Harness dispatch goes through the lab-managed bounded launchers named in the seat's dispatch_surface (the pi-* wrappers). Never execute a raw agent binary as a dispatch or probe surface."
+            }
+          , { id = "serial-workflow-on-fan-out"
+            , severity = "warn"
+            , rule =
+                "When the operator asks to fan out, decompose the work into parallel concurrent workflow lanes, never one serial workflow. Each lane return is a Fable-operator interview checkpoint — live re-planning plus HITL ratification of merges and priorities — which a serial handoff suppresses."
             }
           ]
       , attribution =
