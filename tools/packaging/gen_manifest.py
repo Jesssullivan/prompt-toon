@@ -7,6 +7,17 @@ hand-edited. The manifest is COMMITTED and drift-gated (the repo's proven
 dhall->json pattern: regenerate + byte-diff in CI), because nix cannot run
 Bazel inside its sandbox — the committed artifact is the consumption point.
 
+SKILL BYTES: `skills[]` is a bare NAME list and stays one — flake.nix
+interpolates it straight into `cp -R .agents/skills/${skill}`. Names alone
+authenticate nothing, so `skill_files[]` is the PARALLEL byte binding: for
+every skill, every file in its directory (sorted skill-dir-relative POSIX
+path, nothing excluded) with its sha256. A hand-edit to any SKILL.md body
+now moves a committed digest and fails the drift gate. The parallel-field
+shape was chosen over reshaping `skills[]` into objects precisely because
+it breaks no reader: the flake copy loop, the derived release lanes, and
+any external consumer of `.skills[]` keep working unchanged, which is also
+why `schema_version` stays 2 (purely additive).
+
 VERSION SSOT: `prompt_toon/__init__.py:__version__` is the one string a
 release bump edits. pyproject.toml derives it (setuptools dynamic version);
 the nix derivations read it out of this manifest; this generator asserts
@@ -191,6 +202,36 @@ def validate_universal_wheel(path: Path, version: str) -> None:
         )
 
 
+def skill_file_entries(skill_dir: Path) -> list[dict[str, str]]:
+    """Digest EVERY file shipped in one skill directory.
+
+    A skill's payload is its whole directory, not just `SKILL.md`, so the
+    walk is total: sorted by skill-dir-relative POSIX path, and nothing is
+    excluded silently. Anything that cannot be digested reproducibly (a
+    symlink, a fifo, a socket) is a loud failure rather than a quiet skip —
+    a silent skip is exactly the hole this field exists to close.
+    """
+
+    entries: list[dict[str, str]] = []
+    for path in skill_dir.rglob("*"):
+        if path.is_dir() and not path.is_symlink():
+            continue
+        relative = path.relative_to(skill_dir).as_posix()
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit(
+                f"gen_manifest: skill file {skill_dir.name}/{relative} must be a "
+                "regular file; symlinks and special files cannot be digested "
+                "reproducibly and must not be shipped in a skill directory"
+            )
+        entries.append({"path": relative, "sha256": file_digest(path)})
+    if not entries:
+        raise SystemExit(
+            f"gen_manifest: skill {skill_dir.name} ships no files; an empty "
+            "skill directory would bind no bytes at all"
+        )
+    return sorted(entries, key=lambda entry: entry["path"])
+
+
 def policy_entries() -> list[dict[str, str]]:
     return [
         {"file": f"policy/{p.name}", "sha256": file_digest(p)}
@@ -365,11 +406,15 @@ def build_manifest(args: argparse.Namespace) -> dict:
     assert_declared_versions_agree(version)
     release_signer = release_signer_entry()
 
-    skills = sorted(
-        validate_package_component("skill", p.name)
-        for p in (ROOT / ".agents" / "skills").iterdir()
-        if p.is_dir()
+    skill_dirs = sorted(
+        (p for p in (ROOT / ".agents" / "skills").iterdir() if p.is_dir()),
+        key=lambda p: p.name,
     )
+    skills = [validate_package_component("skill", p.name) for p in skill_dirs]
+    # skills[] stays a bare NAME list because flake.nix interpolates it
+    # directly (`cp -R .agents/skills/${skill}`); skill_files[] is the
+    # PARALLEL byte binding, so adding it breaks no existing reader.
+    skill_files = [{"name": p.name, "files": skill_file_entries(p)} for p in skill_dirs]
     policy = policy_entries()
     home_manager_contract = rendered_home_manager_contract(version, policy_digest_map())
     home_manager_sha256 = sha256(home_manager_contract.encode("utf-8")).hexdigest()
@@ -449,6 +494,7 @@ def build_manifest(args: argparse.Namespace) -> dict:
         },
         "targets": [*ptoon_targets, python_target],
         "skills": skills,
+        "skill_files": skill_files,
         "policy": policy,
         "derived_lanes": {
             "nix": {"enabled": True},
