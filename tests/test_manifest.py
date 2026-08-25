@@ -1,17 +1,21 @@
 """tests/test_manifest.py -- TIN-2706 packaging-SSOT manifest coverage.
 
 The committed packaging/manifest.json is the consumption point (nix
-importJSON reads version + skills from it), so three properties are
+importJSON reads version + skills from it), so four properties are
 load-bearing: it must not drift from repo truth (the generator is the only
 writer), the version SSOT chain must hold (one string in
-prompt_toon/__init__.py, everything else derived or drift-gated), and the
+prompt_toon/__init__.py, everything else derived or drift-gated), the
 policy[] digests must actually authenticate the policy artifacts they
-name (packaging integrity ties to the delegation/io SSOTs).
+name (packaging integrity ties to the delegation/io SSOTs), and
+skill_files[] must authenticate the shipped skill BYTES — skills[] is only
+a name list, and a name list would let a hand-edit to any SKILL.md body
+pass every gate silently.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -408,6 +412,115 @@ class ManifestTests(unittest.TestCase):
             self.assertEqual(
                 gen_manifest.validate_package_component("skill", skill), skill
             )
+        # skills[] stays a bare NAME list on purpose: flake.nix interpolates
+        # it straight into `cp -R .agents/skills/${skill}`, so reshaping it
+        # into objects would break the copy loop and every derived lane.
+        # skill_files[] is the parallel byte binding instead.
+        for skill in self.manifest["skills"]:
+            self.assertIsInstance(skill, str)
+        self.assertEqual(
+            [entry["name"] for entry in self.manifest["skill_files"]],
+            self.manifest["skills"],
+            "skill_files[] must cover exactly skills[], in the same order",
+        )
+
+    def test_skill_files_digest_every_shipped_skill_byte(self):
+        # The name-set gate above cannot see a hand-edit to a SKILL.md body.
+        # Recompute every digest directly (not merely via the regenerate-and-
+        # byte-diff drift gate) so the failure NAMES the drifted file instead
+        # of reporting an opaque whole-manifest mismatch.
+        skills_root = ROOT / ".agents" / "skills"
+        for entry in self.manifest["skill_files"]:
+            name = entry["name"]
+            skill_dir = skills_root / name
+            paths = [record["path"] for record in entry["files"]]
+
+            self.assertEqual(
+                paths, sorted(paths), f"{name}: skill_files[].files must be sorted"
+            )
+            self.assertEqual(
+                len(paths), len(set(paths)), f"{name}: duplicate skill file path"
+            )
+            on_disk = sorted(
+                p.relative_to(skill_dir).as_posix()
+                for p in skill_dir.rglob("*")
+                if p.is_file()
+            )
+            self.assertEqual(
+                paths,
+                on_disk,
+                f"{name}: skill_files[] must digest EVERY file in the skill "
+                "directory — nothing excluded, nothing invented; regenerate "
+                "packaging/manifest.json",
+            )
+
+            for record in entry["files"]:
+                path = skill_dir / record["path"]
+                self.assertFalse(
+                    path.is_symlink(),
+                    f".agents/skills/{name}/{record['path']} is a symlink and "
+                    "cannot be digested reproducibly",
+                )
+                self.assertEqual(
+                    sha256(path.read_bytes()).hexdigest(),
+                    record["sha256"],
+                    f"skill byte drift: .agents/skills/{name}/{record['path']} "
+                    "does not match its committed manifest digest — the file "
+                    "was edited without regenerating packaging/manifest.json",
+                )
+
+    def test_skill_file_walk_excludes_nothing_and_refuses_undigestable_files(self):
+        # Written to a tempdir: the bazel test sandbox (correctly) forbids
+        # writes to input paths.
+        tmp = Path(tempfile.mkdtemp(prefix="ptoon-skill-walk-test-"))
+        skill = tmp / "example-skill"
+        (skill / "references").mkdir(parents=True)
+        (skill / "SKILL.md").write_bytes(b"body\n")
+        (skill / "references" / "note.md").write_bytes(b"note\n")
+        # A dotfile and an extensionless file are still shipped bytes.
+        (skill / ".metadata").write_bytes(b"meta\n")
+        (skill / "references" / "LICENSE").write_bytes(b"license\n")
+
+        entries = gen_manifest.skill_file_entries(skill)
+        self.assertEqual(
+            [entry["path"] for entry in entries],
+            [".metadata", "SKILL.md", "references/LICENSE", "references/note.md"],
+        )
+        self.assertEqual(entries[1]["sha256"], sha256(b"body\n").hexdigest())
+
+        (skill / "link.md").symlink_to(skill / "SKILL.md")
+        with self.assertRaises(SystemExit) as caught:
+            gen_manifest.skill_file_entries(skill)
+        self.assertIn("link.md", str(caught.exception))
+
+        empty = tmp / "empty-skill"
+        empty.mkdir()
+        with self.assertRaises(SystemExit):
+            gen_manifest.skill_file_entries(empty)
+
+    def test_bazel_skill_filegroup_declares_every_skill_file(self):
+        # The drift gate regenerates the manifest inside the test sandbox, so
+        # the generator now needs every skill file's BYTES in runfiles — not
+        # just enough files for the directories to exist. An under-declared
+        # :skills filegroup would surface as an opaque byte-diff; name it here.
+        build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
+        match = re.search(
+            r'filegroup\(\s*name = "skills",\s*srcs = \[(?P<srcs>.*?)\]', build, re.S
+        )
+        self.assertIsNotNone(match, "BUILD.bazel has no :skills filegroup")
+        declared = sorted(re.findall(r'"([^"]+)"', match.group("srcs")))
+        skills_root = ROOT / ".agents" / "skills"
+        on_disk = sorted(
+            p.relative_to(ROOT).as_posix()
+            for p in skills_root.rglob("*")
+            if p.is_file()
+        )
+        self.assertEqual(
+            declared,
+            on_disk,
+            "BUILD.bazel :skills must list every file under .agents/skills/ so "
+            "//tools/packaging:manifest_drift_test can digest them in-sandbox",
+        )
 
     def test_unsafe_skill_names_fail_before_packaging_interpolation(self):
         for name in ("bad/name", "bad name", "bad;name", "../escape"):

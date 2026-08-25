@@ -447,6 +447,15 @@ skill set is the manifest's `skills[]`, and the one residual static
 declaration (MODULE.bazel, cosmetic until the registry lane opens) is
 asserted equal by the generator. `policy[]` carries sha256 digests of the
 delegation/io SSOT artifacts, tying packaging integrity to INV-8.
+SKILL BYTES: `skills[]` alone binds only NAMES, so a hand-edit to any
+`SKILL.md` body used to pass every gate silently. `skill_files[]` closes
+that hole — `[{name, files: [{path, sha256}]}]`, a total sorted walk of each
+skill directory with nothing excluded. It is a PARALLEL field rather than a
+reshaped `skills[]` because `skills[]` has a live consumer that needs bare
+strings (flake.nix `cp -R .agents/skills/${skill}`); parallel is purely
+additive, so no reader breaks and `schema_version` stays 2. `//:skills` must
+therefore declare every skill file, not just the directories, so the
+in-sandbox drift gate can hash them.
 DETERMINISM SPLIT: the committed manifest is a pure function of repo
 content (`git_rev: UNSTAMPED`, targets[] sha256/entrypoint_sha256 null); the
 release lane re-runs the generator with `--git-rev`, `--tag`, `--ci-run`,
