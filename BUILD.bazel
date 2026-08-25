@@ -20,6 +20,9 @@ filegroup(
     srcs = glob(["policy/**"]),
 )
 
+# Every file under .agents/skills/, exhaustively: the packaging manifest's
+# skill_files[] digests all of them, so an under-declared list here would
+# starve the in-sandbox drift gate of bytes it must hash.
 filegroup(
     name = "skills",
     srcs = [
@@ -85,9 +88,11 @@ sh_test(
 )
 
 # TIN-2706: everything the packaging-manifest generator reads, so the drift
-# gate can regenerate the manifest inside the test sandbox. Skill dirs are
-# represented by :skills (iterdir only needs the directories to exist in
-# runfiles, which their SKILL.md files guarantee).
+# gate can regenerate the manifest inside the test sandbox. Skill dirs come in
+# via :skills, which must list EVERY file under .agents/skills/ — the manifest's
+# skill_files[] digests each one, so directory existence is no longer enough
+# (asserted by tests/test_manifest.py::
+# test_bazel_skill_filegroup_declares_every_skill_file).
 filegroup(
     name = "manifest_srcs",
     srcs = [
