@@ -171,7 +171,11 @@ resident 64-stream production path, which remains covered by
 
 `packaging/manifest.json` is the committed, drift-gated packaging SSOT
 (TIN-2706): version, skills, policy digests, and per-lane enablement all
-derive from it. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
+derive from it. `skills[]` is the shipped-skill NAME list the flake copy loop
+interpolates; `skill_files[]` is the parallel byte binding — every file in
+every skill directory (sorted, nothing excluded) with its sha256 — so editing
+any `SKILL.md` body without regenerating fails the drift gate instead of
+shipping silently. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
 regenerates via `just manifest`, merges, then `just release X.Y.Z` — Linux
 parity/build, an exact attended GF Darwin output-to-Nix bridge, a stamped
 manifest, wheel, and full Nix closure exports. The Darwin bridge verifies the
