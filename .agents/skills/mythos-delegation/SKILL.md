@@ -104,6 +104,37 @@ jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks, dispa
 The `mythos.delegate.review` and `mythos.delegate.mechanical` lanes route to
 harness seats rather than to model-class personas.
 
+## Process control (R-N11) and hook refusals (R-N12)
+
+Ratified operator interview 2026-09-20, TIN-3692 (`lab` AGENTS.md Hard Rules
+"R-N11" / "R-N12"; the same incident is also the reason `lab`'s
+`process_signal_boundary` house rule was broadened that day). Both are
+encoded in `.enforcement[]` (`process-control-absolute`,
+`hook-refusal-is-stop`, both error-severity) and `process-control` is a
+`forbidden_tasks` entry on every persona and every harness seat.
+
+- **R-N11 — no seat, harness seat, or persona ever signals a process, on any
+  host, in any form.** No `kill`, `pkill`, `killall`, `tmux
+  kill-server`/`kill-session`/`kill-pane`/`kill-window`, `systemctl
+  stop`/`kill`, or `launchctl kill`/`bootout` — not a name pattern, not a
+  literal PID, regardless of what the target looks like. This is absolute
+  and binds `.seats[]` (`fable`/`opus`/`sonnet`/`haiku`) too, even though
+  that record's schema has no `forbidden_tasks` slot — the
+  `process-control-absolute` enforcement rule is the schema-appropriate
+  global carrier for those four. Ask the operator; do not act.
+- **R-N12 — a guard-hook refusal is a stop, not friction to route around.**
+  Quote the refusal verbatim to the operator and propose at most one
+  materially different alternative — never a reworded or re-encoded form of
+  the same refused command — before asking. Reformulating a refused command
+  to evade the pattern is itself a violation. This governs conduct, not
+  routing, so there is nothing else in the schema to attach it to beyond the
+  `enforcement` rule above and this prose.
+
+The incident: an agent walked a preview server's process ancestry to PID 1,
+found the operator's own tmux server, and killed it with a literal PID after
+the guard hook had already refused the command twice. Critical work was
+lost.
+
 ## Attribution
 
 Attribute every synthesis/recon session to a lane in session notes (lab
@@ -119,3 +150,7 @@ missing purpose strings, JSON that does not validate against
 harness seats that claim a ratification or refutation-of-record task, or drop
 the evidentiary-only posture, and Dhall/JSON drift on load-bearing IDs. It runs
 in that repo's `just check`.
+
+Ratified 2026-09-20 (TIN-3692): `process-control-absolute` (R-N11) and
+`hook-refusal-is-stop` (R-N12) join the error-class enforcement rules. See
+"Process control (R-N11) and hook refusals (R-N12)" above.

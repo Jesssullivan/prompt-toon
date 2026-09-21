@@ -42,3 +42,20 @@ just gen-policy
 Warn-class rules (encoded as data in `enforcement`, not test failures):
 research/mechanical lanes escalating to fable; pinning default model
 selection instead of leaving it provider-managed.
+
+Error-class, ratified 2026-09-20 (operator interview, TIN-3692; see `lab`
+AGENTS.md Hard Rules "R-N11" / "R-N12"):
+
+- **R-N11 (`process-control-absolute`)**: no seat, harness seat, or persona
+  ever signals a process — `kill`, `pkill`, `killall`, `tmux
+  kill-server`/`kill-session`/`kill-pane`/`kill-window`, `systemctl
+  stop`/`kill`, `launchctl kill`/`bootout` — on any host, in any form, not a
+  name pattern, not a literal PID. Encoded as `process-control` in every
+  persona's and every harness seat's `forbidden_tasks`, plus the
+  `process-control-absolute` enforcement rule as the global carrier for
+  `.seats[]`, whose schema has no `forbidden_tasks` slot.
+- **R-N12 (`hook-refusal-is-stop`)**: a guard-hook refusal is a stop; quote
+  it verbatim and propose at most one materially different alternative
+  before asking. Reformulating a refused command to evade the pattern is
+  itself a violation. This is a conduct rule with no other schema slot;
+  it lives in `enforcement` and in the `mythos-delegation` SKILL prose.
