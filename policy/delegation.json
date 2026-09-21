@@ -57,6 +57,16 @@
       "id": "serial-workflow-on-fan-out",
       "rule": "When the operator asks to fan out, decompose the work into parallel concurrent workflow lanes, never one serial workflow. Each lane return is a Fable-operator interview checkpoint — live re-planning plus HITL ratification of merges and priorities — which a serial handoff suppresses.",
       "severity": "warn"
+    },
+    {
+      "id": "process-control-absolute",
+      "rule": "No seat, harness seat, or persona may signal a process in any form -- kill, pkill, killall, tmux kill-server/kill-session/kill-pane/kill-window, systemctl stop/kill, launchctl kill/bootout, a literal PID, or any other process signal. This is absolute and has no exception; it binds every seat and persona even where forbidden_tasks has no slot (the seats record: fable, opus, sonnet, haiku). Ratified operator interview 2026-09-20 (R-N11), TIN-3692: an agent walked process ancestry to PID 1, found the operator's tmux server, and killed it after a guard hook had already refused the command twice; critical work was lost.",
+      "severity": "error"
+    },
+    {
+      "id": "hook-refusal-is-stop",
+      "rule": "A guard-hook refusal is a stop, not friction to route around. Quote the refusal verbatim to the operator and propose at most one materially different alternative -- never a reworded or re-encoded form of the same refused command -- before asking. Reformulating a refused command to evade the pattern is itself a ruling violation, independent of what the refused command was trying to do. Ratified operator interview 2026-09-20 (R-N12), TIN-3692.",
+      "severity": "error"
     }
   ],
   "harness_seats": [
@@ -71,7 +81,8 @@
         "word-leg-ratification",
         "adversarial-refutation-of-record",
         "final-synthesis",
-        "secret-mutation"
+        "secret-mutation",
+        "process-control"
       ],
       "harness": "pi",
       "id": "pi",
@@ -90,7 +101,8 @@
         "word-leg-ratification",
         "adversarial-refutation-of-record",
         "final-synthesis",
-        "secret-mutation"
+        "secret-mutation",
+        "process-control"
       ],
       "harness": "pi",
       "id": "pi-k3",
@@ -162,7 +174,8 @@
         "purple-team",
         "red-team",
         "deep-iteration-hammering",
-        "bulk-execution"
+        "bulk-execution",
+        "process-control"
       ],
       "id": "fable",
       "model_classes": [
@@ -172,7 +185,9 @@
     },
     {
       "doctrine": "Route to opus or the operator personally. Never route to fable by default. Prompt the skeptic to refute, not to agree.",
-      "forbidden_tasks": [],
+      "forbidden_tasks": [
+        "process-control"
+      ],
       "id": "adversarial",
       "model_classes": [
         "opus",
@@ -183,7 +198,8 @@
     {
       "doctrine": "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction, opus for the deepest research lanes.",
       "forbidden_tasks": [
-        "final-synthesis"
+        "final-synthesis",
+        "process-control"
       ],
       "id": "research",
       "model_classes": [
@@ -197,7 +213,8 @@
       "doctrine": "Cheapest lane. Keep prompts narrow and mechanical; return raw structured data.",
       "forbidden_tasks": [
         "design-decisions",
-        "final-synthesis"
+        "final-synthesis",
+        "process-control"
       ],
       "id": "mechanical",
       "model_classes": [

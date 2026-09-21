@@ -83,6 +83,7 @@ in    { `$comment` =
                 , "adversarial-refutation-of-record"
                 , "final-synthesis"
                 , "secret-mutation"
+                , "process-control"
                 ]
             , dispatch_surface =
                 "lab-managed bounded pi-* launchers (never raw binaries)"
@@ -100,6 +101,7 @@ in    { `$comment` =
                 , "adversarial-refutation-of-record"
                 , "final-synthesis"
                 , "secret-mutation"
+                , "process-control"
                 ]
             , dispatch_surface =
                 "lab-managed bounded pi-* launchers (never raw binaries)"
@@ -119,6 +121,7 @@ in    { `$comment` =
                 , "red-team"
                 , "deep-iteration-hammering"
                 , "bulk-execution"
+                , "process-control"
                 ]
             }
           , { id = "adversarial"
@@ -127,7 +130,7 @@ in    { `$comment` =
                 "Adversarial, purple-team, red-team, refutation, and deep-iteration verification lanes."
             , doctrine =
                 "Route to opus or the operator personally. Never route to fable by default. Prompt the skeptic to refute, not to agree."
-            , forbidden_tasks = [] : List Text
+            , forbidden_tasks = [ "process-control" ]
             }
           , { id = "research"
             , model_classes = [ "haiku", "sonnet", "opus" ]
@@ -135,7 +138,7 @@ in    { `$comment` =
                 "Wide research, deep Linear exploration, web sweeps, multi-repo recon."
             , doctrine =
                 "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction, opus for the deepest research lanes."
-            , forbidden_tasks = [ "final-synthesis" ]
+            , forbidden_tasks = [ "final-synthesis", "process-control" ]
             }
           , { id = "mechanical"
             , model_classes = [ "haiku" ]
@@ -143,7 +146,8 @@ in    { `$comment` =
                 "Locators, inventories, shallow greps, format conversions, checklist execution."
             , doctrine =
                 "Cheapest lane. Keep prompts narrow and mechanical; return raw structured data."
-            , forbidden_tasks = [ "design-decisions", "final-synthesis" ]
+            , forbidden_tasks =
+                [ "design-decisions", "final-synthesis", "process-control" ]
             }
           ]
       , lanes =
@@ -233,6 +237,16 @@ in    { `$comment` =
             , severity = "warn"
             , rule =
                 "When the operator asks to fan out, decompose the work into parallel concurrent workflow lanes, never one serial workflow. Each lane return is a Fable-operator interview checkpoint — live re-planning plus HITL ratification of merges and priorities — which a serial handoff suppresses."
+            }
+          , { id = "process-control-absolute"
+            , severity = "error"
+            , rule =
+                "No seat, harness seat, or persona may signal a process in any form -- kill, pkill, killall, tmux kill-server/kill-session/kill-pane/kill-window, systemctl stop/kill, launchctl kill/bootout, a literal PID, or any other process signal. This is absolute and has no exception; it binds every seat and persona even where forbidden_tasks has no slot (the seats record: fable, opus, sonnet, haiku). Ratified operator interview 2026-09-20 (R-N11), TIN-3692: an agent walked process ancestry to PID 1, found the operator's tmux server, and killed it after a guard hook had already refused the command twice; critical work was lost."
+            }
+          , { id = "hook-refusal-is-stop"
+            , severity = "error"
+            , rule =
+                "A guard-hook refusal is a stop, not friction to route around. Quote the refusal verbatim to the operator and propose at most one materially different alternative -- never a reworded or re-encoded form of the same refused command -- before asking. Reformulating a refused command to evade the pattern is itself a ruling violation, independent of what the refused command was trying to do. Ratified operator interview 2026-09-20 (R-N12), TIN-3692."
             }
           ]
       , attribution =
