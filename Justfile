@@ -93,8 +93,18 @@ policy-verify:
 gen-policy:
     cd {{root}} && if command -v dhall-to-json >/dev/null 2>&1; then dhall-to-json --pretty --file policy/dhall/delegation.dhall > policy/delegation.json && dhall-to-json --pretty --file policy/dhall/io.dhall > policy/io.json && just policy-verify; else echo "dhall-to-json not on PATH (degraded mode); validated JSON artifacts remain unchanged"; fi
 
+# Bazel --output_user_root for bazel-graph, bazel-chapel-toolchain-contract and
+# bazel-test (lab TIN-4631), in order: BAZEL_OUTPUT_USER_ROOT when set; no flag
+# when ~/.bazelrc already declares `startup --output_user_root`, so the host's
+# rc wins (sting's is on /srv/fast-local); otherwise
+# ${XDG_CACHE_HOME:-$HOME/.cache}/bazel/<repo>-user-root. Never $TMPDIR or
+# /tmp: the root holds Bazel's install base and output bases.
+
 bazel-graph:
-    cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
+    cd {{root}} && if [ -n "${BAZEL_OUTPUT_USER_ROOT:-}" ]; then set -- --output_user_root="${BAZEL_OUTPUT_USER_ROOT}"; \
+      elif grep -Eqs '^[[:space:]]*startup[[:space:]]+--output_user_root=' "${HOME:-}/.bazelrc"; then set --; \
+      else set -- --output_user_root="${XDG_CACHE_HOME:-$HOME/.cache}/bazel/prompt-toon-user-root"; fi \
+      && bazelisk "$@" mod graph >/dev/null
 
 # TIN-2949: analysis-only platform/toolchain proof. This runs no Chapel action:
 # both platforms resolve their exact implementation and remain non-cacheable;
@@ -103,8 +113,10 @@ bazel-chapel-toolchain-contract:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{root}}
-    output_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}"
-    bazel=(bazelisk --output_user_root="${output_root}")
+    if [ -n "${BAZEL_OUTPUT_USER_ROOT:-}" ]; then set -- --output_user_root="${BAZEL_OUTPUT_USER_ROOT}"
+    elif grep -Eqs '^[[:space:]]*startup[[:space:]]+--output_user_root=' "${HOME:-}/.bazelrc"; then set --
+    else set -- --output_user_root="${XDG_CACHE_HOME:-$HOME/.cache}/bazel/prompt-toon-user-root"; fi
+    bazel=(bazelisk "$@")
     linux_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-linux-toolchain.XXXXXX")"
     darwin_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-toolchain.XXXXXX")"
     darwin_smoke_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-smoke.XXXXXX")"
@@ -143,7 +155,10 @@ bazel-chapel-toolchain-contract:
     echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux/Darwin compile and Darwin native smoke are non-cacheable)"
 
 bazel-test:
-    cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
+    cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && if [ -n "${BAZEL_OUTPUT_USER_ROOT:-}" ]; then set -- --output_user_root="${BAZEL_OUTPUT_USER_ROOT}"; \
+      elif grep -Eqs '^[[:space:]]*startup[[:space:]]+--output_user_root=' "${HOME:-}/.bazelrc"; then set --; \
+      else set -- --output_user_root="${XDG_CACHE_HOME:-$HOME/.cache}/bazel/prompt-toon-user-root"; fi \
+      && bazelisk "$@" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
 
 check: compile-check secrets-scan test quality-fixtures bazel-graph bazel-chapel-toolchain-contract bazel-test
 
