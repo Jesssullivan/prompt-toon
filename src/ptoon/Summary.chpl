@@ -31,7 +31,7 @@ module Summary {
   use List;
   use Cards, Defang;
 
-  /* rough_token_count (cli.py:296-298): re.findall(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]").
+  /* rough_token_count (cli.py): re.findall(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]").
    * A maximal ASCII-word run counts 1; any other non-whitespace codepoint
    * counts 1; Python-whitespace separates and never counts. */
   private inline proc isAsciiWordCp(cp: int(32)): bool {
@@ -201,7 +201,8 @@ module Summary {
     return acc + "\n";
   }
 
-  /* command_condense's manifest (cli.py:637-661), jsonl default path, as
+  /* command_condense's manifest (_build_python_condense in cli.py), jsonl
+   * default path, as
    * COMPACT sorted-key JSON. VALUE-exact bar (the gate re-serializes via
    * Python's json module); minToonSavings and tierOverridesJson are echoed
    * verbatim (caller-validated JSON fragments). */
