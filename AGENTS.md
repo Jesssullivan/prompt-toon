@@ -57,6 +57,12 @@ this repository's product and dependency boundaries.
   to fable; those lanes belong to opus or the operator.
 - Research, Linear exploration, and web sweeps go to haiku/sonnet/opus lanes;
   locators and inventories go to haiku.
+- J81 (2026-10-23): Opus 5.5 (`claude-opus-5-5`) is the default for
+  mission-critical lanes: implementation that merges, merge-gating and
+  adversarial review, security-sensitive work, cluster and host acts. Sonnet
+  5.5 and Haiku 5.5 are used freely for research, drafting and mechanical
+  lanes. When Opus quota runs out Sonnet may continue a critical lane; its
+  merges wait for an Opus review and the downgrade goes in the receipt.
 - `tests/test_delegation_policy.py` enforces the fail-closed invariants as
   part of `just check`. Skill surface: `.agents/skills/mythos-delegation/`.
 

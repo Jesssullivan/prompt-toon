@@ -1,6 +1,6 @@
 ---
 name: mythos-delegation
-description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model for a lane, deciding whether a fable-class model should run a task, or attributing a session to a lane. Core rule - never route adversarial, purple-team, red-team, or deep-iteration hammering work to fable-class models.
+description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model for a lane, deciding whether a fable-class model should run a task, or attributing a session to a lane. Core rules - rely on Opus 5.5 (claude-opus-5-5) for mission-critical work such as merging implementation, merge-gating review and host acts; use Sonnet 5.5 and Haiku 5.5 freely for research, drafting and mechanical lanes; never route adversarial, purple-team, red-team or deep-iteration hammering work to fable-class models.
 when_to_use: Spawning subagents/workflows, picking model classes for lanes, session attribution, or reviewing whether scarce fable tokens and operator attention are being spent where they shine.
 ---
 
@@ -9,7 +9,8 @@ when_to_use: Spawning subagents/workflows, picking model classes for lanes, sess
 Two scarce resources mirror each other: the operator's SWE attention and
 fable-class model tokens (expensive, not always available, can be slow,
 compute costly). Everything cheaper — haiku/sonnet/opus bandwidth and
-deterministic infra — is spent freely to protect them.
+deterministic infra — is spent freely to protect them. Opus 5.5 quota is
+the one budget to watch below fable: it goes to mission-critical work first.
 
 The machine-readable SSOT is `policy/delegation.json` **in
 `Jesssullivan/prompt-toon`** (typed Dhall source in `policy/dhall/`, document
@@ -17,10 +18,11 @@ shape in `policy/delegation.schema.json`). Read it rather than restating it:
 
 ```sh
 # inside a Jesssullivan/prompt-toon checkout
-jq '.seats[] | {id, cost_tier, default_personas}' policy/delegation.json
+jq '.seats[] | {id, model_id, cost_tier, default_personas}' policy/delegation.json
 jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks}' policy/delegation.json
 jq '.personas[] | {id, model_classes, forbidden_tasks}' policy/delegation.json
 jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.json
+jq '.budget_fallbacks' policy/delegation.json
 
 # no checkout handy
 curl -fsSL https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/delegation.json
@@ -32,26 +34,41 @@ curl -fsSL https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/polic
 
 ## Routing rules
 
-1. **fable** takes the synthesis seat only: umbrella orchestration,
+Ruling J81 (Jess, 2026-10-23): rely on Opus 5.5 by default. Use Sonnet 5.5
+and Haiku 5.5 freely where they fit.
+
+1. **Opus 5.5** (`claude-opus-5-5`) runs mission-critical lanes: implementation
+   that merges, merge-gating review, adversarial review and
+   refutation-of-record, security-sensitive code, cluster and host acts. A
+   merge-gating review runs on Opus. The `critical` and `adversarial`
+   personas route to opus or the operator personally.
+2. **Sonnet 5.5** (`claude-sonnet-5-5`) is the free default for research
+   sweeps, drafting, broad recon, non-merging prototypes and first-pass
+   review. Do not hold back on it. A Sonnet first pass never stands in for the
+   Opus merge gate.
+3. **Haiku 5.5** (`claude-haiku-5-5`) is the free default for mechanical
+   lanes: locators, inventories, conversions, polling and log summaries.
+4. **fable** takes the synthesis seat only: umbrella orchestration,
    architecture, engineering judgment, review alongside the operator. It
    never runs adversarial-analysis, purple-team, red-team,
-   deep-iteration-hammering, or bulk-execution.
-2. **Adversarial / purple-team / refutation lanes** go to opus or the
-   operator personally. Prompt the skeptic to refute, not to agree.
-3. **Research lanes** (wide recon, deep Linear exploration, web sweeps) go to
-   haiku/sonnet/opus, escalating model class with task depth.
-4. **Mechanical lanes** (locators, inventories, conversions) go to haiku.
-5. Research and mechanical lanes escalating to fable is a warn-class
+   deep-iteration-hammering or bulk-execution.
+5. **Budget fallback** (`budget_fallbacks[]`, J81(e)). When Opus quota is
+   exhausted, Sonnet may continue a `critical` lane. Its merges wait for an
+   Opus review. Record the downgrade in the receipt. The fallback never covers
+   the `adversarial` persona: that work waits or goes to the operator.
+6. Research and mechanical lanes escalating to fable is a warn-class
    violation: it needs explicit operator justification.
-6. Leave harness default model selection provider-managed; never pin a model
-   globally without a host-level justification.
+7. Pick the model per agent and per lane from the seat `model_id`. Only a
+   harness-wide default pin needs a host-level justification; that default
+   stays provider-managed otherwise.
 
 ## Seats
 
-`fable`, `opus`, `sonnet`, and `haiku` are first-class seat records under
-`.seats[]`, each carrying a cost tier, the personas it serves by default, and
-the personas it must never serve. `operator` is not a seat: it means the
-operator takes the lane personally.
+`fable`, `opus`, `sonnet` and `haiku` are first-class seat records under
+`.seats[]`. Each carries a cost tier, the personas it serves by default and
+the personas it must never serve. Opus, Sonnet and Haiku also carry their
+exact `model_id`. Fable stays provider-managed. `operator` is not a seat: it
+means the operator takes the lane personally.
 
 `pi` and `pi-k3` are **harness** seats under `.harness_seats[]` — dispatch
 identities, not model classes. See "Harness delegation" below.
@@ -113,7 +130,9 @@ Attribute every synthesis/recon session to a lane in session notes (lab
 ## Enforcement
 
 `tests/test_delegation_policy.py` in `Jesssullivan/prompt-toon` fails closed
-on: adversarial lanes resolving to fable, missing fable task prohibitions,
+on: merge-gating or adversarial lanes resolving to anything but opus, a
+missing or weakened budget fallback, 5.5 model ID drift between Dhall and
+JSON, adversarial lanes resolving to fable, missing fable task prohibitions,
 missing purpose strings, JSON that does not validate against
 `policy/delegation.schema.json`, seats that serve a persona excluding them,
 harness seats that claim a ratification or refutation-of-record task, or drop
