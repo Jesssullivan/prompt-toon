@@ -49,7 +49,7 @@ in    { `$comment` =
             , default_personas = [ "fable" ]
             , forbidden_personas = [ "adversarial", "critical" ]
             , notes =
-                "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment, and review alongside the operator. Never the adversarial seat."
+                "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment and advisory review alongside the operator. Never the adversarial or critical seat. Its review never gates a merge."
             }
           , { id = "opus"
             , model_class = "opus"
@@ -67,7 +67,7 @@ in    { `$comment` =
             , default_personas = [ "research", "drafting" ]
             , forbidden_personas = [ "adversarial" ]
             , notes =
-                "Sonnet 5.5 is used freely for research sweeps, drafting, broad recon, non-merging prototypes and first-pass review. It is not the default for mission-critical lanes. It may continue a critical lane only under the opus-quota-exhausted budget fallback."
+                "Sonnet 5.5 is used freely for research sweeps, drafting, broad recon, non-merging prototypes and first-pass review. It is not the default for mission-critical lanes. It may continue mythos.implement.merge or mythos.gate.security only under the opus-quota-exhausted budget fallback. It never gates a merge."
             }
           , { id = "haiku"
             , model_class = "haiku"
@@ -90,6 +90,7 @@ in    { `$comment` =
             , forbidden_tasks =
                 [ "word-leg-ratification"
                 , "adversarial-refutation-of-record"
+                , "merge-gating-review"
                 , "final-synthesis"
                 , "secret-mutation"
                 ]
@@ -107,6 +108,7 @@ in    { `$comment` =
             , forbidden_tasks =
                 [ "word-leg-ratification"
                 , "adversarial-refutation-of-record"
+                , "merge-gating-review"
                 , "final-synthesis"
                 , "secret-mutation"
                 ]
@@ -135,7 +137,7 @@ in    { `$comment` =
             , purpose =
                 "Mission-critical execution and verification: implementation that merges, merge-gating review, security-sensitive code plus cluster and host acts."
             , doctrine =
-                "Rely on Opus 5.5 or the operator personally. A merge-gating review runs on Opus. When Opus quota is exhausted Sonnet may continue under the opus-quota-exhausted budget fallback; its merges wait for an Opus review. The downgrade is recorded in the receipt. Never fable or haiku."
+                "Rely on Opus 5.5 or the operator personally. A merge-gating review runs on Opus. When Opus quota is exhausted the opus-quota-exhausted fallback lets Sonnet continue mythos.implement.merge and mythos.gate.security only. Their merges wait for an Opus review. The downgraded lane never runs a host act or a credential change. The downgrade is recorded in the receipt. mythos.gate.review and mythos.act.host never fall back: they wait for Opus or go to the operator. Never fable or haiku."
             , forbidden_tasks = [] : List Text
             }
           , { id = "adversarial"
@@ -160,7 +162,7 @@ in    { `$comment` =
                 "Drafting, non-merging prototypes and first-pass review ahead of an Opus gate."
             , doctrine =
                 "Sonnet 5.5 by default; use it freely. Output is a draft or a first pass. It never stands in for a merge-gating review and never merges on its own."
-            , forbidden_tasks = [ "merge-gating-review", "final-synthesis" ]
+            , forbidden_tasks = [ "merge", "merge-gating-review", "final-synthesis" ]
             }
           , { id = "mechanical"
             , model_classes = [ "haiku" ]
@@ -179,7 +181,8 @@ in    { `$comment` =
             }
           , { route = "mythos.review"
             , persona = "fable"
-            , purpose = "Code and design review seat alongside the operator."
+            , purpose =
+                "Advisory code and design review alongside the operator. It never gates a merge: the merge gate is mythos.gate.review on Opus."
             }
           , { route = "mythos.adversarial"
             , persona = "adversarial"
@@ -194,17 +197,17 @@ in    { `$comment` =
           , { route = "mythos.gate.review"
             , persona = "critical"
             , purpose =
-                "Independent merge-gating review. Runs on Opus 5.5; a Sonnet first pass never satisfies it."
+                "Independent merge-gating review. Runs on Opus 5.5 and never falls back to Sonnet. A Sonnet first pass or a harness review is evidence for it, never the gate."
             }
           , { route = "mythos.gate.security"
             , persona = "critical"
             , purpose =
-                "Security-sensitive code, credentials paths and trust-boundary changes."
+                "Security-sensitive code, credentials paths and trust-boundary changes. Under the budget fallback Sonnet may write the code; the merge waits for an Opus review and live credentials wait for Opus or the operator."
             }
           , { route = "mythos.act.host"
             , persona = "critical"
             , purpose =
-                "Cluster and host acts: deploys, switches, migrations and anything that mutates shared infra."
+                "Cluster and host acts: deploys, switches, migrations and anything that mutates shared infra. Never falls back to Sonnet: it waits for Opus or goes to the operator."
             }
           , { route = "mythos.draft"
             , persona = "drafting"
@@ -239,12 +242,12 @@ in    { `$comment` =
           , { route = "mythos.delegate.review"
             , persona = "pi"
             , purpose =
-                "Technical review delegated to a harness seat: GitHub PR review and review commentary, returned as adversarial_review_pass evidence for the fable synthesis seat. Kimi rides pi-k3 on the identical envelope. Never the operator WORD leg."
+                "Technical review delegated to a harness seat: GitHub PR review and review commentary, returned as adversarial_review_pass evidence for the fable synthesis seat. For a merge it is evidence for the Opus gate on mythos.gate.review, never the gate. Kimi rides pi-k3 on the identical envelope. Never the operator WORD leg."
             }
           , { route = "mythos.delegate.mechanical"
             , persona = "pi"
             , purpose =
-                "Mechanical code-quality output delegated to a harness seat: lint-shaped findings, structural nits, and checklist sweeps over a diff. Evidence only; the ruling stays with the operator and the fable seat."
+                "Mechanical code-quality output delegated to a harness seat: lint-shaped findings, structural nits and checklist sweeps over a diff. Evidence only. The ruling stays with the operator, the fable seat and, for a merge, the Opus gate."
             }
           ]
       , budget_fallbacks =
@@ -254,8 +257,12 @@ in    { `$comment` =
             , trigger =
                 "Opus 5.5 subagent quota is exhausted for the current window."
             , personas = [ "critical" ]
+            , lanes = [ "mythos.implement.merge", "mythos.gate.security" ]
             , obligations =
-                [ "merge-waits-for-opus-review", "downgrade-recorded-in-receipt" ]
+                [ "merge-waits-for-opus-review"
+                , "no-host-or-credential-act"
+                , "downgrade-recorded-in-receipt"
+                ]
             }
           ]
       , enforcement =
@@ -277,12 +284,12 @@ in    { `$comment` =
           , { id = "critical-lanes-default-opus"
             , severity = "error"
             , rule =
-                "A lane whose persona is critical or adversarial resolves to Opus 5.5 by default, or to the operator personally. Those personas never list sonnet, haiku or fable in their model classes. A merge-gating review runs on Opus."
+                "A lane whose persona is critical or adversarial resolves to Opus 5.5 by default or to the operator personally. Those personas never list sonnet, haiku or fable in their model classes. A merge-gating review runs on Opus. mythos.review and harness reviews never gate a merge."
             }
           , { id = "opus-budget-fallback"
             , severity = "error"
             , rule =
-                "When Opus quota is exhausted, Sonnet may continue a critical lane under the opus-quota-exhausted fallback. Merges from that lane wait for an Opus review. The downgrade is recorded in the receipt. The fallback never covers the adversarial persona and never reaches fable or haiku."
+                "When Opus quota is exhausted, Sonnet may continue mythos.implement.merge and mythos.gate.security under the opus-quota-exhausted fallback. Merges from those lanes wait for an Opus review. The downgraded lane never runs a host act or a credential change. The downgrade is recorded in the receipt. The fallback never reaches mythos.gate.review, mythos.act.host or the adversarial persona: that work waits for Opus or goes to the operator. It never reaches fable or haiku. This narrows J81(e) on purpose to keep J81(a)."
             }
           , { id = "cheap-lane-escalation"
             , severity = "warn"
@@ -302,7 +309,7 @@ in    { `$comment` =
           , { id = "harness-delegation-envelope"
             , severity = "error"
             , rule =
-                "A harness seat may only receive tasks listed in its own delegable_tasks. It never owns the operator WORD/ratification leg and never owns the adversarial-refutation-of-record; harness output is evidence for the fable synthesis seat, never the ruling. A lane routed to a harness seat therefore carries evidentiary work only."
+                "A harness seat may only receive tasks listed in its own delegable_tasks. It never owns the operator WORD/ratification leg and never owns the adversarial-refutation-of-record; harness output is evidence for the fable synthesis seat or the Opus merge gate. It is never the ruling and never gates a merge. A lane routed to a harness seat therefore carries evidentiary work only."
             }
           , { id = "harness-dispatch-bounded-only"
             , severity = "error"
