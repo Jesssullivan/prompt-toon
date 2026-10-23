@@ -14,6 +14,7 @@
     "harness_seats",
     "personas",
     "lanes",
+    "budget_fallbacks",
     "enforcement",
     "attribution"
   ],
@@ -24,7 +25,7 @@
     },
     "schema_version": {
       "type": "integer",
-      "const": 2
+      "const": 3
     },
     "metadata": {
       "type": "object",
@@ -76,6 +77,10 @@
         "properties": {
           "id": { "$ref": "#/$defs/seatId" },
           "model_class": { "$ref": "#/$defs/seatId" },
+          "model_id": {
+            "description": "Exact model the seat runs (J81). Omitted for a provider-managed seat such as fable.",
+            "$ref": "#/$defs/modelId"
+          },
           "cost_tier": { "enum": ["scarce", "high", "medium", "low"] },
           "default_personas": {
             "type": "array",
@@ -185,6 +190,42 @@
         }
       }
     },
+    "budget_fallbacks": {
+      "description": "Seat downgrades allowed when a seat's quota is exhausted (J81(e)). Each names the personas it covers and the obligations the downgraded lane carries.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from_seat",
+          "to_seat",
+          "trigger",
+          "personas",
+          "obligations"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "from_seat": { "$ref": "#/$defs/seatId" },
+          "to_seat": { "$ref": "#/$defs/seatId" },
+          "trigger": { "$ref": "#/$defs/nonEmptyString" },
+          "personas": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          },
+          "obligations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      }
+    },
     "enforcement": {
       "type": "array",
       "minItems": 1,
@@ -227,6 +268,11 @@
     "seatId": {
       "description": "First-class seat names. Adding a seat is a policy change, not a string edit.",
       "enum": ["fable", "opus", "sonnet", "haiku"]
+    },
+    "modelId": {
+      "description": "An exact Claude model ID such as claude-opus-5-5.",
+      "type": "string",
+      "pattern": "^claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+$"
     },
     "harnessSeatId": {
       "description": "First-class harness-seat names. Adding one is a policy change, not a string edit.",
