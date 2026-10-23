@@ -32,6 +32,12 @@ just gen-policy
 ## Invariants (fail closed)
 
 - Adversarial/purple-team lanes never resolve to fable-class models.
+- Merge-gating, implementation-that-merges, host-act and adversarial lanes
+  resolve to opus (or the operator) only (J81). Seats carry the 5.5 model IDs
+  and the Dhall and JSON agree on them.
+- The `opus-quota-exhausted` budget fallback exists: Sonnet may continue a
+  critical lane, merges wait for an Opus review and the downgrade is
+  recorded in the receipt.
 - The fable persona forbids adversarial-analysis, purple-team, red-team,
   deep-iteration-hammering, and bulk-execution.
 - Every persona and lane carries a non-empty `purpose` string.
@@ -40,5 +46,6 @@ just gen-policy
   whose declared personas do not contradict `personas[].model_classes`.
 
 Warn-class rules (encoded as data in `enforcement`, not test failures):
-research/mechanical lanes escalating to fable; pinning default model
-selection instead of leaving it provider-managed.
+research/mechanical lanes escalating to fable; pinning the harness-wide
+default model without a host justification. Per-agent model choice follows
+the seat `model_id`.

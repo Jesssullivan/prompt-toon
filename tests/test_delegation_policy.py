@@ -38,6 +38,94 @@ HARNESS_FORBIDDEN = {
 
 HARNESS_POSTURE = "evidentiary-only"
 
+# J81 (Jess, 2026-10-23): exact model IDs per seat. Fable stays
+# provider-managed and carries no model_id.
+MODEL_IDS = {
+    "opus": "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5-5",
+    "haiku": "claude-haiku-5-5",
+}
+
+# Personas that own mission-critical work. Their lanes resolve to opus (or the
+# operator personally) and nothing else.
+CRITICAL_PERSONAS = {"critical", "adversarial"}
+
+# Route prefixes that merge or gate a merge. They must land on a critical
+# persona, never on drafting or research.
+MERGE_GATING_PREFIXES = ("mythos.implement.", "mythos.gate.", "mythos.act.")
+
+FALLBACK_ID = "opus-quota-exhausted"
+FALLBACK_OBLIGATIONS = {
+    "merge-waits-for-opus-review",
+    "downgrade-recorded-in-receipt",
+}
+
+
+def critical_lane_violations(policy):
+    """Merge-gating and adversarial lanes that do not resolve to opus."""
+    personas = {p["id"]: p for p in policy["personas"]}
+    harness = {s["id"] for s in policy["harness_seats"]}
+    seats = {s["id"]: s for s in policy["seats"]}
+    errors = []
+    for lane in policy["lanes"]:
+        route = lane["route"]
+        gating = route.startswith(MERGE_GATING_PREFIXES) or "adversarial" in route
+        if not gating and lane["persona"] not in CRITICAL_PERSONAS:
+            continue
+        if lane["persona"] in harness or lane["persona"] not in CRITICAL_PERSONAS:
+            errors.append(f"{route}: routes to {lane['persona']}, not a critical persona")
+            continue
+        classes = set(personas[lane["persona"]]["model_classes"]) - {"operator"}
+        if classes != {"opus"}:
+            errors.append(f"{route}: resolves to {sorted(classes)}, not opus only")
+    for seat_id, seat in seats.items():
+        leaked = set(seat["default_personas"]) & CRITICAL_PERSONAS
+        if seat_id != "opus" and leaked:
+            errors.append(f"seat {seat_id} defaults to {sorted(leaked)}")
+    if not CRITICAL_PERSONAS.issubset(set(seats.get("opus", {}).get("default_personas", []))):
+        errors.append("opus seat does not default to every critical persona")
+    return errors
+
+
+def fallback_violations(policy):
+    """J81(e): the opus budget fallback exists and keeps its obligations."""
+    errors = []
+    rules = {r["id"]: r for r in policy.get("enforcement", [])}
+    rule = rules.get("opus-budget-fallback")
+    if rule is None or rule["severity"] != "error":
+        errors.append("missing error-class opus-budget-fallback rule")
+    elif not all(k in rule["rule"].lower() for k in ("opus review", "receipt")):
+        errors.append("opus-budget-fallback rule must name the Opus review and the receipt")
+    fallbacks = {f["id"]: f for f in policy.get("budget_fallbacks", [])}
+    fallback = fallbacks.get(FALLBACK_ID)
+    if fallback is None:
+        return errors + [f"missing budget fallback {FALLBACK_ID}"]
+    if (fallback["from_seat"], fallback["to_seat"]) != ("opus", "sonnet"):
+        errors.append(f"{FALLBACK_ID} must run opus -> sonnet")
+    missing = FALLBACK_OBLIGATIONS - set(fallback["obligations"])
+    if missing:
+        errors.append(f"{FALLBACK_ID} drops obligations {sorted(missing)}")
+    if "adversarial" in fallback["personas"]:
+        errors.append(f"{FALLBACK_ID} must not cover the adversarial persona")
+    seats = {s["id"]: s for s in policy["seats"]}
+    for f in fallbacks.values():
+        if f["to_seat"] in {"fable", "haiku"}:
+            errors.append(f"{f['id']} falls back to {f['to_seat']}")
+        target = seats.get(f["to_seat"], {})
+        clash = set(f["personas"]) & set(target.get("forbidden_personas", []))
+        if clash:
+            errors.append(f"{f['id']} hands {sorted(clash)} to a seat that forbids it")
+    return errors
+
+
+def dhall_seat_model_ids(dhall_text):
+    """Seat model_class -> model_id (None when provider-managed) from Dhall."""
+    pattern = re.compile(
+        r'model_class = "(?P<seat>[a-z]+)"\s*,\s*model_id =\s*'
+        r'(?:None Text|Some "(?P<model_id>[^"]+)")'
+    )
+    return {m["seat"]: m["model_id"] for m in pattern.finditer(dhall_text)}
+
 
 def load_policy():
     return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
@@ -126,7 +214,7 @@ class DelegationPolicyTests(unittest.TestCase):
         cls.harness_seats = {s["id"]: s for s in cls.policy["harness_seats"]}
 
     def test_schema_version(self):
-        self.assertEqual(self.policy["schema_version"], 2)
+        self.assertEqual(self.policy["schema_version"], 3)
 
     def test_owner_linear_issue_shape(self):
         self.assertRegex(self.policy["metadata"]["owner_linear_issue"], r"^[A-Z]+-\d+$")
@@ -209,6 +297,71 @@ class DelegationPolicyTests(unittest.TestCase):
     def test_fable_seat_never_serves_adversarial(self):
         self.assertIn("adversarial", self.seats["fable"]["forbidden_personas"])
         self.assertEqual(self.seats["fable"]["cost_tier"], "scarce")
+
+    def test_seat_model_ids_pin_the_5_5_family(self):
+        for seat_id, model_id in MODEL_IDS.items():
+            self.assertEqual(self.seats[seat_id].get("model_id"), model_id, seat_id)
+        self.assertNotIn("model_id", self.seats["fable"], "fable stays provider-managed")
+
+    def test_dhall_and_json_agree_on_model_ids(self):
+        dhall_ids = dhall_seat_model_ids(DHALL_SOURCE_PATH.read_text(encoding="utf-8"))
+        json_ids = {s["id"]: s.get("model_id") for s in self.policy["seats"]}
+        self.assertEqual(set(dhall_ids), SEAT_IDS, "every Dhall seat declares model_id")
+        self.assertEqual(dhall_ids, json_ids)
+        self.assertEqual({k: v for k, v in dhall_ids.items() if v}, MODEL_IDS)
+
+    def test_dhall_model_id_parser_detects_drift(self):
+        drifted = DHALL_SOURCE_PATH.read_text(encoding="utf-8").replace(
+            '"claude-opus-5-5"', '"claude-opus-4-1"'
+        )
+        self.assertNotEqual(dhall_seat_model_ids(drifted)["opus"], MODEL_IDS["opus"])
+
+    def test_merge_gating_and_adversarial_lanes_resolve_to_opus(self):
+        self.assertEqual(critical_lane_violations(self.policy), [])
+        routes = {lane["route"] for lane in self.policy["lanes"]}
+        self.assertTrue(
+            {"mythos.implement.merge", "mythos.gate.review", "mythos.adversarial"}.issubset(
+                routes
+            )
+        )
+
+    def test_critical_lane_check_fails_closed(self):
+        for persona, classes in (("drafting", None), ("critical", ["sonnet", "opus"])):
+            broken = json.loads(json.dumps(self.policy))
+            gate = next(l for l in broken["lanes"] if l["route"] == "mythos.gate.review")
+            if classes is None:
+                gate["persona"] = persona
+            else:
+                next(p for p in broken["personas"] if p["id"] == persona)[
+                    "model_classes"
+                ] = classes
+            self.assertTrue(critical_lane_violations(broken), persona)
+        broken = json.loads(json.dumps(self.policy))
+        next(s for s in broken["seats"] if s["id"] == "sonnet")["default_personas"].append(
+            "critical"
+        )
+        self.assertTrue(critical_lane_violations(broken))
+
+    def test_drafting_never_gates_a_merge(self):
+        self.assertIn("merge-gating-review", self.personas["drafting"]["forbidden_tasks"])
+        self.assertNotIn("drafting", self.seats["haiku"]["default_personas"])
+
+    def test_opus_budget_fallback_present(self):
+        self.assertEqual(fallback_violations(self.policy), [])
+
+    def test_fallback_check_fails_closed(self):
+        broken = json.loads(json.dumps(self.policy))
+        broken["budget_fallbacks"] = []
+        self.assertTrue(fallback_violations(broken))
+        broken = json.loads(json.dumps(self.policy))
+        broken["enforcement"] = [
+            r for r in broken["enforcement"] if r["id"] != "opus-budget-fallback"
+        ]
+        self.assertTrue(fallback_violations(broken))
+        broken = json.loads(json.dumps(self.policy))
+        broken["budget_fallbacks"][0]["obligations"].remove("merge-waits-for-opus-review")
+        broken["budget_fallbacks"][0]["personas"].append("adversarial")
+        self.assertGreaterEqual(len(fallback_violations(broken)), 2)
 
     def test_harness_seat_ids_are_first_class(self):
         self.assertEqual(set(self.harness_seats), HARNESS_SEAT_IDS)
@@ -340,6 +493,8 @@ class DelegationPolicyTests(unittest.TestCase):
                 "seat-registry-complete",
                 "harness-delegation-envelope",
                 "harness-dispatch-bounded-only",
+                "critical-lanes-default-opus",
+                "opus-budget-fallback",
             }.issubset(errors)
         )
 
@@ -396,6 +551,16 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertIn(seat_id, skill_text, seat_id)
         # The cross-repo warning is load-bearing; a rewrite must not drop it.
         self.assertIn("Do not confuse repos", skill_text)
+
+    def test_skill_promotes_opus_and_names_the_5_5_family(self):
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        for model_id in MODEL_IDS.values():
+            self.assertIn(model_id, skill_text, model_id)
+        for needle in ("J81", "budget_fallbacks", "merge-gating review", "receipt"):
+            self.assertIn(needle, skill_text, needle)
+        # Per-agent model choice follows the policy; only a global pin needs a
+        # host justification. The old blanket line contradicted J81.
+        self.assertNotIn("Leave harness default model selection provider-managed", skill_text)
 
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")

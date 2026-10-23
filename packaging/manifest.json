@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "4d1a255560dcf4f0500cfa1462d4240f1e079cd497624b3a72ee26aba62731f1"
+      "sha256": "b3de764be27a49c989fcb2bed1016ff24bf3b68ceddf02f1bfc100c7fbd91575"
     },
     "nix": {
       "enabled": true
@@ -45,11 +45,11 @@
   "policy": [
     {
       "file": "policy/delegation.json",
-      "sha256": "66a8b9c756026524c5b9cbc65e72732305abf5004ff3767a957b0c8228fae370"
+      "sha256": "fc7bc01913af22aaf79abd17b16bacb12a0d14dc6b453a819ba4c34aab5008e0"
     },
     {
       "file": "policy/delegation.schema.json",
-      "sha256": "9bb3ed0ee6ffcb93ebe169e8a646f062d3629b1b11a58136db0e54b7e7d361df"
+      "sha256": "46465f2ef60c9fe147d909bf0d563df2b8cb99d28a791c534734a96ae4d62383"
     },
     {
       "file": "policy/io.json",
@@ -73,7 +73,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "9d5b96137f9f3ce6858cdce8100630dcd266bf147c8bbd86194cd6dbc8e3fb6b"
+          "sha256": "a93abad2219b57efd8006564b93b3d37050af98ae780b70deba158c50272781a"
         }
       ],
       "name": "mythos-delegation"
