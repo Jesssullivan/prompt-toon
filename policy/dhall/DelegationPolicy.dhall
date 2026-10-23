@@ -60,9 +60,11 @@ let HarnessSeat =
 
 {-
 A budget fallback names the seat a lane may drop to when its default seat's
-quota is exhausted, the personas it covers, and the obligations the downgraded
-lane carries (J81(e)). It never widens who may merge: obligations bind the
-merge to a review on the original seat.
+quota is exhausted (J81(e)). It is scoped by lane, not only by persona: lanes
+lists every route it reaches, and each must sit on one of its personas. A
+lane of a covered persona that is not listed keeps its default seat. The
+obligations bind the downgraded lane. A fallback never widens who may merge:
+the merge waits for a review on the original seat.
 -}
 let BudgetFallback =
       { id : Text
@@ -70,6 +72,7 @@ let BudgetFallback =
       , to_seat : Text
       , trigger : Text
       , personas : List Text
+      , lanes : List Text
       , obligations : List Text
       }
 

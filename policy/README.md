@@ -32,12 +32,17 @@ just gen-policy
 ## Invariants (fail closed)
 
 - Adversarial/purple-team lanes never resolve to fable-class models.
-- Merge-gating, implementation-that-merges, host-act and adversarial lanes
-  resolve to opus (or the operator) only (J81). Seats carry the 5.5 model IDs
-  and the Dhall and JSON agree on them.
-- The `opus-quota-exhausted` budget fallback exists: Sonnet may continue a
-  critical lane, merges wait for an Opus review and the downgrade is
-  recorded in the receipt.
+- Every critical lane (implementation that merges, merge gate, security
+  and host acts) and the adversarial lane exists and resolves to opus or the
+  operator only (J81). A new lane that is not on the known non-critical list
+  must sit on a critical persona. Seats carry the 5.5 model IDs and the Dhall
+  and JSON agree on them.
+- `opus-quota-exhausted` is the only budget fallback. It lets Sonnet continue
+  `mythos.implement.merge` and `mythos.gate.security`. Merges wait for an Opus
+  review, no host act or credential change runs on Sonnet and the downgrade
+  is recorded in the receipt. It never reaches the merge gate, host acts,
+  the adversarial persona, fable or haiku.
+- Harness seats and the fable `mythos.review` lane never gate a merge.
 - The fable persona forbids adversarial-analysis, purple-team, red-team,
   deep-iteration-hammering, and bulk-execution.
 - Every persona and lane carries a non-empty `purpose` string.
