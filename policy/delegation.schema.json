@@ -93,7 +93,25 @@
             "items": { "$ref": "#/$defs/identifier" }
           },
           "notes": { "$ref": "#/$defs/nonEmptyString" }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["model_class"], "properties": { "model_class": { "const": "fable" } } },
+            "then": { "not": { "required": ["model_id"] } }
+          },
+          {
+            "if": { "required": ["model_class"], "properties": { "model_class": { "const": "opus" } } },
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-opus-" } } }
+          },
+          {
+            "if": { "required": ["model_class"], "properties": { "model_class": { "const": "sonnet" } } },
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-sonnet-" } } }
+          },
+          {
+            "if": { "required": ["model_class"], "properties": { "model_class": { "const": "haiku" } } },
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-haiku-" } } }
+          }
+        ]
       }
     },
     "harness_seats": {
@@ -178,10 +196,7 @@
         "additionalProperties": false,
         "required": ["route", "persona", "purpose"],
         "properties": {
-          "route": {
-            "type": "string",
-            "pattern": "^mythos(\\.[a-z0-9-]+)+$"
-          },
+          "route": { "$ref": "#/$defs/route" },
           "persona": {
             "description": "A persona id, or a harness seat id for a mythos.delegate.* lane.",
             "$ref": "#/$defs/identifier"
@@ -191,7 +206,7 @@
       }
     },
     "budget_fallbacks": {
-      "description": "Seat downgrades allowed when a seat's quota is exhausted (J81(e)). Each names the personas it covers and the obligations the downgraded lane carries.",
+      "description": "Seat downgrades allowed when a seat's quota is exhausted (J81(e)). Each names the personas and the exact lanes it reaches plus the obligations the downgraded lane carries. A fallback never reaches fable or haiku, the adversarial persona, the merge gate or a host act. It always carries the merge, host-act and receipt obligations.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -204,24 +219,46 @@
           "to_seat",
           "trigger",
           "personas",
+          "lanes",
           "obligations"
         ],
         "properties": {
           "id": { "$ref": "#/$defs/identifier" },
           "from_seat": { "$ref": "#/$defs/seatId" },
-          "to_seat": { "$ref": "#/$defs/seatId" },
+          "to_seat": {
+            "$ref": "#/$defs/seatId",
+            "not": { "enum": ["fable", "haiku"] }
+          },
           "trigger": { "$ref": "#/$defs/nonEmptyString" },
           "personas": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "$ref": "#/$defs/identifier" }
+            "items": { "$ref": "#/$defs/identifier" },
+            "not": { "contains": { "const": "adversarial" } }
+          },
+          "lanes": {
+            "description": "Every route the fallback reaches. A lane of a covered persona that is not listed keeps its default seat.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/route" },
+            "not": {
+              "contains": {
+                "enum": ["mythos.gate.review", "mythos.act.host", "mythos.adversarial"]
+              }
+            }
           },
           "obligations": {
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
-            "items": { "$ref": "#/$defs/identifier" }
+            "items": { "$ref": "#/$defs/identifier" },
+            "allOf": [
+              { "contains": { "const": "merge-waits-for-opus-review" } },
+              { "contains": { "const": "no-host-or-credential-act" } },
+              { "contains": { "const": "downgrade-recorded-in-receipt" } }
+            ]
           }
         }
       }
@@ -260,6 +297,10 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"
+    },
+    "route": {
+      "type": "string",
+      "pattern": "^mythos(\\.[a-z0-9-]+)+$"
     },
     "identifier": {
       "type": "string",
