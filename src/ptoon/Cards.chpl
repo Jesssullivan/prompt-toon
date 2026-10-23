@@ -257,7 +257,7 @@ module Cards {
     return s;
   }
 
-  /* line_excerpt (cli.py:209-212), radius 1: 1-based inclusive line span +
+  /* line_excerpt (cli.py), radius 1: 1-based inclusive line span +
    * the joined excerpt stripped Python-style (leading/trailing \n included). */
   private proc lineExcerpt(const ref lines: list(string),
                            idx: int): (int, int, string) throws {
@@ -271,7 +271,7 @@ module Cards {
     return (lo + 1, hi, stripPy(ev));
   }
 
-  /* flags_for (cli.py:223-231): order is fixed — redacted, injection-shaped,
+  /* flags_for (cli.py): order is fixed — redacted, injection-shaped,
    * has-url. `redacted` keys off the DOCUMENT's findings, not the excerpt. */
   private proc flagsFor(const ref evidence: string,
                         docHasRedactions: bool): list(string) throws {
@@ -288,7 +288,7 @@ module Cards {
     return "src-" + n: string;
   }
 
-  /* cards_from_text (cli.py:234-277) over ALREADY-REDACTED text. The Python
+  /* cards_from_text (cli.py) over ALREADY-REDACTED text. The Python
    * function redacts internally; callers here pass redactText's output plus
    * whether it produced findings, so redaction runs exactly once per doc. */
   proc cardsFromText(source: string, redacted: string, docHasRedactions: bool,
