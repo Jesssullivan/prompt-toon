@@ -1,15 +1,20 @@
 module(
     name = "prompt_toon",
     version = "0.3.0",
+    bazel_compatibility = [">=8.2.1"],
     compatibility_level = 1,
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 
 # Linux retains its transitional environmental bridge. Darwin resolves only
 # the GF worker-owned Nix closure and is deliberately non-cacheable until that
-# closure digest participates in the action key.
+# closure digest participates in the action key. Both toolchains are
+# non-hermetic, so they are dev dependencies. A module that depends on
+# prompt_toon does not inherit them.
 register_toolchains(
     "//tools/bazel/chapel:darwin_worker_closure_toolchain",
     "//tools/bazel/chapel:linux_environmental_toolchain",
+    dev_dependency = True,
 )

@@ -1,3 +1,4 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load(":toolchain.bzl", "chapel_toolchain")
 
 package(default_visibility = ["//visibility:public"])
