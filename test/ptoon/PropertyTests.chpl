@@ -95,7 +95,7 @@ module PropertyTests {
    * Adversarial string generator mixing plain ASCII with zero-width,
    * BIDI-control, confusable-homoglyph, raw-control, and CRLF codepoints --
    * exactly the codepoint classes Normalize.normalizeText strips or folds
-   * (parity spec: cli.py:120-127; Chapel port: src/ptoon/Normalize.chpl
+   * (parity spec: cli.py normalize_text; Chapel port: src/ptoon/Normalize.chpl
    * isStripped/confusables).
    * ------------------------------------------------------------------ */
 
@@ -167,7 +167,7 @@ module PropertyTests {
    * perturbation.
    *
    * redactText normalizes its input FIRST (Redact.chpl: `var redacted =
-   * normalizeText(text);`, mirroring cli.py:140 `redacted =
+   * normalizeText(text);`, mirroring redact_text's `redacted =
    * normalize_text(text)`), so a synthetic secret whose characters have
    * been swapped for Cyrillic/Greek confusable lookalikes and interleaved
    * with zero-width characters should fold/strip back to the original
@@ -208,7 +208,7 @@ module PropertyTests {
     }
 
     proc ref next(): string {
-      // A pattern-1-shaped secret (SECRET_PATTERNS[0], cli.py:23):
+      // A pattern-1-shaped secret (cli.py SECRET_PATTERNS[0]):
       // \b(?:sk|ghp|gho|github_pat|xox[baprs])-[-_A-Za-z0-9]{16,}\b
       // Tail characters come from [-_A-Za-z0-9]; the FINAL tail character is
       // forced to be alnum (not '-'/'_') so the pre-perturbation secret has
@@ -300,13 +300,14 @@ module PropertyTests {
 
   /* Quote-aware splitter for one already-assembled TOON row line (as
    * produced by Toon.encodeRows' per-row `delimiter.join(escapedCells)`
-   * step, parity: cli.py:314). TEST-ONLY reverse-parser -- not part of the
+   * step, parity: the per-row join in encode_rows_to_toon). TEST-ONLY
+   * reverse-parser -- not part of the
    * production Toon.chpl surface, which is encode-only for this phase (see
    * Toon.chpl's module doc comment). Exists solely to check the round-trip
    * property below.
    *
    * Relies on two invariants of toonEscape's needs-quote rule (Toon.chpl,
-   * ported from cli.py:280-290):
+   * ported from toon_escape's needs_quote):
    *   1. An UNQUOTED field can never contain `delimiter` or a `"` (both
    *      force quoting), so it can be scanned up to the next literal
    *      delimiter byte.

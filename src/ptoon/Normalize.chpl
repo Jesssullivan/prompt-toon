@@ -1,4 +1,5 @@
-/* TIN-2708 C1: normalize_text port (parity spec: prompt_toon/cli.py:119-126).
+/* TIN-2708 C1: normalize_text port (parity spec: prompt_toon/cli.py
+ * normalize_text).
  *
  * NFKC via vendored utf8proc (c_src/, Unicode 15.1 = CPython 3.13), then a
  * single codepoint pass stripping zero-width/BIDI/tag/control and folding
@@ -81,7 +82,7 @@ module Normalize {
   }
 
   proc normalizeText(text: bytes): string throws {
-    // 1. CRLF fold, matching Python's replace order (cli.py:120).
+    // 1. CRLF fold, matching Python's replace order (normalize_text).
     var folded = text.replace(b"\r\n", b"\n").replace(b"\r", b"\n");
 
     // 2. NFKC via utf8proc; failure throws (INV-2 fail-closed).
@@ -92,7 +93,7 @@ module Normalize {
     const nfkc = bytes.createCopyingBuffer(outPtr: c_ptrConst(c_char), outLen: int);
     pt_free(outPtr: c_ptr(void));
 
-    // 3. Single pass: strip + confusable fold (cli.py:122-126).
+    // 3. Single pass: strip + confusable fold (normalize_text).
     const s = nfkc.decode();
     var buf: [0..<(nfkc.size * 4 + 4)] uint(8);
     var k = 0;
