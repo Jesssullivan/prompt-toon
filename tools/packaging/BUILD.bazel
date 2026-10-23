@@ -7,6 +7,9 @@
 # test //...` on every platform, which makes manifest drift a required-lane
 # CI failure.
 
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
