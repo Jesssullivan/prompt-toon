@@ -3,21 +3,21 @@
 Low-level streaming IO middleware between local agent harnesses and remote
 model APIs, with provenance-preserving context optimization.
 
-The opt-in online gateways keep provider HTTP, authentication, and streaming
-pass-through in Python while one resident Chapel process owns bounded concurrent
+The opt-in online gateways keep provider HTTP, authentication and streaming
+pass-through in Python. One resident Chapel process owns bounded concurrent
 transforms over typed variable-context segments. Authority-bearing instructions,
-approval state, tool schemas, and provider controls are not transformed.
+approval state, tool schemas and provider controls are not transformed.
 
 Offline research condensation is one supported transform and dogfood workflow:
 `prompt-toon` turns noisy subagent/research output into `summary.md`,
-`source-cards.jsonl`, and `manifest.json`. That path is deterministic by default:
-no LLM call, no network call, and no hidden transport change.
+`source-cards.jsonl` and `manifest.json`. That path is deterministic by default.
+It makes no LLM call, no network call and no hidden transport change.
 
-Since v0.2.0 the hot path is Chapel-first: a standalone `ptoon` process
+Since v0.2.0 the hot path is Chapel-first. A standalone `ptoon` process
 (remote-built outputs delivered in complete Nix closures) owns
 normalize/redact/defang, the coforall
-batch fan-in, and the full condense rendering — proven byte-identical to the
-Python oracle by the parity gates. Python remains the oracle and the default
+batch fan-in and the full condense rendering. The parity gates prove it
+byte-identical to the Python oracle. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
 The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
@@ -25,7 +25,7 @@ and the provider gateway. Current v0.3.0 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
 gateways plus the C4d managed-consumption source contract, but no v0.3.0
 release or fleet service profile exists yet. C4e adds provider-free local
-spool dogfooding and an efficiency ledger; IO enforcement remains locked.
+spool dogfooding and an efficiency ledger. IO enforcement remains locked.
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -36,11 +36,11 @@ against compact JSON/JSONL and emits TOON only when explicitly requested or when
 ```sh
 direnv allow
 just check
-just prompt-toon doctor        # local policy, engine, gateway, and route state
+just prompt-toon doctor        # local policy, engine, gateway and route state
 ```
 
-Condense files (Python engine by default; `--engine chapel` fails closed,
-`--engine auto` fails open):
+Condense files. The Python engine is the default. `--engine chapel` fails
+closed and `--engine auto` fails open:
 
 ```sh
 just prompt-toon condense docs/founding-prompt.md --output-dir /tmp/prompt-toon-demo
@@ -59,14 +59,14 @@ just dogfood path/to/spool/
 ```
 
 The run writes `summary.md`, authoritative `source-cards.jsonl`,
-`manifest.json`, optional `source-cards.toon`, and `efficiency.json` under the
+`manifest.json`, optional `source-cards.toon` and `efficiency.json` under the
 state directory. Token figures are explicitly labeled lexical estimates, not
 provider usage or billing telemetry. A separate whole-handoff gate prevents a
-TOON-vs-JSONL win from being presented as an end-to-end prompt win, and fails
+TOON-vs-JSONL win from being presented as an end-to-end prompt win. It fails
 closed when a size-eligible handoff drops a recognized critical constraint or
 open question. See `docs/dogfood-efficiency.md`.
 Add `--mythos-route` or `--model-label` only when the caller observed those
-values; neither option proves delegation or provider routing.
+values. Neither option proves delegation or provider routing.
 
 Aggregate explicit schema-v3 or legacy schema-v2 ledgers without reopening
 source material:
@@ -76,7 +76,7 @@ just dogfood-corpus path/to/run-*/efficiency.json
 ```
 
 The report requires 20 unique spools within a 50-ledger cap for its
-corpus-count gate, separates execution cohorts, and remains non-promotable
+corpus-count gate. It separates execution cohorts and remains non-promotable
 until deterministic quality fixtures pass. See `docs/dogfood-efficiency.md`.
 
 Run the provider-free synthetic quality gate separately:
@@ -86,52 +86,76 @@ just quality-fixtures
 ```
 
 It requires all constraint-recall, open-question, redaction, clean-retention,
-untrusted-authority exclusion, and exact claim-provenance checks to pass without
-averaging. The report is implementation-fixture evidence only; it does not
+untrusted-authority exclusion and exact claim-provenance checks to pass without
+averaging. The report is implementation-fixture evidence only. It does not
 attest arbitrary ledgers or model-visible quality.
+
+## CLI
+
+`prompt-toon --help` lists these subcommands (v0.3.0 source). Run
+`prompt-toon <command> --help` for the flags of each one.
+
+| Command | What it does |
+| --- | --- |
+| `doctor` | Print local tool status. |
+| `queue` | Write a durable job file. |
+| `stage` | Create durable run and ephemeral staging directories. |
+| `condense` | Condense files or stdin into safe source cards and a summary. |
+| `dogfood` | Condense a durable local spool and write a claim-bounded efficiency ledger. |
+| `corpus-report` | Aggregate explicit dogfood efficiency ledgers without reading sources. |
+| `provider-usage-import` | Hash-bind external exact usage to a dogfood ledger and complete request bytes, without a provider request. |
+| `provider-usage-compare` | Compare hash-bound raw-input and condensed exact-usage sidecars. |
+| `analyze` | Analyze JSON/JSONL for compact JSON vs TOON row encoding. |
+| `encode-toon` | Encode a flat uniform JSON row array as TOON. |
+| `gateway` | Run the opt-in loopback Anthropic Messages shadow gateway. |
+| `responses-gateway` | Run the opt-in loopback OpenAI Responses shadow gateway. |
+| `claude-profile` | Inspect process-scoped gateway or direct-provider routing state. |
+| `codex-profile` | Render user-level Codex Responses gateway profile state. |
+
+`prompt-toon --version` prints the version from `prompt_toon/__init__.py`.
 
 ## The `ptoon` binary (Chapel engine)
 
-Built remote-only (`just build-ptoon`; never local `chpl` — see AGENTS.md).
+Built remote-only (`just build-ptoon`). Never run `chpl` locally (see AGENTS.md).
 Subcommands: `normalize | defang | redact | redact-batch | condense-batch |
 condense | serve | caps`. The batch/stream surfaces are length-prefix framed on
-stdin; `condense-batch` and `condense` emit JSONL events in input order,
-while `redact-batch` emits length-prefixed per-document results (one
-meta-JSON line, then raw redacted bytes — see `src/ptoon/Batch.chpl`). These
+stdin. `condense-batch` and `condense` emit JSONL events in input order.
+`redact-batch` emits length-prefixed results for each document: one
+meta-JSON line, then raw redacted bytes (see `src/ptoon/Batch.chpl`). These
 remain bounded one-shot commands. `serve` keeps one Chapel runtime alive,
-drains a bounded request ring with fixed workers, and returns out-of-order
+drains a bounded request ring with fixed workers and returns out-of-order
 length-prefixed responses keyed by request and stream IDs. Provider HTTP,
-credentials, and SSE never enter this process. Every
-policy breach withholds fail-closed — raw text is never emitted (INV-5).
-`prompt_toon/engine.py` resolves the binary via `$PROMPT_TOON_PTOON`, then
-`build/ptoon` at the repo root (never PATH), and cross-checks all stream
+credentials and SSE never enter this process. Every
+policy breach withholds fail-closed. Raw text is never emitted (INV-5).
+`prompt_toon/engine.py` resolves the binary from `$PROMPT_TOON_PTOON`, then
+`build/ptoon` at the repo root (never PATH) and cross-checks all stream
 output against what was framed.
 
 `prompt_toon/resident.py:ResidentEngine` owns the child, enforces the typed IO
-policy ceilings, bounds active streams, continuously drains stdout/stderr, and
+policy ceilings, bounds active streams, continuously drains stdout/stderr and
 validates each response against the framed provenance before completing its
 future. Defaults are 64 streams, 16 workers, a 64-request ring, 64 documents,
-16 MiB request / 256 MiB response frames, 4096-byte labels, 2 MiB per input,
-2 seconds, and 24 cards per document. The child runtime is pinned to two Chapel
-worker threads; concurrency remains owned by the one resident Chapel process.
+16 MiB request / 256 MiB response frames, 4096-byte labels, 2 MiB for each input,
+2 seconds and 24 cards for each document. The child runtime is pinned to two Chapel
+worker threads. Concurrency remains owned by the one resident Chapel process.
 
 `hooks/post_tool_condense.py` is a source-only PostToolUse adapter. It is
-policy-gated by `policy/io.json` (enforcement ships locked), cache-first via
-the HMAC-authenticated iocache (INV-6), and derives through `ptoon condense`.
+policy-gated by `policy/io.json` (enforcement ships locked), cache-first through
+the HMAC-authenticated iocache (INV-6) and derives through `ptoon condense`.
 It is not in the packaging manifest or any harness registration.
 
 ## C4 boundary
 
 C4 (TIN-2790) keeps provider transport out of Chapel. C4a establishes the
-resident transform service; C4b adds the opt-in Anthropic Messages shadow
-gateway; C4c adds OpenAI Responses and a user-level Codex profile; C4d adds
+resident transform service. C4b adds the opt-in Anthropic Messages shadow
+gateway. C4c adds OpenAI Responses and a user-level Codex profile. C4d adds
 split local/provider credential custody, authenticated instance ownership,
-two native platform targets, and a drift-gated Home Manager consumption
+two native platform targets and a drift-gated Home Manager consumption
 contract. Python owns
-HTTP, auth/header forwarding, errors, and SSE; `ptoon serve` owns a fixed pool
+HTTP, auth/header forwarding, errors and SSE. `ptoon serve` owns a fixed pool
 of bounded transform workers over private framed pipes. Only typed,
 provenance-bearing context is eligible for transformation. Authority-bearing
-request bytes, including instructions, approval state, tool schemas, and
+request bytes, including instructions, approval state, tool schemas and
 provider controls, remain unchanged. See `docs/linear.md` for C4a-e.
 
 C4e is an offline adoption-measurement lane. With `--engine chapel`, one
@@ -141,46 +165,143 @@ records an explicit Python-oracle fallback otherwise. It does not claim the
 resident 64-stream production path, which remains covered by
 `just gateway-capacity`.
 
+## Spec and data flow
+
+```mermaid
+---
+title: Spec and data flow from Dhall sources to estate repos
+---
+flowchart LR
+  XL["xoxd-lexical Dhall rules"] -->|"gen/render.py"| XP["xoxd-lexical projections"]
+  XP -->|"pinned digest sha"| HC["huskycat rules and prompts"]
+  XP -->|"flake input, pinned release"| LAB["lab Home Manager seats"]
+  XP -.->|"local Vale lint only"| PTD["prompt-toon docs"]
+  PTS["prompt-toon policy Dhall"] -->|"just gen-policy"| PTA["prompt-toon policy, skills, manifest"]
+  PTA -.->|"planned: tag archive, SRI"| REG["bazel-registry module"]
+  REG -.->|"planned: bazel_dep, dev only"| HC
+  PTA -->|"flake input rev"| LAB
+  HC -->|"huskycatd module"| LAB
+  LAB -->|"hooks and CI check"| EST["estate repos"]
+```
+
+*Specs start as Dhall in two repos and reach estate repos through pinned projections.*
+
+Solid edges are live today. Dashed edges are local-only or planned, and each
+label says which. The same flow as a table:
+
+| From | To | Interface | State |
+| --- | --- | --- | --- |
+| xoxd-lexical rules | xoxd-lexical projections | `gen/render.py` renders lexicon JSON, Vale styles and a prompt digest | live |
+| xoxd-lexical projections | huskycat | prompt digest pinned by sha | live |
+| xoxd-lexical projections | lab | flake input pinned to a release | live |
+| xoxd-lexical projections | prompt-toon docs | Vale lint from an unpinned local clone | local only |
+| prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/delegation.json` and `policy/io.json` when `dhall-to-json` is on `PATH` | live |
+| prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned after #49 |
+| bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned after #49 |
+| prompt-toon artifacts | lab | flake input pinned to a rev | live |
+| huskycat | lab | huskycatd Home Manager module | live |
+| lab | estate repos | hooks and the CI check | live |
+
+Two lexical consumers pin their own copy. huskycat pins the prompt digest by
+sha and lab pins a release. A bump in one does not move the other. The
+prompt-toon docs lint pins nothing. It runs from a local clone, and this README
+was last checked against xoxd-lexical `a054ff3`.
+
+## Estate consumers
+
+These repos consume prompt-toon or feed it. All of them sit in the xoxd-ai
+estate.
+
+- **lab** pins prompt-toon as a flake input. It delivers the skills in
+  `packaging/manifest.json` to agent seats through Home Manager. Its gateway
+  module follows `packaging/home-manager.json`, and it points
+  `PROMPT_TOON_PTOON` at the Nix-built binary. `just bump-prompt-toon` moves
+  the pin and builds the ai-skills module test. That test checks that the
+  skills are managed and the package is installed. It does not check the
+  skill lock.
+- **huskycat** will read `//:delegation_policy` as Bazel data once the module
+  is registered. Its first consumer is a redaction parity test. That test needs
+  a Dhall-sourced `policy/redaction.json`, which does not exist yet.
+- **xoxd-lexical** sets the house style for these docs. Its styles are
+  private, so the check runs on a local clone today. Private estate CI may run
+  it later. This repo's public CI does not fetch them, and no style files are
+  vendored here.
+- **bazel-registry** will hold `modules/prompt_toon` from 0.3.1 on.
+
+## Bazel consumption
+
+The root module is `prompt_toon` (version in `MODULE.bazel`, checked against
+`prompt_toon/__init__.py` by the manifest drift gate). It pins Bazel 8.2.1 in
+`.bazelversion`. Two public data targets form the consumer surface:
+
+| Target | Contents |
+| --- | --- |
+| `//:delegation_policy` | every file under `policy/`: `README.md`, `delegation.json`, `delegation.schema.json`, `io.json` and the Dhall sources |
+| `//:skills` | every file under `.agents/skills/`, the same set `skill_files[]` digests |
+
+Today no registry carries the module. A consumer that needs the data now must
+pin a commit with `git_override` and accept that the pin skips registry checks.
+That path works on Bazel 8.x only. On Bazel 9 the root `BUILD.bazel` fails to
+load, because it calls `sh_binary` and `sh_test` without rules_shell loads. No
+target in that package resolves then, and that includes the data targets.
+The registered path comes after prompt-toon #49 merges:
+
+1. Bump to 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`, then run
+   `just manifest`.
+2. Cut the signed `v0.3.1` tag.
+3. Add `modules/prompt_toon/0.3.1` to `xoxd-ai/bazel-registry` with the tag
+   archive SRI and a prompt-toon smoke scenario.
+4. huskycat adds
+   `bazel_dep(name = "prompt_toon", version = "0.3.1", dev_dependency = True)`
+   with a `single_version_override` that names the registry commit.
+
+Today `register_toolchains` is not marked `dev_dependency`, so a consumer also
+inherits the Chapel toolchains. A separate Bazel hygiene change adds the
+rules_shell loads and marks the toolchains dev only. Until it lands, consumers
+stay on Bazel 8.x and depend on the data targets only.
+
 ## Gates
 
-- `just check` — compile/secrets/tests + Bazel graph and test (includes the
+- `just check`: compile/secrets/tests + Bazel graph and test (includes the
   packaging-manifest drift gate).
-- `just dogfood <files-or-directories...>` — provider-free spool replay with
+- `just dogfood <files-or-directories...>`: provider-free spool replay with
   output hashes, local byte/token estimates, TOON selection evidence, engine
-  identity, and caller-observed Mythos/model labels.
-- `just quality-fixtures` — deterministic Python-oracle synthetic quality
-  gate; remote parity repeats the same cases through Chapel.
-- `just gateway-harness-probe` — unbilled real-Claude-Code/SSE gateway proof
-  plus local readiness, same-port rebind, and profile-rendering checks against
+  identity and caller-observed Mythos/model labels.
+- `just quality-fixtures`: deterministic Python-oracle synthetic quality
+  gate. Remote parity repeats the same cases through Chapel.
+- `just gateway-harness-probe`: unbilled real-Claude-Code/SSE gateway proof
+  plus local readiness, same-port rebind and profile-rendering checks against
   a scripted loopback upstream.
-- `just responses-gateway-harness-probe` — unbilled real-Codex/SSE proof of
-  the user profile, correlated function-call output, request ceiling, and
+- `just responses-gateway-harness-probe`: unbilled real-Codex/SSE proof of
+  the user profile, correlated function-call output, request ceiling and
   direct rollback against a scripted loopback upstream.
-- `just gateway-capacity` — scripted-loopback HTTP/SSE saturation over the
-  real resident child; the remote parity derivation requires 64/64 streams for
+- `just gateway-capacity`: scripted-loopback HTTP/SSE saturation over the
+  real resident child. The remote parity derivation requires 64/64 streams for
   both providers, near-cap aggregate ingress residency, deterministic overload,
-  split auth, and process-isolated gateway/resident resource bounds. Scripted
+  split auth and process-isolated gateway/resident resource bounds. Scripted
   clients and the upstream run outside the measured gateway process.
 - Remote parity derivation (`make parity`): functions 48/48, condense 34/34,
   redact-batch, stream + condense-run vs goldens, resident multiplex parity,
   64-stream RSS capacity, analyze vs the committed pinned baseline
   (`tests/goldens/analyze/`), Python/Chapel offline quality fixtures, hook
-  canary. Runs at release time via the `just release` preflight.
+  canary. Runs at release time through the `just release` preflight.
 
 ## Releases & packaging
 
 `packaging/manifest.json` is the committed, drift-gated packaging SSOT
-(TIN-2706): version, skills, policy digests, and per-lane enablement all
-derive from it. `skills[]` is the shipped-skill NAME list the flake copy loop
-interpolates; `skill_files[]` is the parallel byte binding — every file in
-every skill directory (sorted, nothing excluded) with its sha256 — so editing
+(TIN-2706). Version, skills, policy digests and the enablement of each lane
+all derive from it. `skills[]` is the shipped-skill NAME list the flake copy loop
+interpolates. `skill_files[]` is the parallel byte binding: every file in
+every skill directory (sorted, nothing excluded) with its sha256. Editing
 any `SKILL.md` body without regenerating fails the drift gate instead of
-shipping silently. A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
-regenerates via `just manifest`, merges, then `just release X.Y.Z` — Linux
+shipping silently.
+
+A release bumps `prompt_toon/__init__.py` (+ MODULE.bazel),
+regenerates through `just manifest`, merges, then `just release X.Y.Z`. That runs Linux
 parity/build, an exact attended GF Darwin output-to-Nix bridge, a stamped
-manifest, wheel, and full Nix closure exports. The Darwin bridge verifies the
+manifest, the wheel and full Nix closure exports. The Darwin bridge verifies the
 Sigstore-attested GF proof, physical-worker identity, output digest, remote
-native `caps`/normalization/redaction/resident smoke, and arm64/ad-hoc
+native `caps`/normalization/redaction/resident smoke and arm64/ad-hoc
 signature and linkage. After those checks, the attended publisher imports the
 same bytes into Nix and runs only the fixed offline native-smoke contract from
 the imported store path before exporting the complete closure. It never
@@ -189,27 +310,28 @@ uses an OpenPGP-signed Git tag and publishes a detached OpenPGP signature over
 the stamped manifest.
 
 The signed manifest authenticates each closure export, its `bin/ptoon`
-entrypoint, the wheel, and Darwin `build_provenance`. Release `.nar` assets are
-the exact binary install artifacts and import with `nix-store --import`; the
+entrypoint, the wheel and Darwin `build_provenance`. Release `.nar` assets are
+the exact binary install artifacts and import with `nix-store --import`. The
 tagged flake remains a source build/install definition but does not imply byte
 identity with the GF-produced Darwin artifact. The raw Darwin executable is a
 non-portable provenance/replay asset, not the install contract. The release
-also retains the GF proof, exported-output index, Sigstore bundle, and remote
+also retains the GF proof, exported-output index, Sigstore bundle and remote
 smoke record so provenance can be re-verified after Actions artifact expiry.
 The ad-hoc Apple Silicon signature carries no Developer ID identity. Release
 notes record the OpenPGP signing-key fingerprint so verification can be
 anchored to the signed tag and repository identity. Fleet install will ride
-the lab Home Manager module (rev-pinned per INV-7).
+the lab Home Manager module (rev-pinned under INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
 C4 gateway. v0.3.0 is the first release line whose manifest declares
-per-target `serve_protocol = 1` and `anthropic_shadow_gateway = 1`
-plus `openai_responses_shadow_gateway = 1` capabilities. Manifest schema v2
-identifies ptoon targets by `(artifact, platform)` and authenticates complete
-Linux and Darwin Nix closure exports, their entrypoint binaries, the Darwin
-GF/Nix bridge provenance, and the universal wheel.
+capabilities for each target. The two `ptoon` targets carry
+`serve_protocol = 1`. The `prompt_toon` wheel carries
+`anthropic_shadow_gateway = 1` and `openai_responses_shadow_gateway = 1`.
+Manifest schema v2 identifies ptoon targets by `(artifact, platform)` and
+authenticates complete Linux and Darwin Nix closure exports, their entrypoint
+binaries, the Darwin GF/Nix bridge provenance and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
-manifest exist.
+manifest exist. The latest tag is `v0.2.0`. No `v0.3.0` tag exists.
 
 ## Project Surfaces
 
