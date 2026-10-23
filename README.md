@@ -175,7 +175,7 @@ flowchart LR
   XL["xoxd-lexical Dhall rules"] -->|"gen/render.py"| XP["xoxd-lexical projections"]
   XP -->|"pinned digest sha"| HC["huskycat rules and prompts"]
   XP -->|"flake input, pinned release"| LAB["lab Home Manager seats"]
-  XP -.->|"local Vale lint only"| PTA
+  XP -.->|"local Vale lint only"| PTD["prompt-toon docs"]
   PTS["prompt-toon policy Dhall"] -->|"just gen-policy"| PTA["prompt-toon policy, skills, manifest"]
   PTA -.->|"planned: tag archive, SRI"| REG["bazel-registry module"]
   REG -.->|"planned: bazel_dep, dev only"| HC
@@ -184,7 +184,7 @@ flowchart LR
   LAB -->|"hooks and CI check"| EST["estate repos"]
 ```
 
-*Specs start as Dhall in two repos and reach estate repos only through pinned projections.*
+*Specs start as Dhall in two repos and reach estate repos through pinned projections.*
 
 Solid edges are live today. Dashed edges are local-only or planned, and each
 label says which. The same flow as a table:
@@ -194,16 +194,18 @@ label says which. The same flow as a table:
 | xoxd-lexical rules | xoxd-lexical projections | `gen/render.py` renders lexicon JSON, Vale styles and a prompt digest | live |
 | xoxd-lexical projections | huskycat | prompt digest pinned by sha | live |
 | xoxd-lexical projections | lab | flake input pinned to a release | live |
-| xoxd-lexical projections | prompt-toon docs | Vale lint, run locally (J82c) | local only |
-| prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/*.json` | live |
-| prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned after J81 |
-| bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned after J81 |
+| xoxd-lexical projections | prompt-toon docs | Vale lint from an unpinned local clone | local only |
+| prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/delegation.json` and `policy/io.json` when `dhall-to-json` is on `PATH` | live |
+| prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned after #49 |
+| bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned after #49 |
 | prompt-toon artifacts | lab | flake input pinned to a rev | live |
 | huskycat | lab | huskycatd Home Manager module | live |
 | lab | estate repos | hooks and the CI check | live |
 
-Each of the three lexical consumers pins its own copy. A bump in one does not
-move the others.
+Two lexical consumers pin their own copy. huskycat pins the prompt digest by
+sha and lab pins a release. A bump in one does not move the other. The
+prompt-toon docs lint pins nothing. It runs from a local clone, and this README
+was last checked against xoxd-lexical `a054ff3`.
 
 ## Estate consumers
 
@@ -214,13 +216,16 @@ estate.
   `packaging/manifest.json` to agent seats through Home Manager. Its gateway
   module follows `packaging/home-manager.json`, and it points
   `PROMPT_TOON_PTOON` at the Nix-built binary. `just bump-prompt-toon` moves
-  the pin and verifies the skill lock.
+  the pin and builds the ai-skills module test. That test checks that the
+  skills are managed and the package is installed. It does not check the
+  skill lock.
 - **huskycat** will read `//:delegation_policy` as Bazel data once the module
   is registered. Its first consumer is a redaction parity test. That test needs
   a Dhall-sourced `policy/redaction.json`, which does not exist yet.
 - **xoxd-lexical** sets the house style for these docs. Its styles are
-  private, so the check runs on a local clone and in private estate CI. This
-  repo's public CI does not fetch them, and no style files are vendored here.
+  private, so the check runs on a local clone today. Private estate CI may run
+  it later. This repo's public CI does not fetch them, and no style files are
+  vendored here.
 - **bazel-registry** will hold `modules/prompt_toon` from 0.3.1 on.
 
 ## Bazel consumption
@@ -231,25 +236,29 @@ The root module is `prompt_toon` (version in `MODULE.bazel`, checked against
 
 | Target | Contents |
 | --- | --- |
-| `//:delegation_policy` | every file under `policy/`: `delegation.json`, `delegation.schema.json`, `io.json` and the Dhall sources |
+| `//:delegation_policy` | every file under `policy/`: `README.md`, `delegation.json`, `delegation.schema.json`, `io.json` and the Dhall sources |
 | `//:skills` | every file under `.agents/skills/`, the same set `skill_files[]` digests |
 
 Today no registry carries the module. A consumer that needs the data now must
 pin a commit with `git_override` and accept that the pin skips registry checks.
-The registered path comes after J81 (prompt-toon #49) merges:
+That path works on Bazel 8.x only. On Bazel 9 the root `BUILD.bazel` fails to
+load, because it calls `sh_binary` and `sh_test` without rules_shell loads. No
+target in that package resolves then, and that includes the data targets.
+The registered path comes after prompt-toon #49 merges:
 
 1. Bump to 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`, then run
    `just manifest`.
 2. Cut the signed `v0.3.1` tag.
 3. Add `modules/prompt_toon/0.3.1` to `xoxd-ai/bazel-registry` with the tag
    archive SRI and a prompt-toon smoke scenario.
-4. huskycat adds `bazel_dep(name = "prompt_toon", dev_dependency = True)` with
-   a `single_version_override` that names the registry commit.
+4. huskycat adds
+   `bazel_dep(name = "prompt_toon", version = "0.3.1", dev_dependency = True)`
+   with a `single_version_override` that names the registry commit.
 
 Today `register_toolchains` is not marked `dev_dependency`, so a consumer also
-inherits the Chapel toolchains. Bazel 9 also needs explicit rules_shell loads.
-A separate Bazel hygiene change fixes both. Consumers should depend on the
-data targets only.
+inherits the Chapel toolchains. A separate Bazel hygiene change adds the
+rules_shell loads and marks the toolchains dev only. Until it lands, consumers
+stay on Bazel 8.x and depend on the data targets only.
 
 ## Gates
 
@@ -280,8 +289,8 @@ data targets only.
 ## Releases & packaging
 
 `packaging/manifest.json` is the committed, drift-gated packaging SSOT
-(TIN-2706). Version, skills, policy digests and lane enablement all
-derive from it. `skills[]` is the shipped-skill NAME list the flake copy loop
+(TIN-2706). Version, skills, policy digests and the enablement of each lane
+all derive from it. `skills[]` is the shipped-skill NAME list the flake copy loop
 interpolates. `skill_files[]` is the parallel byte binding: every file in
 every skill directory (sorted, nothing excluded) with its sha256. Editing
 any `SKILL.md` body without regenerating fails the drift gate instead of
@@ -315,23 +324,14 @@ the lab Home Manager module (rev-pinned under INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
 C4 gateway. v0.3.0 is the first release line whose manifest declares
-`serve_protocol = 1` and `anthropic_shadow_gateway = 1` for each target,
-plus `openai_responses_shadow_gateway = 1` capabilities. Manifest schema v2
-identifies ptoon targets by `(artifact, platform)` and authenticates complete
-Linux and Darwin Nix closure exports, their entrypoint binaries, the Darwin
-GF/Nix bridge provenance and the universal wheel.
+capabilities for each target. The two `ptoon` targets carry
+`serve_protocol = 1`. The `prompt_toon` wheel carries
+`anthropic_shadow_gateway = 1` and `openai_responses_shadow_gateway = 1`.
+Manifest schema v2 identifies ptoon targets by `(artifact, platform)` and
+authenticates complete Linux and Darwin Nix closure exports, their entrypoint
+binaries, the Darwin GF/Nix bridge provenance and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
 manifest exist. The latest tag is `v0.2.0`. No `v0.3.0` tag exists.
-
-One release moves through these states. Rows marked planned start after J81.
-
-| State | Entered when | Left when | Owner | Today |
-| --- | --- | --- | --- | --- |
-| Rendered | `just gen-policy` and `just manifest` pass the drift tests | a tag is pushed | prompt-toon | live |
-| Tagged | `just release` pushes the signed tag and stamped manifest | the registry PR merges | prompt-toon | live, latest `v0.2.0` |
-| Registered | `modules/prompt_toon/<version>` with its SRI merges | a consumer bumps | bazel-registry | planned |
-| Ingested | the huskycat lockfile records the registry hash | the next bump | huskycat | planned |
-| Delivered | lab `just bump-prompt-toon` passes the skill lock check | the next bump | lab | live, pinned by rev |
 
 ## Project Surfaces
 
