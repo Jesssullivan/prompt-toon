@@ -133,7 +133,8 @@ def now_utc() -> str:
 def state_root() -> Path:
     """Return the state directory.
 
-    PROMPT_TOON_STATE_HOME wins, then XDG_STATE_HOME, then ~/.local/state.
+    PROMPT_TOON_STATE_HOME wins and is used as is. Otherwise use the
+    prompt-toon directory under XDG_STATE_HOME, then under ~/.local/state.
     """
     configured = os.environ.get("PROMPT_TOON_STATE_HOME")
     if configured:
@@ -530,7 +531,11 @@ def card_line(card: SourceCard, engine: SimpleNamespace) -> str:
 
 
 def rough_token_count(text: str) -> int:
-    """Estimate tokens by counting words and single punctuation marks."""
+    """Estimate the token count of text.
+
+    Each run of [A-Za-z0-9_] is one token. Whitespace does not count. Any
+    other character is one token, so a non-ASCII letter counts as one too.
+    """
     pieces = re.findall(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]", text)
     return len(pieces)
 
