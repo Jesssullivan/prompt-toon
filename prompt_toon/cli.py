@@ -1,3 +1,8 @@
+"""Command line entry point for prompt-toon.
+
+Each subcommand maps to one command_* function. build_parser wires them up.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -92,6 +97,7 @@ INJECTION_RE = re.compile(
 
 @dataclass(frozen=True)
 class SourceCard:
+    """One condensed claim with its source, line span, digest and trust tier."""
     id: str
     source: str
     trust_tier: str
@@ -104,6 +110,7 @@ class SourceCard:
     flags: list[str]
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the card as a plain dict for JSON output."""
         return {
             "id": self.id,
             "source": self.source,
@@ -119,10 +126,15 @@ class SourceCard:
 
 
 def now_utc() -> str:
+    """Return the current UTC time as an ISO 8601 string with a Z suffix."""
     return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def state_root() -> Path:
+    """Return the state directory.
+
+    PROMPT_TOON_STATE_HOME wins, then XDG_STATE_HOME, then ~/.local/state.
+    """
     configured = os.environ.get("PROMPT_TOON_STATE_HOME")
     if configured:
         return Path(configured).expanduser()
@@ -133,14 +145,17 @@ def state_root() -> Path:
 
 
 def short_id(prefix: str) -> str:
+    """Return a unique id made of the prefix, a UTC stamp and 8 random hex digits."""
     return f"{prefix}-{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"
 
 
 def stable_hash(data: bytes) -> str:
+    """Return the SHA-256 hex digest of the bytes."""
     return hashlib.sha256(data).hexdigest()
 
 
 def file_sha256(path: Path) -> str:
+    """Return the SHA-256 hex digest of a file, read in 1 MiB chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -149,6 +164,10 @@ def file_sha256(path: Path) -> str:
 
 
 def normalize_text(text: str) -> str:
+    """Normalize line endings and Unicode, then strip hidden and control characters.
+
+    Known confusable characters fold to their ASCII form.
+    """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = unicodedata.normalize("NFKC", text)
     text = ZERO_WIDTH_RE.sub("", text)
@@ -191,6 +210,10 @@ def _redaction_replacement(match: re.Match[str]) -> str:
 
 
 def redact_text(text: str) -> tuple[str, list[str]]:
+    """Normalize the text and mask every secret pattern.
+
+    Return the redacted text and one pattern-N finding for each pattern that matched.
+    """
     redacted = normalize_text(text)
     findings: list[str] = []
     for index, pattern in enumerate(SECRET_PATTERNS, start=1):
@@ -264,6 +287,7 @@ def resolve_engine(name: str) -> SimpleNamespace:
 
 
 def read_text_input(paths: list[str]) -> list[dict[str, Any]]:
+    """Read each path, or stdin when no path is given, as bytes and text."""
     if not paths:
         data = sys.stdin.buffer.read()
         return [{"source": "stdin", "bytes": data, "text": data.decode("utf-8", errors="replace")}]
@@ -277,12 +301,14 @@ def read_text_input(paths: list[str]) -> list[dict[str, Any]]:
 
 
 def line_excerpt(lines: list[str], index: int, radius: int = 1) -> tuple[int, int, str]:
+    """Return the 1-based start line, end line and text around one line index."""
     start = max(0, index - radius)
     end = min(len(lines), index + radius + 1)
     return start + 1, end, "\n".join(lines[start:end]).strip()
 
 
 def clean_claim(line: str, limit: int = 220) -> str:
+    """Strip list and heading markers from a line and cap it at limit characters."""
     line = line.strip()
     line = re.sub(r"^[-*#>\s0-9.]+", "", line).strip()
     if len(line) > limit:
@@ -300,6 +326,7 @@ def _card_claim(line: str) -> str:
 
 
 def flags_for(text: str, redactions: list[str]) -> list[str]:
+    """Return the redacted, injection-shaped and has-url flags that apply to the text."""
     flags = []
     if redactions:
         flags.append("redacted")
@@ -313,6 +340,10 @@ def flags_for(text: str, redactions: list[str]) -> list[str]:
 def cards_from_text(
     source: str, text: str, digest: str, trust_tier: str, max_cards: int, engine: SimpleNamespace
 ) -> list[SourceCard]:
+    """Redact the text and cut it into at most max_cards source cards.
+
+    Anchor lines come first, then URL lines and list items. Plain lines are the fallback.
+    """
     redacted, redactions = engine.redact_text(text)
     lines = redacted.splitlines()
     cards: list[SourceCard] = []
@@ -363,10 +394,12 @@ def cards_from_text(
 
 
 def extract_constraints(cards: list[SourceCard]) -> list[SourceCard]:
+    """Return the cards whose claim or evidence reads as a hard constraint."""
     return [card for card in cards if CRITICAL_RE.search(f"{card.claim}\n{card.evidence}")]
 
 
 def extract_open_questions(cards: list[SourceCard]) -> list[SourceCard]:
+    """Return the cards whose claim or evidence reads as an open question."""
     return [card for card in cards if OPEN_QUESTION_RE.search(f"{card.claim}\n{card.evidence}")]
 
 
@@ -493,15 +526,21 @@ def card_line(card: SourceCard, engine: SimpleNamespace) -> str:
 
 
 def rough_token_count(text: str) -> int:
+    """Estimate tokens by counting words and single punctuation marks."""
     pieces = re.findall(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]", text)
     return len(pieces)
 
 
 def is_scalar(value: Any) -> bool:
+    """Return True for None, str, int, float and bool values."""
     return value is None or isinstance(value, (str, int, float, bool))
 
 
 def find_uniform_rows(value: Any, path: str = "$") -> list[tuple[str, list[dict[str, Any]]]]:
+    """Find every list of objects that share one key order and hold only scalars.
+
+    Return each match with its JSON path.
+    """
     found: list[tuple[str, list[dict[str, Any]]]] = []
     if isinstance(value, list):
         if value and all(isinstance(item, dict) for item in value):
@@ -519,6 +558,7 @@ def find_uniform_rows(value: Any, path: str = "$") -> list[tuple[str, list[dict[
 
 
 def toon_escape(value: Any, delimiter: str = ",") -> str:
+    """Render one scalar as a TOON field and quote it when needed."""
     if value is None:
         return "null"
     if value is True:
@@ -550,6 +590,10 @@ def toon_escape(value: Any, delimiter: str = ",") -> str:
 
 
 def encode_rows_to_toon(name: str, rows: list[dict[str, Any]], delimiter: str = "\t") -> str:
+    """Encode uniform scalar rows as one TOON table.
+
+    Raise ValueError when the key order or the value types differ.
+    """
     if not rows:
         return f"{name}[0]:"
     fields = list(rows[0].keys())
@@ -565,10 +609,15 @@ def encode_rows_to_toon(name: str, rows: list[dict[str, Any]], delimiter: str = 
 
 
 def compact_json(value: Any) -> str:
+    """Dump a value as sorted, compact JSON without ASCII escapes."""
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def load_jsonish(path: Path | None) -> Any:
+    """Load JSON from a path or stdin.
+
+    Fall back to JSONL when the input is not one JSON value.
+    """
     if path is None:
         raw = sys.stdin.read()
     else:
@@ -584,10 +633,12 @@ def load_jsonish(path: Path | None) -> Any:
 
 
 def write_json(path: Path, value: Any) -> None:
+    """Write a value as indented, sorted JSON with a trailing newline."""
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
+    """Write each row as one sorted JSON line."""
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
@@ -596,6 +647,10 @@ def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
 def render_summary(
     run_id: str, cards: list[SourceCard], manifest: dict[str, Any]
 ) -> str:
+    """Render the Markdown summary for a condense run.
+
+    It lists sources, claims, constraints, open questions and what to reopen.
+    """
     source_aliases: dict[tuple[str, str], str] = {}
     for index, item in enumerate(manifest["inputs"], start=1):
         source_aliases.setdefault(
@@ -710,6 +765,7 @@ def engine_status() -> dict[str, Any]:
 
 
 def command_doctor(args: argparse.Namespace) -> int:
+    """Print engine, adoption and tool status as JSON."""
     from .adoption import adoption_doctor_status
 
     engines = engine_status()
@@ -751,10 +807,15 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 
 def write_json_to_stdout(value: Any) -> None:
+    """Print a value as indented, sorted JSON."""
     sys.stdout.write(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
 def command_queue(args: argparse.Namespace) -> int:
+    """Redact a prompt and write it as a job file under the state root.
+
+    The job is queued only. It is not authorized to run.
+    """
     root = state_root()
     job_id = args.id or short_id("job")
     jobs_dir = root / "jobs"
@@ -786,6 +847,10 @@ def command_queue(args: argparse.Namespace) -> int:
 
 
 def command_stage(args: argparse.Namespace) -> int:
+    """Create a durable run directory and an ephemeral stage directory.
+
+    Print the run manifest.
+    """
     root = state_root()
     run_id = args.id or short_id("run")
     run_dir = root / "runs" / run_id
@@ -805,6 +870,11 @@ def command_stage(args: argparse.Namespace) -> int:
 
 
 def choose_card_format(cards: list[SourceCard], fmt: str, min_savings: float) -> tuple[str, str | None, dict[str, Any]]:
+    """Pick the card output format and measure the TOON savings.
+
+    JSONL is always the primary artifact. A TOON view is added on request
+    or when auto finds enough savings.
+    """
     card_rows = [card.as_dict() for card in cards]
     jsonl_text = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in card_rows)
     analysis = {"jsonl_tokens": rough_token_count(jsonl_text), "format": "jsonl"}
@@ -853,6 +923,10 @@ def choose_card_format(cards: list[SourceCard], fmt: str, min_savings: float) ->
 
 
 def parse_tier_overrides(pairs: list[str]) -> dict[str, str]:
+    """Parse PATH=TIER pairs into a dict.
+
+    Exit with an error on a malformed pair.
+    """
     overrides: dict[str, str] = {}
     for pair in pairs:
         if "=" not in pair:
@@ -953,6 +1027,7 @@ def _write_condense_artifacts(
 
 
 def command_condense(args: argparse.Namespace) -> int:
+    """Condense files or stdin into source cards, a summary and a manifest."""
     engine = resolve_engine(args.engine)
     tier_overrides = parse_tier_overrides(args.input_tier)
     run_id = args.id or short_id("run")
@@ -1290,6 +1365,11 @@ def _run_dogfood_to_directory(
 
 
 def command_dogfood(args: argparse.Namespace) -> int:
+    """Run a dogfood condensation into a new output directory.
+
+    The run is staged in a temp directory and renamed into place.
+    It makes no provider requests. Print the handoff gate.
+    """
     try:
         expanded_inputs = expand_spool_inputs(args.inputs)
     except ValueError as exc:
@@ -1361,6 +1441,7 @@ def command_dogfood(args: argparse.Namespace) -> int:
 
 
 def command_corpus_report(args: argparse.Namespace) -> int:
+    """Print a corpus report built from the given ledgers."""
     try:
         report = build_corpus_report(args.ledgers)
     except CorpusLedgerError as exc:
@@ -1370,6 +1451,7 @@ def command_corpus_report(args: argparse.Namespace) -> int:
 
 
 def command_provider_usage_import(args: argparse.Namespace) -> int:
+    """Build a provider usage sidecar from a ledger and print it."""
     try:
         sidecar = build_provider_usage_sidecar(
             ledger_path=args.ledger,
@@ -1386,6 +1468,7 @@ def command_provider_usage_import(args: argparse.Namespace) -> int:
 
 
 def command_provider_usage_compare(args: argparse.Namespace) -> int:
+    """Compare two provider usage sidecars and print the report."""
     try:
         baseline = load_provider_usage_sidecar(args.baseline)
         candidate = load_provider_usage_sidecar(args.candidate)
@@ -1397,6 +1480,7 @@ def command_provider_usage_compare(args: argparse.Namespace) -> int:
 
 
 def command_analyze(args: argparse.Namespace) -> int:
+    """Report the JSON and TOON token counts for each uniform row set in the input."""
     # analyze has no normalize/redact/defang call sites today, but --engine
     # is still resolved here so an explicit --engine=chapel request fails
     # closed (per resolve_engine's contract) instead of being silently
@@ -1437,6 +1521,7 @@ def command_analyze(args: argparse.Namespace) -> int:
 
 
 def command_encode_toon(args: argparse.Namespace) -> int:
+    """Encode a JSON array of objects as a TOON table on stdout."""
     # See command_analyze: no normalize/redact/defang call sites here
     # either, but --engine must still fail closed on an explicit request.
     resolve_engine(args.engine)
@@ -1452,12 +1537,17 @@ def command_encode_toon(args: argparse.Namespace) -> int:
 
 
 def command_gateway(args: argparse.Namespace) -> int:
+    """Run the shadow gateway. See gateway.run_gateway."""
     from .gateway import run_gateway
 
     return run_gateway(args)
 
 
 def command_claude_profile(args: argparse.Namespace) -> int:
+    """Print the Claude harness profile for a mode.
+
+    Exit when provider routing conflicts.
+    """
     from .claude_harness import claude_profile
 
     try:
@@ -1474,6 +1564,10 @@ def command_claude_profile(args: argparse.Namespace) -> int:
 
 
 def command_codex_profile(args: argparse.Namespace) -> int:
+    """Print the Codex harness profile as JSON or TOML.
+
+    Exit when provider routing conflicts.
+    """
     from .codex_harness import codex_profile
 
     try:
@@ -1498,6 +1592,10 @@ def command_codex_profile(args: argparse.Namespace) -> int:
 
 
 def default_io_policy_path() -> str:
+    """Return the IO policy path.
+
+    PROMPT_TOON_IO_POLICY wins, then the repo copy, then the installed copy.
+    """
     configured = os.environ.get("PROMPT_TOON_IO_POLICY")
     if configured:
         return configured
@@ -1512,6 +1610,7 @@ def default_io_policy_path() -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser with every subcommand."""
     parser = argparse.ArgumentParser(prog="prompt-toon")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1833,6 +1932,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse argv, run the chosen subcommand and return its exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
