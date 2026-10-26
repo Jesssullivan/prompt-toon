@@ -218,7 +218,8 @@ def build_codex_env(
 
     Only allowlisted variables pass through, plus CODEX_HOME and the gateway
     token. HOME and TMPDIR become the parent of codex_home. The XDG dirs sit
-    under it. An empty token raises ValueError.
+    under it. NO_PROXY and no_proxy gain the loopback hosts. An empty token
+    raises ValueError.
     """
     if not gateway_token:
         raise ValueError("Codex gateway token must be non-empty")
@@ -386,7 +387,8 @@ def run_codex(
 
     Raise RuntimeError on a launch failure, timeout, nonzero exit or error
     event. A timeout_seconds of 0 or less raises ValueError. So does a
-    malformed stream, and that error is not wrapped.
+    malformed stream, and that error is not wrapped. A turn.failed event with
+    no completed turn is a malformed stream, so it raises ValueError.
     """
     if timeout_seconds <= 0:
         raise ValueError("Codex timeout must be positive")
