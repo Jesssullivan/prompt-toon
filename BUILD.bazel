@@ -51,11 +51,16 @@ sh_test(
     srcs = ["tests/run_tests.sh"],
     data = [
         ".bazelrc.flywheel",
+        # J81 golden digests and the .claude project-skill link check read
+        # these directly (tests/test_delegation_policy.py).
+        ".claude/skills/mythos-delegation/SKILL.md",
+        ".claude/skills/prompt-toon/SKILL.md",
         ".github/workflows/bazel-graph.yml",
         ".github/workflows/build-and-test.yml",
         ".github/workflows/ci-flywheel.yml",
         ".github/workflows/native-darwin.yml",
         ".github/workflows/secrets-scan.yml",
+        "AGENTS.md",
         "BUILD.bazel",
         "flake.nix",
         "hooks/post_tool_condense.py",

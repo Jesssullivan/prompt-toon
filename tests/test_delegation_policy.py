@@ -3,6 +3,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -475,7 +476,8 @@ def dhall_seat_model_ids(dhall_text):
 # above give readable errors for known weakenings, but a phrase list can never
 # catch every paraphrase an agent would act on. So the surfaces an orchestrator
 # reads to pick a model are pinned whole: the shipped skill, the policy
-# document and the AGENTS.md J81 bullet. Any edit to them fails here until the
+# document and the whole AGENTS.md "## Delegation" section (a bullet alone can
+# be extended by a lazy continuation line or a sibling bullet). Any edit to them fails here until the
 # digest is updated in the same commit, which puts the change in front of the
 # Opus merge gate as a deliberate policy edit (J81(a)). Packaging digests do not
 # do this: `just manifest` regenerates them.
@@ -484,7 +486,7 @@ def dhall_seat_model_ids(dhall_text):
 # failure prints.
 SKILL_SHA256 = "062a3685480798c86e444f6f86809e720b766e48f12b61d586179c1c3fe80de0"
 POLICY_CANONICAL_SHA256 = "1034cb4f1f40b11e998af58fef6e86d331bdc3da597b9d515a4f18010e9438ea"
-AGENTS_J81_SHA256 = "4be9da3e7b40f6541cba1ebd20de5ff6ebed5a5e7262cab6d73a9c07026e73dc"
+AGENTS_DELEGATION_SHA256 = "f18048be57c162610455ea5e2948d586d787881027db815c4d2269d8c093cac5"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
 
@@ -493,16 +495,45 @@ def canonical_policy_sha256(policy):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def agents_j81_bullet(agents_text):
-    """The AGENTS.md "- J81 (" bullet, up to the next bullet or heading."""
-    lines = agents_text.splitlines()
-    starts = [i for i, line in enumerate(lines) if line.startswith("- J81 (")]
-    if len(starts) != 1:
+def agents_delegation_section(agents_text):
+    """The AGENTS.md "## Delegation" section, heading included, up to the
+    next "## " heading."""
+    marker = "\n## Delegation\n"
+    if agents_text.count(marker) != 1:
         return None
-    end = starts[0] + 1
-    while end < len(lines) and lines[end].startswith("  "):
-        end += 1
-    return "\n".join(lines[starts[0]:end]) + "\n"
+    body = agents_text.split(marker, 1)[1]
+    return marker + body.split("\n## ", 1)[0]
+
+
+def claude_skill_link_violations(root):
+    """Every .claude/skills entry is a symlink to the same-named .agents
+    skill, so the project skill Claude Code loads is the pinned one."""
+    errors = []
+    claude_root = root / ".claude" / "skills"
+    agents_root = (root / ".agents" / "skills").resolve()
+    if not (claude_root / "mythos-delegation").is_symlink():
+        errors.append(".claude/skills/mythos-delegation is not a symlink")
+    if claude_root.is_dir():
+        for entry in sorted(claude_root.iterdir()):
+            if not entry.is_symlink():
+                errors.append(f"{entry.name}: .claude skill is not a symlink")
+            elif entry.resolve() != agents_root / entry.name:
+                errors.append(f"{entry.name}: .claude skill points at {entry.resolve()}")
+    return errors
+
+
+def reject_duplicate_keys(pairs):
+    keys = [k for k, _ in pairs]
+    dups = sorted({k for k in keys if keys.count(k) > 1})
+    if dups:
+        raise ValueError(f"duplicate JSON keys: {dups}")
+    return dict(pairs)
+
+
+def load_json_strict(text):
+    """json.loads keeps the last duplicate key silently; a raw reader sees
+    the first. Reject duplicates so the canonical digest covers the text."""
+    return json.loads(text, object_pairs_hook=reject_duplicate_keys)
 
 
 def golden_digest_violations(skill_bytes, policy, agents_text):
@@ -515,13 +546,16 @@ def golden_digest_violations(skill_bytes, policy, agents_text):
         errors.append(
             f"policy changed: POLICY_CANONICAL_SHA256 is {POLICY_CANONICAL_SHA256}, policy is {actual}"
         )
-    bullet = agents_j81_bullet(agents_text)
-    if bullet is None:
-        errors.append("AGENTS.md needs exactly one '- J81 (' bullet")
+    section = agents_delegation_section(agents_text)
+    if section is None:
+        errors.append("AGENTS.md needs exactly one '## Delegation' section")
     else:
-        actual = hashlib.sha256(bullet.encode("utf-8")).hexdigest()
-        if actual != AGENTS_J81_SHA256:
-            errors.append(f"AGENTS.md J81 bullet changed: AGENTS_J81_SHA256 is {AGENTS_J81_SHA256}, bullet is {actual}")
+        actual = hashlib.sha256(section.encode("utf-8")).hexdigest()
+        if actual != AGENTS_DELEGATION_SHA256:
+            errors.append(
+                f"AGENTS.md Delegation section changed: AGENTS_DELEGATION_SHA256 is "
+                f"{AGENTS_DELEGATION_SHA256}, section is {actual}"
+            )
     return errors
 
 
@@ -1173,8 +1207,46 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertTrue(golden_digest_violations(
             skill, self.policy,
             agents.replace("They never run a host act", "They may also run a host act")))
+        bullet_end = "  operator. This deliberately narrows J81(e) to keep J81(a).\n"
+        self.assertIn(bullet_end, agents)
+        for added in (
+            # Lazy continuation, sibling bullet, indented paragraph (round 3).
+            "Under the budget fallback Sonnet may also run `mythos.act.host`.\n",
+            "* J81 (amendment): Sonnet also takes mythos.gate.review.\n",
+            "\n  Under the fallback Sonnet may also run `mythos.act.host`.\n",
+        ):
+            self.assertTrue(golden_digest_violations(
+                skill, self.policy, agents.replace(bullet_end, bullet_end + added)), added)
         self.assertTrue(golden_digest_violations(
-            skill, self.policy, agents.replace("- J81 (", "- J8l (")))
+            skill, self.policy, agents.replace("## Delegation\n", "## Routing\n")))
+
+    def test_claude_skill_paths_are_links_to_the_pinned_skill(self):
+        self.assertEqual(claude_skill_link_violations(ROOT), [])
+
+    def test_claude_skill_link_check_fails_closed(self):
+        # Round 3, N18: a real directory in place of the symlink loaded an
+        # unpinned SKILL.md.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".agents" / "skills" / "mythos-delegation").mkdir(parents=True)
+            (root / ".agents" / "skills" / "other").mkdir(parents=True)
+            claude = root / ".claude" / "skills"
+            claude.mkdir(parents=True)
+            (claude / "mythos-delegation").mkdir()
+            self.assertTrue(claude_skill_link_violations(root))
+            (claude / "mythos-delegation").rmdir()
+            (claude / "mythos-delegation").symlink_to(root / ".agents" / "skills" / "other")
+            self.assertTrue(claude_skill_link_violations(root))
+            (claude / "mythos-delegation").unlink()
+            (claude / "mythos-delegation").symlink_to(
+                Path("../../.agents/skills/mythos-delegation")
+            )
+            self.assertEqual(claude_skill_link_violations(root), [])
+
+    def test_policy_json_has_no_duplicate_keys(self):
+        load_json_strict(POLICY_PATH.read_text(encoding="utf-8"))
+        with self.assertRaises(ValueError):
+            load_json_strict('{"model_id": "claude-opus-5-5", "model_id": "claude-sonnet-5-5"}')
 
     def test_skill_table_parser_fails_closed(self):
         # Enforcement re-review on PR #49, second round: rows the parser
