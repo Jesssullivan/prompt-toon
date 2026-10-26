@@ -3,9 +3,9 @@
 # `packaging/manifest.json` is COMMITTED (nix consumes it via importJSON and
 # cannot run Bazel inside its sandbox), so the gate is the same shape as the
 # dhall->json policy artifacts: regenerate and byte-diff. The test is NOT
-# tagged manual — it is pure python3 over repo files, so it joins `bazel
-# test //...` on every platform, which makes manifest drift a required-lane
-# CI failure.
+# tagged manual. It is pure python3 over repo files, so it joins `bazel test
+# //...` on every platform. That makes manifest drift a required-lane CI
+# failure.
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
