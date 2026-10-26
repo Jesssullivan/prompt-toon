@@ -23,9 +23,9 @@ filegroup(
     srcs = glob(["policy/**"]),
 )
 
-# Every file under .agents/skills/, exhaustively: the packaging manifest's
-# skill_files[] digests all of them, so an under-declared list here would
-# starve the in-sandbox drift gate of bytes it must hash.
+# List every file under .agents/skills/. The packaging manifest's
+# skill_files[] digests all of them. A short list here would starve the
+# in-sandbox drift gate of bytes it must hash.
 filegroup(
     name = "skills",
     srcs = [
@@ -38,9 +38,9 @@ filegroup(
 )
 
 # A real, deterministic consumer action for the GF enrollment gate. The
-# two-pass executor proof builds this from isolated output bases: the warm pass
-# executes it remotely, and the measured pass must reuse its remote result
-# while the test actions themselves execute because test-result caching is off.
+# two-pass executor proof builds this from isolated output bases. The warm pass
+# executes it remotely. The measured pass must reuse its remote result. The
+# test actions still execute in that pass, because test-result caching is off.
 genrule(
     name = "gf_cache_probe",
     srcs = ["packaging/manifest.json"],
@@ -98,9 +98,9 @@ sh_test(
 # TIN-2706: everything the packaging-manifest generator reads, so the drift
 # gate can regenerate the manifest inside the test sandbox. Skill dirs come in
 # through :skills, which must list EVERY file under .agents/skills/. The
-# manifest's skill_files[] digests each one, so directory existence is no longer
-# enough (asserted by tests/test_manifest.py::
-# test_bazel_skill_filegroup_declares_every_skill_file).
+# manifest's skill_files[] digests each one. Directory existence is no longer
+# enough. tests/test_manifest.py::
+# test_bazel_skill_filegroup_declares_every_skill_file asserts this.
 filegroup(
     name = "manifest_srcs",
     srcs = [

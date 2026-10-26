@@ -5,8 +5,9 @@ Public API:
 - `ChapelToolchainInfo`: the provider that one Chapel toolchain returns.
 - `chapel_toolchain`: the rule that declares one Chapel compiler toolchain.
 
-The compiler is an executable Bazel dependency. The action never looks it up
-on PATH. A packaged compiler can attach extra runtime files and environment
+The compiler is an executable Bazel dependency, a wrapper target. Bazel never
+runs a bare `chpl` from the host PATH. Each registered wrapper still resolves
+`chpl` on its executor PATH. A packaged compiler can attach extra runtime files and environment
 variables. The Linux bridge is non-hermetic. Darwin is non-hermetic too,
 because the worker provisions its compiler and Bazel does not declare it as an
 input. An action-keyed policy on the execution platform can still bind it to
@@ -21,7 +22,7 @@ ChapelToolchainInfo = provider(
         "files": "Transitive compiler and runtime files that the action needs.",
         "hermetic": "Whether every non-system compiler input is declared to Bazel.",
         "worker_closure_bound": "Whether an action-keyed worker policy selects the compiler closure.",
-        "inherit_default_shell_env": "Whether the compile action inherits Bazel's default shell environment.",
+        "inherit_default_shell_env": "Whether the Bazel default shell environment reaches the compile action.",
         "cacheable": "Whether the action key covers the full compiler identity.",
         "identity": "Reviewed identity of the compiler and toolchain, used in diagnostics.",
     },
@@ -56,8 +57,10 @@ chapel_toolchain = rule(
 The rule returns `platform_common.ToolchainInfo` whose `chapel` field holds a
 `ChapelToolchainInfo`. Pair each target with a `toolchain()` target that sets
 its execution and target constraints. The flags describe the compiler only.
-`chapel_binary` reads them to choose `no-cache` and the shell environment. It
-also reads them to enforce `require_worker_closure_toolchain`.
+`chapel_binary` reads three of them. `cacheable` chooses `no-cache`.
+`inherit_default_shell_env` chooses the shell environment.
+`worker_closure_bound` enforces `require_worker_closure_toolchain`. Nothing
+reads `hermetic`. It is informational.
 """,
     attrs = {
         "chpl": attr.label(
@@ -83,7 +86,7 @@ also reads them to enforce `require_worker_closure_toolchain`.
         ),
         "inherit_default_shell_env": attr.bool(
             default = False,
-            doc = "Whether the default shell environment of Bazel reaches the compile action.",
+            doc = "Whether the Bazel default shell environment reaches the compile action.",
         ),
         "identity": attr.string(
             mandatory = True,
