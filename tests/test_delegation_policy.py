@@ -507,10 +507,12 @@ def agents_delegation_section(agents_text):
 
 # Routing words that may only appear inside the pinned "## Delegation"
 # section of AGENTS.md, so routing guidance cannot sit in an unpinned sibling
-# section (round 4).
+# section (rounds 4 and 5). Includes the policy's own fallback vocabulary and
+# lane IDs without the mythos. prefix. Scanned over whitespace-joined text too,
+# so a line wrap cannot split a phrase.
 AGENTS_ROUTING_RE = re.compile(
-    r"\b(opus|sonnet|haiku|fable|claude-[a-z]+-\d|mythos\.|j8\d|budget fallback|"
-    r"model class|merge gate|merge-gating|host act)",
+    r"\b(opus|sonnet|haiku|fable|claude|mythos\.|j8\d|quota|fall(s|ing)? ?back|"
+    r"downgrad|(implement|gate|act|review)\.[a-z]|merge.gat|host act|model class)",
     re.IGNORECASE,
 )
 DELEGATION_HEADING_RE = re.compile(r"^#{1,6}\s*delegation\b", re.IGNORECASE | re.MULTILINE)
@@ -527,9 +529,44 @@ def agents_routing_outside_violations(agents_text):
     if section is None:
         return errors + ["AGENTS.md needs exactly one '## Delegation' section"]
     outside = agents_text.replace(section, "\n", 1)
-    for line in outside.splitlines():
-        if AGENTS_ROUTING_RE.search(line):
-            errors.append(f"AGENTS.md routing text outside ## Delegation: {line.strip()}")
+    return errors + [f"AGENTS.md outside ## Delegation: {hit}" for hit in routing_hits(outside)]
+
+
+def routing_hits(text):
+    """Routing words in text, per line and across line wraps."""
+    hits = [m.group(0) for line in text.splitlines() for m in AGENTS_ROUTING_RE.finditer(line)]
+    joined = [m.group(0) for m in AGENTS_ROUTING_RE.finditer(" ".join(text.split()))]
+    return hits if len(hits) >= len(joined) else joined
+
+
+# The prompt-toon skill is a condensation skill that Claude Code also loads.
+# Its two existing routing-word lines are allowed verbatim. Any other routing
+# text in it fails (round 5, B08).
+PROMPT_TOON_SKILL_PATH = ROOT / ".agents" / "skills" / "prompt-toon" / "SKILL.md"
+PROMPT_TOON_ALLOWED_ROUTING_LINES = (
+    "--mythos-route mythos.synthesis \\",
+)
+PROMPT_TOON_ALLOWED_PREFIXES = ("description: Condense wide/deep agent research",)
+
+
+def prompt_toon_skill_violations(skill_text):
+    errors = []
+    allowed_hits = 0
+    rest = []
+    for line in skill_text.splitlines():
+        stripped = line.strip()
+        if stripped in PROMPT_TOON_ALLOWED_ROUTING_LINES or stripped.startswith(
+            PROMPT_TOON_ALLOWED_PREFIXES
+        ):
+            allowed_hits += len(AGENTS_ROUTING_RE.findall(stripped))
+        else:
+            rest.append(line)
+    hits = routing_hits("\n".join(rest))
+    if hits:
+        errors.append(f"prompt-toon SKILL.md carries routing text: {hits}")
+    total = len(AGENTS_ROUTING_RE.findall(" ".join(skill_text.split())))
+    if total != allowed_hits:
+        errors.append("prompt-toon SKILL.md routing words span lines outside the allowance")
     return errors
 
 
@@ -569,9 +606,12 @@ def instruction_surface_violations(root):
     for name in ("CLAUDE.md", "CLAUDE.local.md"):
         path = root / name
         if path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if AGENTS_ROUTING_RE.search(line):
-                    errors.append(f"{name} carries routing text: {line.strip()}")
+            hits = routing_hits(path.read_text(encoding="utf-8"))
+            if hits:
+                errors.append(f"{name} carries routing text: {hits}")
+    pt_skill = root / ".agents" / "skills" / "prompt-toon" / "SKILL.md"
+    if pt_skill.exists():
+        errors.extend(prompt_toon_skill_violations(pt_skill.read_text(encoding="utf-8")))
     return errors
 
 
@@ -1278,6 +1318,17 @@ class DelegationPolicyTests(unittest.TestCase):
                 skill, self.policy, agents.replace("## TOON Policy\n", f"{heading}\n\n{grant}\n## TOON Policy\n")), heading)
         self.assertTrue(golden_digest_violations(
             skill, self.policy, agents.replace("## Safety\n\n", "## Safety\n\n" + grant)))
+        # Round 5, B01 to B03: the policy's own words, bare Claude, and a
+        # line wrap that splits "merge gate" and "host act".
+        for added in (
+            "- When quota runs out, `gate.review` and `act.host` may also fall back to\n"
+            "  the second model. Record the downgrade in the receipt.\n",
+            "- If the top Claude model is out of quota, the mid-tier Claude model may\n"
+            "  run the review that gates a merge and may act on hosts.\n",
+            "- The review at the merge\n  gate and every host\n  act may continue on the second-tier model.\n",
+        ):
+            self.assertTrue(golden_digest_violations(
+                skill, self.policy, agents.replace("## Safety\n\n", "## Safety\n\n" + added)), added)
 
     def test_claude_skill_paths_are_links_to_the_pinned_skill(self):
         self.assertEqual(claude_skill_link_violations(ROOT), [])
@@ -1330,8 +1381,23 @@ class DelegationPolicyTests(unittest.TestCase):
         with tmp:
             (root / "CLAUDE.md").write_text("Sonnet may run mythos.gate.review.\n")
             self.assertTrue(instruction_surface_violations(root))
+            (root / "CLAUDE.md").write_text(
+                "@AGENTS.md\nWhen quota runs out, `gate.review` may also fall back.\n"
+            )
+            self.assertTrue(instruction_surface_violations(root))
             (root / "CLAUDE.md").write_text("Read AGENTS.md first.\n")
             self.assertEqual(instruction_surface_violations(root), [])
+
+    def test_prompt_toon_skill_carries_no_routing_text(self):
+        # Round 5, B08: the condensation skill is loaded too.
+        text = PROMPT_TOON_SKILL_PATH.read_text(encoding="utf-8")
+        self.assertEqual(prompt_toon_skill_violations(text), [])
+        grant = (
+            "When Opus quota is out, `mythos.gate.review` and `mythos.act.host` may "
+            "also run on Sonnet (`claude-sonnet-5-5`).\n"
+        )
+        self.assertTrue(prompt_toon_skill_violations(text + grant))
+        self.assertTrue(prompt_toon_skill_violations(text + "The merge\ngate may run elsewhere.\n"))
 
     def test_policy_json_has_no_duplicate_keys(self):
         load_json_strict(POLICY_PATH.read_text(encoding="utf-8"))
