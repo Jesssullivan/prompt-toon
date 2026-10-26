@@ -48,31 +48,46 @@ from .provider_usage import (
 )
 
 REDACTION_POLICY_SCHEMA_VERSION = 1
+# sha256 of the canonical patterns list in policy/redaction.json. The loader
+# rejects any other list, so a stale, truncated or foreign policy file cannot
+# narrow redaction. Appending a pattern updates this pin in the same change.
+# tests/test_redaction_policy.py keeps it in sync with the shipped JSON.
+REDACTION_PATTERNS_SHA256 = "33eed59033dca27c430425ce4b40050257c9121b7e82e86578a5cd58d86d38b6"
+
+
+def redaction_patterns_digest(patterns: Any) -> str:
+    """Return the sha256 of a patterns list in canonical JSON form."""
+
+    canonical = json.dumps(patterns, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def redaction_policy_candidates() -> tuple[Path, ...]:
     """Return the places policy/redaction.json can live, in lookup order.
 
-    The order is a source checkout or Bazel runfiles tree, then the Nix
-    package layout ($out/lib/prompt-toon/prompt_toon -> $out/share), then
-    wheel data-files under sys.prefix and the user base.
+    A source checkout or Bazel runfiles tree reads the policy beside the
+    package. The Nix package layout maps $out/lib/prompt-toon/prompt_toon to
+    $out/share. A wheel install reads its data files under sys.prefix and
+    the user base first. There the directory beside the package is shared
+    site-packages, so it is only a last resort.
     """
 
     here = Path(__file__).resolve()
     relative = Path("share") / "prompt-toon" / "policy" / "redaction.json"
-    candidates = [here.parent.parent / "policy" / "redaction.json"]
-    if len(here.parents) > 3:
-        candidates.append(here.parents[3] / relative)
-    candidates.append(Path(sys.prefix) / relative)
-    candidates.append(Path(site.getuserbase()) / relative)
-    return tuple(candidates)
+    beside = here.parent.parent / "policy" / "redaction.json"
+    nix = [here.parents[3] / relative] if len(here.parents) > 3 else []
+    data = [Path(sys.prefix) / relative, Path(site.getuserbase()) / relative]
+    if {"site-packages", "dist-packages"} & set(here.parts):
+        return tuple(data + nix + [beside])
+    return tuple([beside] + nix + data)
 
 
 def load_secret_patterns(path: Path | None = None) -> list[re.Pattern[str]]:
     """Compile SECRET_PATTERNS from the Dhall-rendered redaction policy.
 
-    Redaction fails closed. A missing, malformed or reordered policy raises
-    at import time rather than running with fewer patterns.
+    Redaction fails closed. A missing, malformed, reordered or altered
+    policy raises at import time. The patterns list must match
+    REDACTION_PATTERNS_SHA256, so a truncated or weakened file never loads.
     """
 
     if path is None:
@@ -90,7 +105,7 @@ def load_secret_patterns(path: Path | None = None) -> list[re.Pattern[str]]:
     patterns = policy.get("patterns")
     if not isinstance(patterns, list) or not patterns:
         raise RuntimeError(f"prompt-toon: redaction policy {path} has no patterns")
-    compiled: list[re.Pattern[str]] = []
+    entries: list[tuple[str, bool]] = []
     for index, entry in enumerate(patterns, start=1):
         # Finding ids are positional (redact_text reports pattern-<index>),
         # so the policy ids must match list order exactly.
@@ -104,8 +119,14 @@ def load_secret_patterns(path: Path | None = None) -> list[re.Pattern[str]]:
         case_insensitive = entry.get("case_insensitive")
         if not isinstance(source, str) or not isinstance(case_insensitive, bool):
             raise RuntimeError(f"prompt-toon: redaction policy {path} entry {index} is malformed")
-        compiled.append(re.compile(source, re.IGNORECASE if case_insensitive else 0))
-    return compiled
+        entries.append((source, case_insensitive))
+    digest = redaction_patterns_digest(patterns)
+    if digest != REDACTION_PATTERNS_SHA256:
+        raise RuntimeError(
+            f"prompt-toon: redaction policy {path} patterns digest {digest} does "
+            f"not match the pinned {REDACTION_PATTERNS_SHA256}"
+        )
+    return [re.compile(source, re.IGNORECASE if ci else 0) for source, ci in entries]
 
 
 SECRET_PATTERNS = load_secret_patterns()

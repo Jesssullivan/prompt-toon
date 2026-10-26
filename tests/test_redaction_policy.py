@@ -8,9 +8,11 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from prompt_toon import cli
 
@@ -183,6 +185,22 @@ class RedactionPolicyTests(unittest.TestCase):
             {"schema_version": 1, "patterns": []},
             {"schema_version": 1, "patterns": list(reversed(self.patterns))},
             {"schema_version": 1, "patterns": [dict(self.patterns[0], case_insensitive="no")]},
+            # Well-formed but narrower or weaker. Only the pinned digest
+            # rejects these.
+            {"schema_version": 1, "patterns": self.patterns[:1]},
+            {"schema_version": 1, "patterns": self.patterns[:-1]},
+            {
+                "schema_version": 1,
+                "patterns": self.patterns[:7]
+                + [dict(self.patterns[7], source="a^")]
+                + self.patterns[8:],
+            },
+            {
+                "schema_version": 1,
+                "patterns": self.patterns[:7]
+                + [dict(self.patterns[7], case_insensitive=False)]
+                + self.patterns[8:],
+            },
         ]
         with tempfile.TemporaryDirectory() as tmp:
             for index, payload in enumerate(broken):
@@ -191,6 +209,28 @@ class RedactionPolicyTests(unittest.TestCase):
                 with self.subTest(index=index):
                     with self.assertRaises(RuntimeError):
                         cli.load_secret_patterns(path)
+
+    def test_patterns_digest_is_pinned(self):
+        self.assertEqual(
+            cli.redaction_patterns_digest(self.patterns), cli.REDACTION_PATTERNS_SHA256
+        )
+        self.assertEqual(len(cli.load_secret_patterns(POLICY_PATH)), len(self.patterns))
+
+    def test_installed_lookup_prefers_data_files(self):
+        site_cli = (
+            Path(sys.prefix) / "lib" / "python3" / "site-packages" / "prompt_toon" / "cli.py"
+        )
+        with mock.patch.object(cli, "__file__", str(site_cli)):
+            candidates = cli.redaction_policy_candidates()
+        data = Path(sys.prefix) / "share" / "prompt-toon" / "policy" / "redaction.json"
+        self.assertEqual(candidates[0], data)
+        self.assertEqual(candidates[-1], site_cli.parent.parent / "policy" / "redaction.json")
+
+    def test_bazel_binary_declares_the_policy(self):
+        build = (ROOT / "BUILD.bazel").read_text(encoding="utf-8")
+        binary = re.search(r'sh_binary\(\s*name = "prompt-toon",.*?\n\)', build, re.S)
+        self.assertIsNotNone(binary)
+        self.assertIn('"policy/redaction.json"', binary.group(0))
 
     def test_packaging_ships_the_policy(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

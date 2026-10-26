@@ -15,7 +15,9 @@ filegroup(
 sh_binary(
     name = "prompt-toon",
     srcs = ["scripts/prompt-toon"],
-    data = glob(["prompt_toon/**/*.py"]),
+    # prompt_toon/cli.py loads the redaction policy at import and fails
+    # closed without it, so the runfiles tree must carry the JSON.
+    data = ["policy/redaction.json"] + glob(["prompt_toon/**/*.py"]),
 )
 
 filegroup(
