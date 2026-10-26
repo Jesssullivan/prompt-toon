@@ -140,6 +140,11 @@ def _string_list(value: Any, label: str, *, maximum: int = 64) -> list[str]:
 
 
 def load_quality_manifest(path: Path) -> tuple[dict[str, Any], str]:
+    """Load and validate a quality fixture manifest.
+
+    Return the manifest and the sha256 of its bytes. Raise QualityFixtureError
+    when it is too large or invalid.
+    """
     data = _read_bounded(
         path,
         limit=MAX_QUALITY_MANIFEST_BYTES,
@@ -151,6 +156,10 @@ def load_quality_manifest(path: Path) -> tuple[dict[str, Any], str]:
 
 
 def validate_quality_manifest(manifest: Any) -> None:
+    """Check a quality fixture manifest against its schema.
+
+    Raise QualityFixtureError on the first problem.
+    """
     manifest = _mapping(manifest, "quality fixture manifest")
     _exact_keys(manifest, {"schema_version", "id", "cases"}, "quality fixture manifest")
     if manifest.get("schema_version") != QUALITY_FIXTURE_SCHEMA_VERSION:
@@ -650,6 +659,12 @@ def build_quality_report(
     engine_requested: str,
     engine_resolved: str,
 ) -> dict[str, Any]:
+    """Aggregate the case results into the offline quality report.
+
+    The gate passes only when every case passes. Each dimension also needs at
+    least one applicable case, and all of those must pass. Results out of
+    manifest order raise QualityFixtureError.
+    """
     expected_ids = [case["id"] for case in manifest["cases"]]
     if [result.get("id") for result in case_results] != expected_ids:
         raise QualityFixtureError("quality results do not match manifest case order")

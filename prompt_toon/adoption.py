@@ -310,6 +310,7 @@ def build_home_manager_contract(
 
 
 def render_contract(contract: Mapping[str, Any]) -> str:
+    """Render an adoption contract as sorted, indented JSON with a final newline."""
     return json.dumps(contract, indent=2, sort_keys=True) + "\n"
 
 
@@ -563,6 +564,12 @@ def gateway_doctor_status(
 
 
 def policy_doctor_status(path: str | Path) -> dict[str, Any]:
+    """Summarize the IO policy file at path for the doctor report.
+
+    Report its sha256 and schema version. Also report whether enforcement is
+    unlocked and whether the model_gateway surface is enabled. A read or shape
+    error is recorded by type name and is never raised.
+    """
     policy_path = Path(path).expanduser()
     result: dict[str, Any] = {"path": str(policy_path), "available": False}
     try:
@@ -725,6 +732,12 @@ def adoption_doctor_status(
     timeout: float = 0.5,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
+    """Collect the local adoption doctor report.
+
+    The report covers the IO policy, both loopback gateways and the Claude and
+    Codex request paths. It only observes local state. It makes no provider
+    request.
+    """
     return {
         "claim_boundary": "local-observation-only; no provider request is made",
         "policy": policy_doctor_status(policy_path),
