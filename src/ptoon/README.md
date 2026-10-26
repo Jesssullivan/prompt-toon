@@ -1,241 +1,133 @@
-# TIN-2708/C2: `ptoon` (Chapel normalize/redact/defang core)
+# ptoon: the Chapel transform binary
 
-This directory is the permanent home of `ptoon`, the standalone Chapel
-binary behind `--engine=chapel` (`docs/mythos-delivery-design.md` §7–8,
-C1/C2). As of C1 it carries **real semantics** graduated in from
-`spikes/tin-2707/ptoon_spike.chpl` (the proven C0 parity port): NFKC
-normalization + confusable/zero-width folding, Unicode-boundary-exact
-secret redaction, and markdown/URI defanging, all byte-parity-gated
-against the `prompt_toon/cli.py` Python oracle. As of C2b it also exposes
-the `redact-batch` coforall fan-in entrypoint: N documents are redacted
-concurrently inside one Chapel process while preserving byte-identical
-per-document semantics. C2d/e add `condense-batch` and `condense`, which emit
-typed JSONL events for one framed invocation and then exit. None of these
-commands is a resident service.
+`ptoon` is the Chapel binary behind `--engine=chapel`. It runs the bounded text transforms: NFKC normalization with confusable and zero-width folding, secret redaction and markdown or URI defanging. The Python code in `prompt_toon/cli.py` is the oracle. Every transform must match it byte for byte. The design lives in `docs/mythos-delivery-design.md` sections 7 and 8 (TIN-2708, TIN-2709).
 
-## Architecture pivot: subprocess binary, not a C-ABI library
+This file covers three things: the CLI contract, the build lanes and the test lanes.
 
-C1 originally targeted `libptoon`, a ctypes-loaded shared library with
-exported `ptoon_*` procs. That path was **abandoned**: repeated
-exported-proc calls into a `chpl --library` build segfaulted on buffer
-free (init + first calls succeeded; `ptoon_free` crashed). Chapel's
-foreign-thread runtime re-entry is fragile, and `chpl_library_init` +
-allocator-consistency (`allocate`/`deallocate`) did not clear it.
+## Why a binary
 
-The engine is therefore a **standalone `ptoon` binary invoked as a
-subprocess**, one call per text-transform or framed batch. This sidesteps the
-runtime-reentry wall and lets C2 `coforall` own concurrency *inside* the
-Chapel runtime (no N host-thread re-entries). The current PostToolUse adapter
-uses this one-shot boundary. PostToolBatch can add `additionalContext`, but
-cannot `updatedToolOutput`-rewrite a completed batch; per-tool replacement
-remains PostToolUse.
+C1 first built `libptoon`, a shared library that Python loaded through ctypes. Repeated calls into a `chpl --library` build crashed when a buffer was freed. Chapel's runtime does not support re-entry from a foreign thread. So the engine ships as a standalone binary. Python starts it as a subprocess, and Chapel owns its runtime from start to exit. `coforall` handles concurrency inside that one process.
 
-C4a (TIN-2792) targets a separate resident `ptoon serve` mode over private
-framed pipes with fixed transform workers and explicit capacity limits. It is
-implemented in this source tree and remains disabled in fleet policy. The
-provider gateway, not Chapel, owns HTTP, auth, SSE, and provider adaptation;
-only typed context enters the transform pipe and authority bytes are preserved.
+Two callers use the binary. `prompt_toon/engine.py` (`ChapelEngine`) runs the one-shot commands. `prompt_toon/resident.py` owns the long-lived `ptoon serve` child. The provider gateway owns HTTP, auth, SSE and provider adaptation. Only typed context enters the transform pipe, and authority bytes pass through unchanged. Fleet policy keeps `serve` disabled for now.
 
-## Binary protocol (fixed contract)
+## CLI contract
 
-`ptoon` takes one subcommand as `argv[1]` and reads all of stdin as raw
-bytes:
+`ptoon <command> [limits...]` reads one command from `argv[1]`. The one-shot commands read all of stdin as raw bytes, write stdout and exit.
 
-- `ptoon normalize` → normalized text to stdout, exit 0.
-- `ptoon defang`    → defanged text to stdout, exit 0.
-- `ptoon redact`    → exactly one line `findings:<comma-joined pattern
-  names or empty>\n`, then the redacted text verbatim, exit 0.
-- `ptoon redact-batch` → length-prefixed N-document stdin; length-prefixed
-  per-document JSON+body results in input order, exit 0.
-- `ptoon condense-batch` → length-prefixed source/tier/body triplets; typed
-  JSONL document/card/end/batch events in input order, exit 0.
-- `ptoon condense` → `condense-batch` plus a framed run header and trailing
-  summary/manifest events, exit 0.
-- `ptoon serve` → resident v1 request/response frames over private pipes;
-  responses may complete out of order and are keyed by visible-ASCII request
-  and stream IDs. Fixed launch ceilings bound workers, queue slots, documents,
-  request/response bytes, labels, per-document bytes, budget, and card count.
-- `ptoon caps`      → engine-caps JSON to stdout, exit 0.
-- unknown subcommand → stderr message, exit 2.
+| Command | Optional limits | Output on stdout |
+| --- | --- | --- |
+| `normalize` | none | the normalized text |
+| `defang` | none | the defanged text |
+| `redact` | none | one `findings:<names>` line, then the redacted text |
+| `redact-batch` | `maxInputBytes budgetMs` | one framed result for each document, in input order |
+| `condense-batch` | `maxInputBytes budgetMs maxCards` | typed JSONL document, card, end and batch events |
+| `condense` | `maxInputBytes budgetMs maxCards` | a run header, the `condense-batch` events, then summary and manifest events |
+| `serve` | nine launch ceilings, listed below | resident v1 response frames until stdin closes |
+| `caps` | none | the engine caps JSON |
 
-`prompt_toon/engine.py`'s `ChapelEngine` shells out over this protocol.
-The `redact-batch` protocol is:
+The `findings:` line of `redact` holds the matched pattern names, joined by commas. It is empty when nothing matched. `caps` reports the engine, the Unicode version, the pattern count (9), `serve_protocol` (1) and the feature list.
+
+`redact-batch` uses this framing:
 
 ```text
-stdin:  <n>\n then repeated n times: <byteLen>\n<raw bytes>
-stdout: <n>\n then repeated n times:
-        <metaJson>\n<redactedByteLen>\n<redacted bytes>
+stdin:  <n>\n then n times: <byteLen>\n<raw bytes>
+stdout: <n>\n then n times: <metaJson>\n<redactedByteLen>\n<redacted bytes>
 ```
 
-Malformed batch frames fail closed: malformed lengths, overrun bodies, and
-trailing bytes make the process exit nonzero rather than guessing.
+`condense-batch` and `condense` read framed source, tier and body triplets.
+
+`serve` takes up to nine positive integers in this order: `workers queueDepth maxDocs maxRequestBytes maxLabelBytes maxInputBytes maxBudgetMs maxCards maxResponseBytes`. The defaults are 16, 64, 64, 16 MiB, 4096, 2000000, 2000, 24 and 256 MiB. `maxInputBytes` must not exceed `maxRequestBytes`. `maxResponseBytes` must be at least `maxRequestBytes`. The service checks each ceiling before it allocates a transform. Responses can complete out of order. Each one carries its visible-ASCII request and stream IDs.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | success |
+| 2 | a usage fault: no command, an unknown command, too many limits or a limit out of range |
+| other nonzero | a transform error or a malformed frame |
+
+### Fail closed (INV-5)
+
+- A one-shot transform that hits an error exits nonzero with a message on stderr. It never writes a partial result to stdout.
+- In `redact-batch`, an error in one document withholds only that document. Its result has `withheld=true`, a reason and zero body bytes.
+- A malformed batch frame fails the whole process. That covers a bad length, a body that overruns and trailing bytes.
+- `engine.py` raises `EngineError` on a nonzero exit or any stderr output.
+- `resolve_engine` in `cli.py` sets the policy. `--engine=chapel` stops with an error when the binary is missing. `--engine=auto` falls back to Python. `--engine=python` is the default and never runs the binary.
+
+The engine finds the binary at `$PROMPT_TOON_PTOON` first, then at `build/ptoon` under the repo root.
+
+## Build lanes
+
+Chapel compiles on remote builders only (AGENTS.md doctrine, 2026-07-09). Do not run `chpl` on a developer host. Both lanes compile `Main.chpl` with `chpl --fast -M src/ptoon`.
+
+| Lane | Command | Output |
+| --- | --- | --- |
+| Nix, Linux | `just build-ptoon` or `make build-ptoon` | the x86_64-linux ELF from the remote builder, cache first |
+| Nix, Darwin | `just build-ptoon-darwin` | the aarch64-darwin binary from the remote builder |
+| Bazel on GF REAPI | `just flywheel-chapel` or `make bazel-ptoon` | `//src/ptoon:ptoon`, built with no cache and no local fallback |
+
+- **Nix.** `.#packages.<system>.ptoon` builds the binary, then runs two smoke checks. `echo hi | ./ptoon normalize` must print text. `caps` must report `serve_protocol` 1. On Darwin the build also runs the document-count matrix, the resident serve round trip, the dogfood test and the quality fixtures against the binary.
+- **Bazel.** The `chapel_binary` rule resolves its compiler through `ChapelToolchainInfo` in `//tools/bazel/chapel`. On x86_64-linux this is the GF worker runtime bridge, which is a stopgap. On aarch64-darwin it is only the GF Nix Chapel package on the managed worker. The platform puts `gf.toolchain-policy=chapel-ab552d8` in the action key. The wrapper checks the pinned package and compiler version, and it never falls back to a host `chpl`. Compile and Darwin smoke actions are not cached, because the compiler closure digest is proof evidence and not part of the action key.
+- **Manual tag.** `//src/ptoon:ptoon` is tagged `manual`, so `bazel test //...` skips it on every platform. It builds only when a command names it.
+- **Darwin release.** The TIN-2949 bridge takes the exact GF output and its native smoke record. After it verifies them, it imports the bytes into a Nix closure. The publisher never compiles Chapel.
+
+The modules reach the vendored C code in the repo-root `c_src/` (utf8proc v2.9.0 and the FFI shim) through file-relative `require` paths.
+
+## Test lanes
+
+| Lane | Command | Needs a Chapel compile | What it proves |
+| --- | --- | --- | --- |
+| Toolchain contract | `just bazel-chapel-toolchain-contract` | no | both platforms resolve the right toolchain, and the compile and Darwin smoke actions stay uncached |
+| Python suite | `just test` | no | the Python oracle. Tests that need the binary skip when it is absent |
+| Parity gate | `make parity` | yes, on x86_64-linux | the release correctness gate, listed below |
+| Parity runner | `just parity --functions --require-chapel` | a built binary | function parity against `fixtures/golden/` |
+| GF compile proof | `just flywheel-chapel` | yes, on GF REAPI | a fresh remote `ChapelCompile` with its execution log |
+| Darwin native smoke | the `PtoonNativeSmoke` action | yes, on the Darwin worker | `caps` bytes, NFKC, a redaction canary and serve output equal to `condense` output |
+| Darwin definition | `native-darwin.yml` in CI | no | the aarch64-darwin derivation evaluates |
+
+`just check` runs the toolchain contract and the Python suite. It never compiles Chapel.
+
+`make parity` builds `.#packages.x86_64-linux.ptoon-parity`. It stops at the first failure. It regenerates the fixture and golden corpora, then runs these against the binary:
+
+- the quality fixtures under both engines
+- function parity and full `condense` parity against the Python goldens
+- batch parity: `redact-batch` against one `redact` call for each document
+- stream parity: `condense-batch` cards against the oracle cards
+- the one-shot document-count matrix (1, 8, 32 and 64 documents)
+- resident service parity and capacity (64 streams with bounded RSS)
+- gateway capacity (64 HTTP and SSE streams for each provider)
+- the PostToolUse hook canary
+- the analyze regression against the committed baseline
+- the full unit test suite, with the binary present so that the Chapel tests run
 
 ## Layout
 
-- `Main.chpl` — `proc main(args)`: the binary entry. Dispatches `argv[1]`
-  (normalize/redact/defang/redact-batch/condense-batch/condense/serve/caps) over the
-  fixed protocols above;
-  reads stdin with `stdin.readAll(bytes)`, writes stdout. `use Normalize,
-  Redact, Defang, Batch, Stream, Serve`.
-- `Batch.chpl` — `redactBatch`: parses the C2b length-prefixed batch,
-  runs one `coforall` task per document, each task calling the full sequential
-  `redactText`, then emits input-ordered length-prefixed results. A per-doc
-  redaction exception withholds that document with zero body bytes.
-- `Stream.chpl` — parses framed source/tier/body documents and emits the
-  one-shot condensation event stream used by `condense-batch` and `condense`.
-- `Serve.chpl` — incrementally reads resident v1 frames, applies launch
-  ceilings before transform allocation, drains a bounded sync-slot ring with a
-  fixed worker set, and emits one indivisible response frame per request.
-- `Normalize.chpl` — `normalizeText` (NFKC via utf8proc + strip/fold),
-  plus `isWordCp`/`unicodeVersion`. FFI to the vendored C shim via
-  `require "../../c_src/normalize_ffi.h", ...` (file-relative, repo-root
-  `c_src/`).
-- `Redact.chpl` — `redactText`: the nine `SECRET_PATTERNS` as RE2
-  candidate generators, each match re-validated against Python's Unicode
-  `\b` (`isWordCp`) and spliced with `[REDACTED]`. This is the C0
-  boundary-divergence fix (see the module header). C2a hoists the generators
-  to module-level `const` so C2b batch tasks share them read-only.
-- `Defang.chpl` — `defangText`: markdown image/link + dangerous-URI
-  neutralization in cli.py's exact sub/replace order.
-- `Toon.chpl` — `toonEscape`/`encodeRows`. **Not** compiled into the current
-  binary (deliberately excluded from `Main.chpl`). Property-test source
-  exists under `test/ptoon/PropertyTests.chpl`, but it is advisory until
-  quickchpl is repo-pinned and wired into a remote-only gate. No current
-  binary protocol command calls TOON.
-- Vendored C dependencies live at repo-root `c_src/` (utf8proc v2.9.0 +
-  the `pt_nfkc`/`pt_free`/`pt_is_word`/`pt_unicode_version` FFI shim); the
-  modules reach it via `require "../../c_src/..."`. (The spike keeps its
-  own self-contained `spikes/tin-2707/c_src/` copy.)
+| File | Role |
+| --- | --- |
+| `Main.chpl` | the entry point. It dispatches `argv[1]`, reads stdin and writes stdout |
+| `Normalize.chpl` | `normalizeText`: NFKC through utf8proc, then strip and fold |
+| `Redact.chpl` | `redactText`: the nine `SECRET_PATTERNS` as RE2 candidates. Each match is checked against Python's Unicode word boundary |
+| `Defang.chpl` | `defangText`: markdown image, link and URI defanging in the oracle's order |
+| `Batch.chpl` | `redactBatch`: one `coforall` task for each document |
+| `Stream.chpl` | the framed condense event stream |
+| `Cards.chpl`, `Sha256.chpl`, `Summary.chpl` | card extraction, raw-byte digests and the run summary |
+| `Serve.chpl` | the resident v1 service with a fixed worker set and a bounded request ring |
+| `Toon.chpl` | `toonEscape` and `encodeRows`. It is not compiled into the binary |
+| `native_smoke.sh`, `native_smoke_expected.sh` | the Darwin native smoke script and its expected values |
 
-## Fail-open / fail-closed contract (INV-5)
+`test/ptoon/PropertyTests.chpl` holds property tests for `Toon.chpl`. They stay advisory until quickchpl is pinned in the repo and runs in a remote gate.
 
-Any caught Chapel error in a top-level single-document transform makes the
-binary exit nonzero with a stderr message — never a partial result on stdout
-(redact/normalize/defang fail closed). `redact-batch` adds a per-document
-fail-closed result: a redaction exception for one document emits
-`withheld=true`, a reason, and zero body bytes; malformed framing still makes
-the whole process exit nonzero. `prompt_toon/engine.py` raises `EngineError`
-on any nonzero exit or non-empty stderr; policy lives one layer up in
-`prompt_toon/cli.py`'s `resolve_engine`: `--engine=chapel` fails closed
-(SystemExit) when the `ptoon` binary is unavailable, `--engine=auto`
-fails open to the Python engine, and `--engine=python` (the default)
-never touches the binary.
+## Next
 
-## Build — remote-only, two execution planes
+- C4b (TIN-2793): run the Claude Messages adapter in shadow mode around the resident service. It must not change request bytes that carry authority.
+- Compile `Toon.chpl` into the binary, with JSON scalars mapped to TOON cells.
+- Pin quickchpl and run the property tests in a remote gate.
+- Promote the Bazel REAPI compile lane when the repo-scoped ARC runner anchor lands (TIN-2704).
 
-Chapel compilation is remote-only (AGENTS.md doctrine, 2026-07-09) — never
-run `chpl` locally on darwin. Two remote planes produce the same
-x86_64-linux ELF:
+## References
 
-```sh
-just build-ptoon      # or: make build-ptoon   — nix remote builder (cache-first)
-just flywheel-chapel  #      make bazel-ptoon   — fixed, uncached Bazel proof on GF REAPI
-```
+These were checked on 2026-07-17. Recheck them before you change the Chapel or Bazel plumbing.
 
-- **nix remote builder** (Linux release/parity substrate):
-  `nix build .#packages.x86_64-linux.ptoon` compiles `Main.chpl` with
-  `chpl --fast -M src/ptoon -o ptoon` on the x86_64-linux builder and
-  smoke-tests `echo hi | ./ptoon normalize`.
-- **Bazel on GF REAPI** (executor-backed graph and cache plane):
-  `//src/ptoon:ptoon` uses the mandatory `ChapelToolchainInfo` boundary in
-  `//tools/bazel/chapel`. The registered x86_64-linux implementation is the
-  explicitly transitional GF worker-runtime bridge. Darwin resolves only the
-  GF Nix Chapel package on the managed `aarch64-darwin` worker action PATH.
-  The execution platform places `gf.toolchain-policy=chapel-ab552d8` in the
-  REAPI Action key; the worker ignores caller `PATH` and selects the extended
-  path only for that exact policy. Its wrapper checks the pinned package
-  metadata and compiler version before compiling, and it cannot fall through
-  to a developer-host `chpl`.
-  TIN-2949's release bridge consumes the exact forced GF output and imports
-  those bytes into a complete Nix closure after verifying an artifact-bound
-  remote native smoke record. The publisher inspects the downloaded binary,
-  imports it byte-for-byte, and executes only the same fixed offline smoke
-  contract from the Nix store; it does not compile Chapel locally.
-  Linux environmental compiles, Darwin worker-closure compiles, and Darwin
-  native-smoke actions are non-cacheable because the exact compiler closure
-  digest is proof evidence rather than part of the Bazel action key. `just
-  bazel-chapel-toolchain-contract` proves both analysis outcomes and both
-  Darwin no-cache actions without running a compile action. The executor lane
-  also keeps
-  `--remote_local_fallback=false`.
-
-## Primary references checked 2026-07-17
-
-Keep this lane grounded in current upstream docs when touching Chapel/Bazel
-plumbing:
-
-- Chapel 2.9 `main()` technote:
-  https://chapel-lang.org/docs/technotes/main.html. This is the source for
-  `proc main(args: [] string)` explicit argument handling and integer return
-  status.
-- Chapel 2.9 IO docs:
-  https://chapel-lang.org/docs/modules/standard/IO.html. `stdin` is a
-  predefined `fileReader`; one-shot commands use `readAll(bytes)`, while
-  `serve` uses bounded `readLine`/`readBinary` reads and the standard locking
-  writer.
-- Chapel 2.9 `chpl` man page:
-  https://chapel-lang.org/docs/usingchapel/man.html. This is the source for
-  `--fast`, `-M/--module-dir`, and `-o` in the exact C1 compile command.
-- Chapel 2.9 C interop / `require` docs:
-  https://chapel-lang.org/docs/technotes/extern.html. `require` entries are
-  file-relative to the Chapel source file, which is why `Normalize.chpl`
-  owns the vendored C shim linkage instead of routing it through Mason.
-- Chapel 2.9 library technote and release note:
-  https://chapel-lang.org/docs/technotes/libraries.html and
-  https://chapel-lang.org/blog/posts/announcing-chapel-2.9/. Chapel library
-  interop remains under-development and requires runtime setup/cleanup; 2.9's
-  new dynamically loaded parallel-library support is promising, but it stays a
-  post-C2 investigation, not the C1 engine boundary.
-- Mason manifest docs:
-  https://chapel-lang.org/docs/tools/mason/guide/manifestfile.html. The
-  local `Mason.toml` is `type = "application"` with `compopts = "-M src/ptoon"`;
-  quickchpl remains advisory until pinned into a remote gate.
-- Bazel platforms, toolchains, and common attributes:
-  https://bazel.build/extending/platforms and
-  https://bazel.build/extending/toolchains and
-  https://bazel.build/reference/be/common-definitions. These are the sources
-  for execution/target platform separation, compiler selection, and
-  `tags = ["manual"]` keeping `//src/ptoon:ptoon` out of wildcard local builds.
-- Bazel Starlark actions and remote execution docs:
-  https://bazel.build/rules/lib/builtins/actions,
-  https://bazel.build/remote/rbe, and https://bazel.build/remote/rules. These
-  anchor the `ctx.actions.run` action with declared tool/runfiles inputs. The
-  remaining C3 work replaces the Linux environmental bridge and makes the
-  Darwin closure digest part of its action key; it does not regress to
-  action-time downloads.
-- Bazel command/options and remote-build performance docs:
-  https://bazel.build/docs/user-manual and
-  https://bazel.build/advanced/performance/build-performance-breakdown. These
-  anchor `--platforms`, `--host_platform`, `--extra_execution_platforms`, and
-  `--remote_download_minimal`.
-- Bazel Build Event Protocol overview and examples:
-  https://bazel.build/remote/bep and
-  https://bazel.build/remote/bep-examples. These anchor the GF exporter that
-  resolves successful top-level `TargetComplete` output groups through
-  `NamedSetOfFiles`; target and aspect events can share labels, so the producer
-  distinguishes them before selecting the release output.
-- Remote Execution API v2 `Action.platform` contract:
-  https://github.com/bazelbuild/remote-apis/blob/main/build/bazel/remote/execution/v2/remote_execution.proto.
-  This anchors the action-keyed `gf.toolchain-policy` selection; the worker
-  rejects duplicate properties and unsupported policy values.
-
-## Parity gate
-
-`nix build .#packages.x86_64-linux.ptoon-parity` is the release correctness
-gate: it regenerates the shared fixture corpus (`tools/gen_fixtures.py` +
-`tools/gen_golden.py`), then diffs the `ptoon` binary against the Python
-oracle both per-function (`tools/parity_runner.py --functions`) and
-through the full `condense` pipeline (`tools/parity_runner.py`), failing
-the build on any byte divergence. The engine unittest
-(`tests/test_engine.py`) also runs there with the binary present so the
-otherwise-skipped chapel-dependent assertions execute.
-
-## What's next
-
-- C4b (TIN-2793): put the Claude Messages adapter in shadow mode around the
-  resident service without changing authority-bearing request bytes.
-- Compile `Toon.chpl` into the binary with typed-row handling (JSON
-  scalar → TOON cell) so TOON can be driven through the protocol.
-- Repo-pin quickchpl and wire the property tests into a remote-only gate.
-- Promote the Bazel REAPI compile lane after the repo-scoped ARC runner anchor
-  lands (TIN-2704); the repo/executor switches are already armed.
+- Chapel 2.9: [`main()`](https://chapel-lang.org/docs/technotes/main.html), [IO](https://chapel-lang.org/docs/modules/standard/IO.html), [`chpl`](https://chapel-lang.org/docs/usingchapel/man.html), [C interop](https://chapel-lang.org/docs/technotes/extern.html), [libraries](https://chapel-lang.org/docs/technotes/libraries.html) and [Mason manifests](https://chapel-lang.org/docs/tools/mason/guide/manifestfile.html)
+- Bazel: [platforms](https://bazel.build/extending/platforms), [toolchains](https://bazel.build/extending/toolchains), [common attributes](https://bazel.build/reference/be/common-definitions), [actions](https://bazel.build/rules/lib/builtins/actions), [remote execution](https://bazel.build/remote/rbe) and [the Build Event Protocol](https://bazel.build/remote/bep)
+- [Remote Execution API v2](https://github.com/bazelbuild/remote-apis/blob/main/build/bazel/remote/execution/v2/remote_execution.proto), for the action-keyed `gf.toolchain-policy` property
