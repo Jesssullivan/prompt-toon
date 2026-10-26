@@ -36,6 +36,7 @@ RESERVED = {ENTRY_FILE, MAC_FILE}
 
 
 def cache_root() -> Path:
+    """Return the IO cache directory under the prompt-toon state root."""
     return state_root() / "cache"
 
 
@@ -50,6 +51,11 @@ def _secret(root: Path) -> bytes:
 
 
 def entry_key(raw: bytes, settings: dict[str, Any]) -> str:
+    """Return the cache key for raw bytes under the given settings.
+
+    The key joins the raw sha256 with a short digest of the compact settings
+    JSON.
+    """
     return f"{sha256(raw).hexdigest()}-{sha256(compact_json(settings).encode('utf-8')).hexdigest()[:16]}"
 
 
@@ -146,6 +152,10 @@ def load(raw: bytes, settings: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def measured_savings(raw_text: str, condensed_text: str) -> dict[str, Any]:
+    """Measure the rough token savings of condensed text over raw text.
+
+    Return both token counts and the savings ratio rounded to 4 places.
+    """
     raw_tokens = rough_token_count(raw_text)
     condensed_tokens = rough_token_count(condensed_text)
     savings = 0.0 if raw_tokens == 0 else (raw_tokens - condensed_tokens) / raw_tokens
