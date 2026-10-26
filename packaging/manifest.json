@@ -11,7 +11,7 @@
   "derived_lanes": {
     "bazel_registry": {
       "enabled": false,
-      "note": "phase gate OPEN since C2; enabling = building the lane. Per tinyland-inc/bazel-registry convention source.json integrity is the SRI of the TAG TARBALL (not targets[].sha256); repo visibility (private) is the consumption gate."
+      "note": "Phase gate open since C2. Enabling means building the lane. Under the xoxd-ai/bazel-registry convention, source.json integrity is the SRI of the tag tarball, not targets[].sha256. Both repos are public. The gate is a tagged release plus its registry entry (J82(d))."
     },
     "brew": {
       "enabled": false,
@@ -26,14 +26,14 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "3f2fde88b404fc123340c6da7fd470d05712fdcb0e9f76e3d96c03649ffe3f62"
+      "sha256": "0360ab4cac485d8e0ab6c0c9bc5a533d00a667922245c6187f64b33a302e2932"
     },
     "nix": {
       "enabled": true
     },
     "pipx": {
       "enabled": false,
-      "note": "installable (explicit setuptools packages); private-repo auth gated"
+      "note": "Installable from the public repo (explicit setuptools packages). Not yet a supported install lane."
     },
     "rpm_deb": {
       "enabled": false,
@@ -54,6 +54,10 @@
     {
       "file": "policy/io.json",
       "sha256": "b7738b760370d3a9e4e029a4731145eb975ac77aa1cd173673b751b134480655"
+    },
+    {
+      "file": "policy/redaction.json",
+      "sha256": "6995835d82c973e515d2bd0af8e09d942afa9f1167c2b396d8fdd5a549231562"
     }
   ],
   "provenance": {
@@ -150,5 +154,5 @@
       "wheel_tag": "py3-none-any"
     }
   ],
-  "version": "0.3.0"
+  "version": "0.3.1"
 }

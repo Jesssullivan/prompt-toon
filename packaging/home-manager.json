@@ -298,5 +298,5 @@
       "reviewed_upstream_default": "https://api.openai.com/v1"
     }
   ],
-  "version": "0.3.0"
+  "version": "0.3.1"
 }
