@@ -4,9 +4,9 @@ Public API:
 
 - `chapel_binary`: compile one Chapel entry point into an executable.
 
-This file encodes the GloriousFlywheel contract from TIN-2709 C2, pulled
-forward into the C1 lane. Nix owns the toolchain version. Bazel owns the build
-graph, the declared compiler boundary and the content-addressed cache. Under
+This file encodes the GloriousFlywheel contract "Bazel validates/bundles, nix
+owns the toolchain version". It comes from TIN-2709 C2, pulled forward into the
+C1 lane. Bazel owns the build graph, the declared compiler boundary and the content-addressed cache. Under
 `--config=executor-backed` it also owns remote execution on GF REAPI.
 
 `ChapelToolchainInfo` is the mandatory compiler boundary (TIN-2949). Toolchain
@@ -16,9 +16,10 @@ resolution binds both the execution platform and the target platform.
 - Darwin resolves only the authenticated GF worker-closure bridge. It never
   falls back to the PATH of the developer host.
 
-Both bridges stay non-hermetic. Neither is cacheable until the action key
-covers every compiler input, including the Darwin closure digest. TIN-2710
-tracks the extraction of a reusable `rules_chapel`.
+Both bridges stay non-hermetic and non-cacheable. Darwin can become cacheable
+once the action key covers its closure digest. Linux does not. TIN-2949 and
+TIN-2710 replace it with a declared rules_nixpkgs compiler closure. TIN-2710
+also tracks the extraction of a reusable `rules_chapel`.
 """
 
 _CHAPEL_TOOLCHAIN_TYPE = "//tools/bazel/chapel:toolchain_type"
