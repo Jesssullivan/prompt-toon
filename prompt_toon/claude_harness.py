@@ -91,7 +91,10 @@ def default_claude_bin(
 
 
 def claude_route_conflicts(source: Mapping[str, str]) -> list[str]:
-    """Return the sorted names of set variables that would reroute Claude Code."""
+    """Return the sorted names of set variables that would reroute Claude Code.
+
+    The set also covers variables that would reauthenticate it.
+    """
     return sorted(key for key in CLAUDE_ROUTE_CONFLICT_ENV if source.get(key))
 
 
@@ -143,9 +146,11 @@ def build_claude_env(
 ) -> dict[str, str]:
     """Build the child environment for a Claude Code canary.
 
-    Only allowlisted variables pass through. HOME and TMPDIR become the parent
+    Only allowlisted variables pass through. The function sets
+    ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, CLAUDE_CONFIG_DIR and
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC. HOME and TMPDIR become the parent
     of config_dir. The XDG dirs sit under it. NO_PROXY gains the loopback
-    hosts. An empty api_key raises ValueError.
+    hosts. An empty api_key or a non-loopback gateway_url raises ValueError.
     """
     if not api_key:
         raise ValueError("Claude gateway API key must be non-empty")
@@ -235,7 +240,8 @@ def parse_claude_stream(stdout: str) -> dict[str, Any]:
     """Parse Claude Code stream-json output into a result summary.
 
     Return the final text, line count, error flag, subtype and API retry count.
-    A non-JSON line or a missing result event raises ValueError.
+    A non-JSON line, a missing result event or a result event with no text
+    raises ValueError.
     """
     final: dict[str, Any] | None = None
     lines = 0
@@ -277,7 +283,8 @@ def run_claude(
     """Run a Claude Code canary and return the parsed stream.
 
     Raise RuntimeError on a launch failure, timeout, nonzero exit or error
-    result.
+    result. A timeout_seconds of 0 or less raises ValueError. So does a
+    malformed stream, and that error is not wrapped.
     """
     if timeout_seconds <= 0:
         raise ValueError("Claude Code timeout must be positive")

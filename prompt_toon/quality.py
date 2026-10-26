@@ -662,8 +662,9 @@ def build_quality_report(
     """Aggregate the case results into the offline quality report.
 
     The gate passes only when every case passes. Each dimension also needs at
-    least one applicable case, and all of those must pass. Results out of
-    manifest order raise QualityFixtureError.
+    least one applicable case, and all of those must pass. The result IDs must
+    match the manifest case IDs in order. Missing, extra or reordered results
+    raise QualityFixtureError.
     """
     expected_ids = [case["id"] for case in manifest["cases"]]
     if [result.get("id") for result in case_results] != expected_ids:
