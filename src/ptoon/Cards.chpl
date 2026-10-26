@@ -1,10 +1,10 @@
 /* TIN-2709 C2d: source-card extraction — the provenance surface of condense.
  *
- * Parity spec: prompt_toon/cli.py — pattern constants (URL_RE:34,
- * CRITICAL_RE:57-62, INJECTION_RE:64-67), line_excerpt:209-212,
- * clean_claim:215-220, flags_for:223-231, cards_from_text:234-277, and the
- * source-cards.jsonl serialization in write_jsonl:391-394 (json.dumps with
- * sort_keys=True, ensure_ascii=False, DEFAULT separators — ", " and ": ").
+ * Parity spec: prompt_toon/cli.py: pattern constants (URL_RE,
+ * CRITICAL_RE, INJECTION_RE), line_excerpt, clean_claim, flags_for,
+ * cards_from_text, and the source-cards.jsonl serialization in write_jsonl
+ * (json.dumps with sort_keys=True, ensure_ascii=False and the DEFAULT
+ * separators ", " and ": ").
  * cardJson below must reproduce those bytes exactly; the stream parity gate
  * diffs it against the Python oracle per fixture.
  *
