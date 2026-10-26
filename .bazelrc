@@ -1,3 +1,7 @@
+# TIN-5770 R470: an idle Bazel client server exits after 120 s instead of
+# holding a JVM per output root for hours.
+startup --max_idle_secs=120
+
 common --enable_bzlmod
 common --color=yes
 common --curses=yes
