@@ -26,9 +26,14 @@ let Persona =
       , forbidden_tasks : List Text
       }
 
+{-
+model_id names the exact model a seat runs (J81). It is Optional because the
+fable seat stays provider-managed; dhall-to-json omits the field when None.
+-}
 let Seat =
       { id : Text
       , model_class : Text
+      , model_id : Optional Text
       , cost_tier : Text
       , default_personas : List Text
       , forbidden_personas : List Text
@@ -51,6 +56,24 @@ let HarnessSeat =
       , forbidden_tasks : List Text
       , dispatch_surface : Text
       , posture : Text
+      }
+
+{-
+A budget fallback names the seat a lane may drop to when its default seat's
+quota is exhausted (J81(e)). It is scoped by lane, not only by persona: lanes
+lists every route it reaches, and each must sit on one of its personas. A
+lane of a covered persona that is not listed keeps its default seat. The
+obligations bind the downgraded lane. A fallback never widens who may merge:
+the merge waits for a review on the original seat.
+-}
+let BudgetFallback =
+      { id : Text
+      , from_seat : Text
+      , to_seat : Text
+      , trigger : Text
+      , personas : List Text
+      , lanes : List Text
+      , obligations : List Text
       }
 
 let Lane =
@@ -79,6 +102,7 @@ let Policy =
       , harness_seats : List HarnessSeat
       , personas : List Persona
       , lanes : List Lane
+      , budget_fallbacks : List BudgetFallback
       , enforcement : List Rule
       , attribution : Attribution
       }
@@ -88,6 +112,7 @@ in  { Metadata
     , Seat
     , HarnessSeat
     , Persona
+    , BudgetFallback
     , Lane
     , Rule
     , Attribution
