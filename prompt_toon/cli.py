@@ -308,7 +308,10 @@ def line_excerpt(lines: list[str], index: int, radius: int = 1) -> tuple[int, in
 
 
 def clean_claim(line: str, limit: int = 220) -> str:
-    """Strip list and heading markers from a line and cap it at limit characters."""
+    """Strip leading list, heading, quote and digit characters from a line.
+
+    Cut a line longer than limit to limit - 1 characters and add "...".
+    """
     line = line.strip()
     line = re.sub(r"^[-*#>\s0-9.]+", "", line).strip()
     if len(line) > limit:
@@ -342,7 +345,8 @@ def cards_from_text(
 ) -> list[SourceCard]:
     """Redact the text and cut it into at most max_cards source cards.
 
-    Anchor lines come first, then URL lines and list items. Plain lines are the fallback.
+    Anchor lines come first, then URL lines and lines that start with -, * or #.
+    Plain lines are the fallback.
     """
     redacted, redactions = engine.redact_text(text)
     lines = redacted.splitlines()
@@ -592,7 +596,7 @@ def toon_escape(value: Any, delimiter: str = ",") -> str:
 def encode_rows_to_toon(name: str, rows: list[dict[str, Any]], delimiter: str = "\t") -> str:
     """Encode uniform scalar rows as one TOON table.
 
-    Raise ValueError when the key order or the value types differ.
+    Raise ValueError when the key order differs or a value is not a scalar.
     """
     if not rows:
         return f"{name}[0]:"
