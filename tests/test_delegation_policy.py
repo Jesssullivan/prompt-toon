@@ -128,7 +128,192 @@ SKILL_SENTENCES = (
     "`adversarial` persona.",
     "Their merges wait for an Opus review.",
     "Never run a host act or touch live credentials on Sonnet.",
+    "**Opus 5.5** (`claude-opus-5-5`) is the default for every mission-critical lane",
+    "**Sonnet 5.5** (`claude-sonnet-5-5`) is the default for research sweeps",
+    "**Haiku 5.5** (`claude-haiku-5-5`) is the default for mechanical lanes",
 )
+
+# Load-bearing sentences in the policy's own prose, keyed by (collection,
+# id, field). Agents read these through the skill's jq lines, so a rewrite
+# that contradicts the structured fallback must fail (enforcement re-review
+# on PR #49, mutations D11 to D13).
+PROSE_SENTENCES = {
+    ("personas", "critical", "doctrine"): (
+        "A merge-gating review runs on Opus.",
+        "Their merges wait for an Opus review.",
+        "The downgraded lane never runs a host act or a credential change.",
+        "mythos.gate.review and mythos.act.host never fall back: they wait for "
+        "Opus or go to the operator.",
+        "Never fable or haiku.",
+    ),
+    ("personas", "adversarial", "doctrine"): (
+        "The budget fallback does not cover this persona",
+    ),
+    ("personas", "drafting", "doctrine"): (
+        "It never stands in for a merge-gating review and never merges on its own.",
+    ),
+    ("seats", "sonnet", "notes"): (
+        "It is not the default for mission-critical lanes.",
+        "It may continue mythos.implement.merge or mythos.gate.security only under "
+        "the opus-quota-exhausted budget fallback.",
+        "It never gates a merge.",
+    ),
+    ("lanes", "mythos.gate.review", "purpose"): (
+        "Runs on Opus 5.5 and never falls back to Sonnet.",
+    ),
+    ("lanes", "mythos.gate.security", "purpose"): (
+        "the merge waits for an Opus review and live credentials wait for Opus or "
+        "the operator.",
+    ),
+    ("lanes", "mythos.act.host", "purpose"): (
+        "Never falls back to Sonnet: it waits for Opus or goes to the operator.",
+    ),
+}
+
+# Phrases that would grant a downgraded or non-Opus lane the gate, a host act
+# or live credentials. Pinned sentences catch a rewrite. These catch an added
+# contradicting sentence. Checked case-insensitively over the skill and every
+# policy prose field.
+FORBIDDEN_GRANTS = (
+    "may run a host act",
+    "may touch live credentials",
+    "rotate live credentials",
+    "may run on sonnet",
+    "may gate a merge",
+    "sonnet with a receipt",
+)
+
+# The skill's lane-to-model table cells (J81).
+TABLE_FALLBACK_CELL = "Sonnet; merge waits for Opus"
+TABLE_WAIT_CELL = "Wait for Opus or the operator"
+TABLE_NO_CHANGE_CELL = "No change"
+# Personas whose lanes have one default model: the first model class that
+# carries a seat model_id.
+SINGLE_DEFAULT_PERSONAS = {"critical", "adversarial", "drafting", "mechanical"}
+MODEL_ID_RE = re.compile(r"claude-[a-z]+-\d+(?:-\d+)*")
+
+
+def skill_table_rows(skill_text):
+    """Rows of the skill's "Lane to model" table as (routes, cells)."""
+    section = skill_text.split("## Lane to model", 1)
+    if len(section) != 2:
+        return None
+    body = section[1].split("\n## ", 1)[0]
+    rows = []
+    for line in body.splitlines():
+        if not line.startswith("| `mythos."):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        routes = re.findall(r"`(mythos[^`]*)`", cells[0])
+        rows.append((routes, cells))
+    return rows
+
+
+def skill_table_violations(policy, skill_text):
+    """The skill's lane-to-model table agrees with the policy (enforcement
+    re-review on PR #49, mutations A10, C8 and D10)."""
+    rows = skill_table_rows(skill_text)
+    if not rows:
+        return ["skill has no Lane to model table"]
+    errors = []
+    personas = {p["id"]: p for p in policy["personas"]}
+    model_ids = {s["id"]: s.get("model_id") for s in policy["seats"]}
+    lanes = {lane["route"]: lane["persona"] for lane in policy["lanes"]}
+    fallback_lanes = {
+        route for f in policy.get("budget_fallbacks", []) for route in f.get("lanes", [])
+    }
+    covered = set()
+    for routes, cells in rows:
+        if len(cells) != 4:
+            errors.append(f"table row {cells[0]} has {len(cells)} cells, not 4")
+            continue
+        _, persona_cell, default_cell, fallback_cell = cells
+        row_personas = {p.strip() for p in persona_cell.split(",")}
+        matched = set()
+        for route in routes:
+            if route.endswith(".*"):
+                hits = {r for r in lanes if r.startswith(route[:-1])}
+            else:
+                hits = {route} & set(lanes)
+            if not hits:
+                errors.append(f"table route {route} matches no policy lane")
+            matched |= hits
+        covered |= matched
+        for route in matched:
+            if lanes[route] not in row_personas:
+                errors.append(f"table row for {route} names {persona_cell}, policy says {lanes[route]}")
+        single = row_personas & SINGLE_DEFAULT_PERSONAS
+        if single and len(row_personas) == 1:
+            persona = next(iter(single))
+            expected = next(
+                (model_ids[c] for c in personas[persona]["model_classes"] if model_ids.get(c)),
+                None,
+            )
+            if default_cell != f"`{expected}`":
+                errors.append(f"table row {cells[0]} default {default_cell}, policy says {expected}")
+        elif MODEL_ID_RE.search(default_cell):
+            errors.append(f"table row {cells[0]} pins a model for a multi-model persona")
+        in_fallback = matched & fallback_lanes
+        if in_fallback and in_fallback != matched:
+            errors.append(f"table row {cells[0]} mixes fallback and non-fallback lanes")
+        elif in_fallback:
+            want = TABLE_FALLBACK_CELL
+        elif row_personas & CRITICAL_PERSONAS:
+            want = TABLE_WAIT_CELL
+        else:
+            want = TABLE_NO_CHANGE_CELL
+        if not (in_fallback and in_fallback != matched) and fallback_cell != want:
+            errors.append(f"table row {cells[0]} fallback {fallback_cell!r}, want {want!r}")
+    missing = set(lanes) - covered
+    if missing:
+        errors.append(f"table omits lanes {sorted(missing)}")
+    return errors
+
+
+def skill_text_violations(policy, skill_text):
+    """Pinned skill sentences, the lane table, model IDs and grant phrases."""
+    errors = skill_table_violations(policy, skill_text)
+    flat = " ".join(skill_text.split())
+    for sentence in SKILL_SENTENCES:
+        if sentence not in flat:
+            errors.append(f"skill lost: {sentence}")
+    stray = set(MODEL_ID_RE.findall(skill_text)) - set(MODEL_IDS.values())
+    if stray:
+        errors.append(f"skill names model IDs outside the seat registry: {sorted(stray)}")
+    lowered = flat.lower()
+    for phrase in FORBIDDEN_GRANTS:
+        if phrase in lowered:
+            errors.append(f"skill grants: {phrase}")
+    return errors
+
+
+def prose_violations(policy):
+    """Pinned policy prose sentences and grant phrases (mutations D11 to D13)."""
+    errors = []
+    index = {
+        "personas": {p["id"]: p for p in policy["personas"]},
+        "seats": {s["id"]: s for s in policy["seats"]},
+        "lanes": {lane["route"]: lane for lane in policy["lanes"]},
+    }
+    for (collection, key, field), sentences in PROSE_SENTENCES.items():
+        record = index[collection].get(key)
+        if record is None:
+            errors.append(f"missing {collection} record {key}")
+            continue
+        text = " ".join(record.get(field, "").split())
+        for sentence in sentences:
+            if sentence not in text:
+                errors.append(f"{collection}.{key}.{field} lost: {sentence}")
+    prose = []
+    for collection in ("personas", "seats", "lanes"):
+        for record in policy[collection]:
+            prose.extend(record.get(f, "") for f in ("purpose", "doctrine", "notes"))
+    prose.extend(r["rule"] for r in policy.get("enforcement", []))
+    lowered = " ".join(" ".join(prose).split()).lower()
+    for phrase in FORBIDDEN_GRANTS:
+        if phrase in lowered:
+            errors.append(f"policy prose grants: {phrase}")
+    return errors
 
 
 def critical_lane_violations(policy):
@@ -790,6 +975,73 @@ class DelegationPolicyTests(unittest.TestCase):
         # Per-agent model choice follows the policy; only a global pin needs a
         # host justification. The old blanket line contradicted J81.
         self.assertNotIn("Leave harness default model selection provider-managed", skill_text)
+
+    def test_skill_table_ids_and_grants_agree_with_policy(self):
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        self.assertEqual(skill_text_violations(self.policy, skill_text), [])
+
+    def test_skill_text_check_fails_closed(self):
+        # Enforcement re-review on PR #49: these skill edits used to pass.
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        gate = "| `mythos.gate.review` | critical | `claude-opus-5-5` | Wait for Opus or the operator |"
+        host = "| `mythos.act.host` | critical | `claude-opus-5-5` | Wait for Opus or the operator |"
+        merge = "| `mythos.implement.merge` | critical | `claude-opus-5-5` | Sonnet; merge waits for Opus |"
+        draft = "| `mythos.draft`, `mythos.review.first-pass` | drafting | `claude-sonnet-5-5` | No change |"
+        for row in (gate, host, merge, draft):
+            self.assertIn(row, skill_text, row)
+        cases = {
+            "A10 gate on sonnet": (gate, "| `mythos.gate.review` | critical | `claude-sonnet-5-5` | Sonnet |"),
+            "D10 host falls back": (host, host.replace(TABLE_WAIT_CELL, "Sonnet with a receipt")),
+            "host falls back plain": (host, host.replace(TABLE_WAIT_CELL, TABLE_FALLBACK_CELL)),
+            "C8 table id drift": (host, host.replace("claude-opus-5-5", "claude-opus-4-1")),
+            "C9 header id drift": (
+                "**Opus 5.5** (`claude-opus-5-5`)",
+                "**Opus 4.1** (`claude-opus-4-1`)",
+            ),
+            "merge loses fallback": (merge, merge.replace(TABLE_FALLBACK_CELL, TABLE_WAIT_CELL)),
+            "draft on opus": (draft, draft.replace("claude-sonnet-5-5", "claude-opus-5-5")),
+            "gate row dropped": (gate + "\n", ""),
+            "added grant": (
+                "Record the downgrade in the receipt.",
+                "Record the downgrade in the receipt. Sonnet may run a host act if asked.",
+            ),
+        }
+        for name, (old, new) in cases.items():
+            self.assertIn(old, skill_text, name)
+            broken = skill_text.replace(old, new, 1)
+            self.assertTrue(skill_text_violations(self.policy, broken), name)
+
+    def test_policy_prose_is_pinned(self):
+        self.assertEqual(prose_violations(self.policy), [])
+
+    def test_policy_prose_check_fails_closed(self):
+        # Enforcement re-review on PR #49, mutations D11 to D13.
+        def edit(collection, key, field, old, new):
+            broken = json.loads(json.dumps(self.policy))
+            match = "route" if collection == "lanes" else "id"
+            record = next(r for r in broken[collection] if r[match] == key)
+            self.assertIn(old, record[field], (key, old))
+            record[field] = record[field].replace(old, new)
+            return broken
+
+        cases = (
+            ("lanes", "mythos.gate.security", "purpose",
+             "live credentials wait for Opus or the operator.",
+             "Sonnet may also rotate live credentials."),
+            ("personas", "critical", "doctrine",
+             "The downgraded lane never runs a host act or a credential change.",
+             "The downgraded lane may run a host act."),
+            ("personas", "critical", "doctrine",
+             "mythos.gate.review and mythos.act.host never fall back",
+             "mythos.gate.review never falls back"),
+            ("seats", "sonnet", "notes",
+             "mythos.implement.merge or mythos.gate.security only under",
+             "mythos.implement.merge, mythos.gate.security or mythos.act.host under"),
+            ("lanes", "mythos.research.wide", "purpose",
+             "Parallel domain recon", "Parallel domain recon. Sonnet may gate a merge here"),
+        )
+        for case in cases:
+            self.assertTrue(prose_violations(edit(*case)), case)
 
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")
