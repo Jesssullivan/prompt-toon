@@ -97,9 +97,9 @@ sh_test(
 
 # TIN-2706: everything the packaging-manifest generator reads, so the drift
 # gate can regenerate the manifest inside the test sandbox. Skill dirs come in
-# via :skills, which must list EVERY file under .agents/skills/ — the manifest's
-# skill_files[] digests each one, so directory existence is no longer enough
-# (asserted by tests/test_manifest.py::
+# through :skills, which must list EVERY file under .agents/skills/. The
+# manifest's skill_files[] digests each one, so directory existence is no longer
+# enough (asserted by tests/test_manifest.py::
 # test_bazel_skill_filegroup_declares_every_skill_file).
 filegroup(
     name = "manifest_srcs",
