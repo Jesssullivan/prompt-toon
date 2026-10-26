@@ -567,8 +567,8 @@ def policy_doctor_status(path: str | Path) -> dict[str, Any]:
     """Summarize the IO policy file at path for the doctor report.
 
     Report its sha256 and schema version. Also report whether enforcement is
-    unlocked and whether the model_gateway surface is enabled. A read or shape
-    error is recorded by type name and is never raised.
+    unlocked and whether the model_gateway surface is enabled. An error while
+    reading or parsing the file is recorded by type name and is not raised.
     """
     policy_path = Path(path).expanduser()
     result: dict[str, Any] = {"path": str(policy_path), "available": False}
