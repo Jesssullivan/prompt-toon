@@ -175,13 +175,14 @@ flowchart LR
   XL["xoxd-lexical Dhall rules"] -->|"gen/render.py"| XP["xoxd-lexical projections"]
   XP -->|"pinned digest sha"| HC["huskycat rules and prompts"]
   XP -->|"flake input, pinned release"| LAB["lab Home Manager seats"]
-  XP -.->|"local Vale lint only"| PTD["prompt-toon docs"]
-  PTS["prompt-toon policy Dhall"] -->|"just gen-policy"| PTA["prompt-toon policy, skills, manifest"]
+  XP -.->|"local lint only"| PTD["prompt-toon docs"]
+  PTS["prompt-toon policy Dhall"] -->|"just gen-policy, policy JSON"| PTA["prompt-toon artifacts"]
   PTA -.->|"planned: tag archive, SRI"| REG["bazel-registry module"]
   REG -.->|"planned: bazel_dep, dev only"| HC
   PTA -->|"flake input rev"| LAB
   HC -->|"huskycatd module"| LAB
-  LAB -->|"hooks and CI check"| EST["estate repos"]
+  LAB -->|"global git hooks"| EST["estate repos"]
+  HC -.->|"planned: receipt CI check"| EST
 ```
 
 *Specs start as Dhall in two repos and reach estate repos through pinned projections.*
@@ -194,18 +195,24 @@ label says which. The same flow as a table:
 | xoxd-lexical rules | xoxd-lexical projections | `gen/render.py` renders lexicon JSON, Vale styles and a prompt digest | live |
 | xoxd-lexical projections | huskycat | prompt digest pinned by sha | live |
 | xoxd-lexical projections | lab | flake input pinned to a release | live |
-| xoxd-lexical projections | prompt-toon docs | Vale lint from an unpinned local clone | local only |
+| xoxd-lexical projections | prompt-toon docs | check CLI from an unpinned local clone | local only |
 | prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/delegation.json` and `policy/io.json` when `dhall-to-json` is on `PATH` | live |
 | prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned after #49 |
 | bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned after #49 |
 | prompt-toon artifacts | lab | flake input pinned to a rev | live |
 | huskycat | lab | huskycatd Home Manager module | live |
-| lab | estate repos | hooks and the CI check | live |
+| lab | estate repos | global git hooks that run huskycat | live |
+| huskycat | estate repos | reusable receipt CI check | planned |
+
+The artifacts are the policy JSON, the skills under `.agents/skills/` and
+`packaging/manifest.json`. `just gen-policy` writes only the policy JSON.
+`just manifest` writes the manifest. huskycat runs its receipt check in its own
+CI today. No estate repo calls it yet.
 
 Two lexical consumers pin their own copy. huskycat pins the prompt digest by
 sha and lab pins a release. A bump in one does not move the other. The
 prompt-toon docs lint pins nothing. It runs from a local clone, and this README
-was last checked against xoxd-lexical `a054ff3`.
+was last checked against xoxd-lexical `2915116`.
 
 ## Estate consumers
 
@@ -241,10 +248,10 @@ The root module is `prompt_toon` (version in `MODULE.bazel`, checked against
 
 Today no registry carries the module. A consumer that needs the data now must
 pin a commit with `git_override` and accept that the pin skips registry checks.
-That path works on Bazel 8.x only. On Bazel 9 the root `BUILD.bazel` fails to
-load, because it calls `sh_binary` and `sh_test` without rules_shell loads. No
-target in that package resolves then, and that includes the data targets.
-The registered path comes after prompt-toon #49 merges:
+The module sets `bazel_compatibility = [">=8.2.1"]`. A consumer on Bazel 8.2.1
+or 9.2.0 builds both data targets. The Chapel toolchains are registered with
+`dev_dependency = True`, so a consumer does not inherit them. The registered
+path comes after prompt-toon #49 merges:
 
 1. Bump to 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`, then run
    `just manifest`.
@@ -254,11 +261,6 @@ The registered path comes after prompt-toon #49 merges:
 4. huskycat adds
    `bazel_dep(name = "prompt_toon", version = "0.3.1", dev_dependency = True)`
    with a `single_version_override` that names the registry commit.
-
-Today `register_toolchains` is not marked `dev_dependency`, so a consumer also
-inherits the Chapel toolchains. A separate Bazel hygiene change adds the
-rules_shell loads and marks the toolchains dev only. Until it lands, consumers
-stay on Bazel 8.x and depend on the data targets only.
 
 ## Gates
 
