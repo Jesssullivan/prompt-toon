@@ -48,7 +48,7 @@ in    { `$comment` =
           ]
         , word_boundary = "unicode"
         , rule =
-            "Python re is the reference engine. Its \\b, \\w and \\d are Unicode-aware. An engine with ASCII-only \\b, such as RE2, must treat each match as a candidate and reject it when a real edge is not a Unicode word boundary, as src/ptoon/Redact.chpl does."
+            "Python re is the reference engine. Its \\b, \\w, \\d and \\s are Unicode-aware. RE2 reads all four as ASCII. An engine with ASCII-only \\b must treat each match as a candidate and reject it when a real edge is not a Unicode word boundary, as src/ptoon/Redact.chpl does. An engine with ASCII-only \\d or \\s matches fewer digits and spaces than the reference. Text is NFKC-normalized first. That folds fullwidth digits and many space characters, but not other scripts' digits. A parity check must report any residual gap, never hide it."
         }
       , replacement =
         { token = "[REDACTED]"
