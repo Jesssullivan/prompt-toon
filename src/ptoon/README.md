@@ -12,7 +12,7 @@ Two callers use the binary. `prompt_toon/engine.py` (`ChapelEngine`) runs the on
 
 ## CLI contract
 
-`ptoon <command> [limits...]` reads one command from `argv[1]`. The one-shot commands read all of stdin as raw bytes, write stdout and exit.
+`ptoon <command> [limits...]` reads one command from `argv[1]`. The one-shot commands other than `caps` read all of stdin as raw bytes. Each one writes stdout and exits.
 
 | Command | Optional limits | Output on stdout |
 | --- | --- | --- |
@@ -74,7 +74,7 @@ Chapel compiles on remote builders only (AGENTS.md doctrine, 2026-07-09). Do not
 - **Manual tag.** `//src/ptoon:ptoon` is tagged `manual`, so `bazel test //...` skips it on every platform. It builds only when a command names it.
 - **Darwin release.** The TIN-2949 bridge takes the exact GF output and its native smoke record. After it verifies them, it imports the bytes into a Nix closure. The publisher never compiles Chapel.
 
-The modules reach the vendored C code in the repo-root `c_src/` (utf8proc v2.9.0 and the FFI shim) through file-relative `require` paths.
+The modules reach the vendored C code in the repo-root `c_src/` (utf8proc v2.9.0, SHA-256 and the FFI shims) through file-relative `require` paths.
 
 ## Test lanes
 
@@ -83,19 +83,19 @@ The modules reach the vendored C code in the repo-root `c_src/` (utf8proc v2.9.0
 | Toolchain contract | `just bazel-chapel-toolchain-contract` | no | both platforms resolve the right toolchain, and the compile and Darwin smoke actions stay uncached |
 | Python suite | `just test` | no | the Python oracle. Tests that need the binary skip when it is absent |
 | Parity gate | `make parity` | yes, on x86_64-linux | the release correctness gate, listed below |
-| Parity runner | `just parity --functions --require-chapel` | a built binary and the generated corpora | function parity against `fixtures/golden/` |
+| Parity runner | `just parity --functions --require-chapel` | a built binary and the generated inputs | function parity against direct Python oracle calls on `fixtures/inputs/` |
 | GF compile proof | `just flywheel-chapel` | yes, on GF REAPI | a fresh remote `ChapelCompile` with its execution log |
 | Darwin native smoke | the `PtoonNativeSmoke` action | yes, on the Darwin worker | `caps` bytes, NFKC, a redaction canary and serve output equal to `condense` output |
 | Darwin definition | `native-darwin.yml` in CI | no | the aarch64-darwin derivation evaluates |
 
-The parity runner reads the gitignored `fixtures/` tree. Run `tools/gen_fixtures.py` and then `tools/gen_golden.py` before it.
+The parity runner reads the gitignored `fixtures/` tree. Run `tools/gen_fixtures.py` before it. Its default `condense` mode diffs against `fixtures/golden/`, so run `tools/gen_golden.py` too for that mode.
 
 `just check` runs the compile check, the secrets scan, the Python suite, the quality fixtures, the Bazel module graph, the toolchain contract and `bazel test //...`. It never compiles Chapel, because `//src/ptoon:ptoon` is tagged `manual`.
 
 `make parity` builds `.#packages.x86_64-linux.ptoon-parity`. It stops at the first failure. It regenerates the fixture and golden corpora, then runs these against the binary:
 
 - the quality fixtures under both engines
-- function parity and full `condense` parity against the Python goldens
+- function parity against direct Python oracle calls and full `condense` parity against the Python goldens
 - batch parity: `redact-batch` against one `redact` call for each document
 - stream parity: `condense-batch` cards against the oracle cards
 - the one-shot document-count matrix (1, 8, 32 and 64 documents)
