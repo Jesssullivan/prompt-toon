@@ -1,0 +1,85 @@
+{
+  "$comment": "Validated artifact. Typed source of truth: policy/dhall/redaction.dhall. Regenerate with: dhall-to-json --pretty --file policy/dhall/redaction.dhall. Drift and portability are enforced by tests/test_redaction_policy.py.",
+  "dialect": {
+    "forbidden_constructs": [
+      "lookahead",
+      "lookbehind",
+      "backreference",
+      "named-group",
+      "atomic-group",
+      "inline-flag",
+      "conditional",
+      "possessive-quantifier"
+    ],
+    "name": "portable-re-v1",
+    "rule": "Python re is the reference engine. Its \\b, \\w and \\d are Unicode-aware. An engine with ASCII-only \\b, such as RE2, must treat each match as a candidate and reject it when a real edge is not a Unicode word boundary, as src/ptoon/Redact.chpl does.",
+    "word_boundary": "unicode"
+  },
+  "metadata": {
+    "name": "prompt-toon-redaction",
+    "owner_linear_issue": "TIN-2700",
+    "ruling": "J82(d)"
+  },
+  "patterns": [
+    {
+      "case_insensitive": false,
+      "id": "pattern-1",
+      "kind": "provider-token-dash",
+      "source": "\\b(?:sk|ghp|gho|github_pat|xox[baprs])-[-_A-Za-z0-9]{16,}\\b"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-2",
+      "kind": "provider-token-underscore",
+      "source": "\\b(?:sk|ghp|gho|github_pat)_[-_A-Za-z0-9]{16,}\\b"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-3",
+      "kind": "aws-access-key-id",
+      "source": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-4",
+      "kind": "google-api-key",
+      "source": "\\bAIza[0-9A-Za-z_-]{35}\\b"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-5",
+      "kind": "jwt",
+      "source": "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-6",
+      "kind": "private-key-block",
+      "source": "-----BEGIN[A-Z ]*PRIVATE KEY-----[\\s\\S]+?-----END[A-Z ]*PRIVATE KEY-----"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-7",
+      "kind": "email-address",
+      "source": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
+    },
+    {
+      "case_insensitive": true,
+      "id": "pattern-8",
+      "kind": "credential-assignment",
+      "source": "\\b(api[_-]?key|token|password|secret)\\s*[:=]\\s*['\"]?[^'\"\\s]{8,}"
+    },
+    {
+      "case_insensitive": false,
+      "id": "pattern-9",
+      "kind": "card-number",
+      "source": "\\b(?:\\d[ -]?){13,19}\\b"
+    }
+  ],
+  "replacement": {
+    "preserve_line_breaks": true,
+    "rule": "Each match becomes the token followed by the line-break characters the match contained, in order. Line numbering of the redacted text stays stable.",
+    "token": "[REDACTED]"
+  },
+  "schema_version": 1
+}

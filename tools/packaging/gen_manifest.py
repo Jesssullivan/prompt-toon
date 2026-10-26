@@ -507,11 +507,11 @@ def build_manifest(args: argparse.Namespace) -> dict:
             },
             "pipx": {
                 "enabled": False,
-                "note": "installable (explicit setuptools packages); private-repo auth gated",
+                "note": "Installable from the public repo (explicit setuptools packages). Not yet a supported install lane.",
             },
             "bazel_registry": {
                 "enabled": False,
-                "note": "phase gate OPEN since C2; enabling = building the lane. Per tinyland-inc/bazel-registry convention source.json integrity is the SRI of the TAG TARBALL (not targets[].sha256); repo visibility (private) is the consumption gate.",
+                "note": "Phase gate open since C2. Enabling means building the lane. Under the xoxd-ai/bazel-registry convention, source.json integrity is the SRI of the tag tarball, not targets[].sha256. Both repos are public. The gate is a tagged release plus its registry entry (J82(d)).",
             },
             "gh_release": {
                 "enabled": True,

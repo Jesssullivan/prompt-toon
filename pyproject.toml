@@ -20,7 +20,11 @@ prompt-toon = "prompt_toon.cli:main"
 packages = ["prompt_toon"]
 
 [tool.setuptools.data-files]
-"share/prompt-toon/policy" = ["policy/delegation.json", "policy/io.json"]
+"share/prompt-toon/policy" = [
+    "policy/delegation.json",
+    "policy/io.json",
+    "policy/redaction.json",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "prompt_toon.__version__"}
