@@ -804,7 +804,7 @@ class ShadowAnalyzer:
 
     @property
     def pending_jobs(self) -> int:
-        """Return the number of admitted shadow jobs still running."""
+        """Return the number of admitted shadow jobs not yet finished."""
         with self._lock:
             return self._pending_jobs
 
@@ -1717,7 +1717,10 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             request.close()
 
     def server_close(self) -> None:
-        """Wait out the grace period, cut open connections and close the analyzer."""
+        """Wait up to the grace period for open connections to finish.
+
+        Then cut the rest and close the analyzer.
+        """
         with self._active_condition:
             if self._closed:
                 return
