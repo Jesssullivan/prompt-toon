@@ -545,8 +545,8 @@ def routing_hits(text):
 PROMPT_TOON_SKILL_PATH = ROOT / ".agents" / "skills" / "prompt-toon" / "SKILL.md"
 PROMPT_TOON_ALLOWED_ROUTING_LINES = (
     "--mythos-route mythos.synthesis \\",
+    'description: Condense wide/deep agent research, subagent outputs, logs, JSON/JSONL records, or staged Codex/Claude handoffs into safe source cards and a minimized prompt package using the local prompt-toon CLI. Use when asked to synthesize research, queue/store agent outputs, reduce prompt tokens, preserve provenance, or evaluate optional TOON encoding for flat uniform rows.',
 )
-PROMPT_TOON_ALLOWED_PREFIXES = ("description: Condense wide/deep agent research",)
 
 
 def prompt_toon_skill_violations(skill_text):
@@ -555,9 +555,7 @@ def prompt_toon_skill_violations(skill_text):
     rest = []
     for line in skill_text.splitlines():
         stripped = line.strip()
-        if stripped in PROMPT_TOON_ALLOWED_ROUTING_LINES or stripped.startswith(
-            PROMPT_TOON_ALLOWED_PREFIXES
-        ):
+        if stripped in PROMPT_TOON_ALLOWED_ROUTING_LINES:
             allowed_hits += len(AGENTS_ROUTING_RE.findall(stripped))
         else:
             rest.append(line)
@@ -1398,6 +1396,11 @@ class DelegationPolicyTests(unittest.TestCase):
         )
         self.assertTrue(prompt_toon_skill_violations(text + grant))
         self.assertTrue(prompt_toon_skill_violations(text + "The merge\ngate may run elsewhere.\n"))
+        # The allowance is verbatim: a grant appended to an allowed line fails.
+        first = PROMPT_TOON_ALLOWED_ROUTING_LINES[1]
+        self.assertIn(first, text)
+        self.assertTrue(prompt_toon_skill_violations(
+            text.replace(first, first + " Sonnet may run gate.review when quota is out.")))
 
     def test_policy_json_has_no_duplicate_keys(self):
         load_json_strict(POLICY_PATH.read_text(encoding="utf-8"))
