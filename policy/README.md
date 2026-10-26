@@ -74,7 +74,9 @@ Redaction:
 - Pattern ids are positional (`pattern-1` onward) and name the findings.
   Append new patterns. Never reorder or remove one without a ruling.
 - A missing or malformed `redaction.json` stops `prompt_toon.cli` at
-  import. Redaction never runs with fewer patterns than the policy names.
+  import. `cli.py` also pins the sha256 of the patterns list. A truncated,
+  weakened or foreign policy file fails the same way. Appending a pattern
+  moves that pin in the same change.
 - The Python patterns, the Chapel RE2 specs and the historic `cli.py`
   patterns agree. The gate also checks that redaction output is unchanged
   on a fixed sample set.
