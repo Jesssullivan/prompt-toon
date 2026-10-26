@@ -48,6 +48,7 @@ def write_test_wheel(
     *,
     root_is_purelib: str = "true",
     tags: tuple[str, ...] = ("py3-none-any",),
+    version: str = "0.3.0",
 ) -> None:
     metadata = [
         "Wheel-Version: 1.0",
@@ -59,7 +60,7 @@ def write_test_wheel(
     ]
     with ZipFile(path, "w") as archive:
         archive.writestr(
-            "prompt_toon-0.3.0.dist-info/WHEEL",
+            f"prompt_toon-{version}.dist-info/WHEEL",
             "\n".join(metadata).encode("ascii"),
         )
 
@@ -551,8 +552,9 @@ class ManifestTests(unittest.TestCase):
             closure=darwin,
             entrypoint=darwin_entrypoint,
         )
-        wheel = Path(tmp) / "prompt_toon-0.3.0-py3-none-any.whl"
-        write_test_wheel(wheel)
+        version = gen_manifest.version_from_init()
+        wheel = Path(tmp) / f"prompt_toon-{version}-py3-none-any.whl"
+        write_test_wheel(wheel, version=version)
         wheel_bytes = wheel.read_bytes()
         try:
             proc = subprocess.run(
