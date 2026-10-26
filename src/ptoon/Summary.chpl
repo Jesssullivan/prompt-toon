@@ -1,9 +1,8 @@
 /* TIN-2709 C2e: run-level summary.md + manifest.json rendering.
  *
- * Parity spec: prompt_toon/cli.py — OPEN_QUESTION_RE:63,
- * rough_token_count:296-298, extract_constraints:280-281,
- * extract_open_questions:284-285, card_line:288-293, render_summary:397-448,
- * and command_condense's manifest assembly:637-661 (jsonl default path: no
+ * Parity spec: prompt_toon/cli.py: OPEN_QUESTION_RE, rough_token_count,
+ * extract_constraints, extract_open_questions, card_line, render_summary,
+ * and the manifest assembly in _build_python_condense (jsonl default path: no
  * TOON view, so format_analysis carries jsonl_tokens only and outputs has no
  * toon keys).
  *
