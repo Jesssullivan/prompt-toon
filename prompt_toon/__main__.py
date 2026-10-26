@@ -1,3 +1,5 @@
+"""Run the prompt-toon CLI with python -m prompt_toon."""
+
 from .cli import main
 
 
