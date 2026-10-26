@@ -385,7 +385,8 @@ def run_codex(
     """Run a Codex probe and return the parsed stream.
 
     Raise RuntimeError on a launch failure, timeout, nonzero exit or error
-    event.
+    event. A timeout_seconds of 0 or less raises ValueError. So does a
+    malformed stream, and that error is not wrapped.
     """
     if timeout_seconds <= 0:
         raise ValueError("Codex timeout must be positive")
