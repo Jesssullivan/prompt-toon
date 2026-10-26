@@ -36,7 +36,7 @@ stdout: <n>\n then n times: <metaJson>\n<redactedByteLen>\n<redacted bytes>
 
 `condense-batch` reads framed source, tier and body triplets. `condense` first reads a run header of five framed fields: `runId generatedAt minToonSavings defaultTier tierOverridesJson`. The same triplets follow. The binary echoes the header fields and never computes them.
 
-`serve` takes up to nine positive integers in this order: `workers queueDepth maxDocs maxRequestBytes maxLabelBytes maxInputBytes maxBudgetMs maxCards maxResponseBytes`. The defaults are 16, 64, 64, 16 MiB, 4096, 2000000, 2000, 24 and 256 MiB. `maxInputBytes` must not exceed `maxRequestBytes`. `maxResponseBytes` must be at least `maxRequestBytes`. The service checks each ceiling before it allocates a transform. Responses can complete out of order. Each one carries its visible-ASCII request and stream IDs.
+`serve` takes up to nine positive integers in this order: `workers queueDepth maxDocs maxRequestBytes maxLabelBytes maxInputBytes maxBudgetMs maxCards maxResponseBytes`. The defaults are 16, 64, 64, 16 MiB, 4096, 2000000, 2000, 24 and 256 MiB. `maxInputBytes` must not exceed `maxRequestBytes`. `maxResponseBytes` must be at least `maxRequestBytes`. The service checks the request ceilings before it runs a transform. It checks `maxResponseBytes` after the transform, and an oversized response becomes an `error` frame. Responses can complete out of order. Each one carries its visible-ASCII request and stream IDs.
 
 ### Exit codes
 
@@ -49,7 +49,7 @@ stdout: <n>\n then n times: <metaJson>\n<redactedByteLen>\n<redacted bytes>
 
 ### Fail closed (INV-5)
 
-- A one-shot transform that hits an error exits nonzero with a message on stderr. It never writes a partial result to stdout.
+- A one-shot transform that hits an error exits nonzero with a message on stderr. `condense` and `condense-batch` stream document events first, so stdout can hold a partial result. The Python engine discards stdout on a nonzero exit.
 - In `redact-batch`, an error in one document withholds only that document. Its result has `withheld=true`, a reason and zero body bytes.
 - A malformed batch frame fails the whole process. That covers a bad length, a body that overruns and trailing bytes.
 - In `serve`, a request whose own limits are out of range or whose transform fails gets an `error` response frame. The service keeps running.
@@ -70,7 +70,7 @@ Chapel compiles on remote builders only (AGENTS.md doctrine, 2026-07-09). Do not
 | Bazel on GF REAPI | `just flywheel-chapel` or `make bazel-ptoon` | `//src/ptoon:ptoon`, built with no cache and no local fallback |
 
 - **Nix.** `.#packages.<system>.ptoon` builds the binary, then runs two smoke checks. `echo hi | ./ptoon normalize` must print text. `caps` must report `serve_protocol` 1. On Darwin the build also runs the document-count matrix, the resident serve round trip, the dogfood test and the quality fixtures against the binary.
-- **Bazel.** The `chapel_binary` rule resolves its compiler through `ChapelToolchainInfo` in `//tools/bazel/chapel`. On x86_64-linux this is the GF worker runtime bridge, which is a stopgap. On aarch64-darwin it is only the GF Nix Chapel package on the managed worker. The Darwin execution platform puts `gf.toolchain-policy=chapel-ab552d8` in the action key. The Linux platform carries only `gf.platform`. The wrapper checks the pinned package and compiler version, and it never falls back to a host `chpl`. Compile and Darwin smoke actions are not cached, because the compiler closure digest is proof evidence and not part of the action key.
+- **Bazel.** The `chapel_binary` rule resolves its compiler through `ChapelToolchainInfo` in `//tools/bazel/chapel`. On x86_64-linux this is the GF worker runtime bridge, which is a stopgap. On aarch64-darwin it is only the GF Nix Chapel package on the managed worker. The Darwin execution platform puts `gf.toolchain-policy=chapel-ab552d8` in the action key. The Linux platform carries only `gf.platform`. The wrapper checks the pinned package and compiler version, and it never falls back to a host `chpl`. Compile and Darwin smoke actions are not cached. On Darwin the compiler closure digest is proof evidence and not part of the action key. On Linux the compiler comes from the worker and is not in the action key either.
 - **Manual tag.** `//src/ptoon:ptoon` is tagged `manual`, so `bazel test //...` skips it on every platform. It builds only when a command names it.
 - **Darwin release.** The TIN-2949 bridge takes the exact GF output and its native smoke record. After it verifies them, it imports the bytes into a Nix closure. The publisher never compiles Chapel.
 
@@ -92,9 +92,9 @@ The parity runner reads the gitignored `fixtures/` tree. Run `tools/gen_fixtures
 
 `just check` runs the compile check, the secrets scan, the Python suite, the quality fixtures, the Bazel module graph, the toolchain contract and `bazel test //...`. It never compiles Chapel, because `//src/ptoon:ptoon` is tagged `manual`.
 
-`make parity` builds `.#packages.x86_64-linux.ptoon-parity`. It stops at the first failure. It regenerates the fixture and golden corpora, then runs these against the binary:
+`make parity` builds `.#packages.x86_64-linux.ptoon-parity`. It stops at the first failure. It regenerates the fixture and golden corpora, then runs these steps:
 
-- the quality fixtures under both engines
+- the quality fixtures under the Python engine and the Chapel engine
 - function parity against direct Python oracle calls and full `condense` parity against the Python goldens
 - batch parity: `redact-batch` against one `redact` call for each document
 - stream parity: `condense-batch` cards against the oracle cards
@@ -103,7 +103,7 @@ The parity runner reads the gitignored `fixtures/` tree. Run `tools/gen_fixtures
 - gateway capacity (64 HTTP and SSE streams for each provider)
 - the PostToolUse hook canary
 - the analyze regression against the committed baseline
-- the full unit test suite, with the binary present so that the Chapel tests run
+- the engine unit tests, then the full unit test suite, with the binary present so that the Chapel tests run
 
 ## Layout
 
@@ -120,11 +120,10 @@ The parity runner reads the gitignored `fixtures/` tree. Run `tools/gen_fixtures
 | `Toon.chpl` | `toonEscape` and `encodeRows`. It is not compiled into the binary |
 | `native_smoke.sh`, `native_smoke_expected.sh` | the Darwin native smoke script and its expected values |
 
-`test/ptoon/PropertyTests.chpl` holds property tests for `Toon.chpl`. They stay advisory until quickchpl is pinned in the repo and runs in a remote gate.
+`test/ptoon/PropertyTests.chpl` holds property tests for `normalizeText`, `redactText` and `Toon.chpl`. They stay advisory until quickchpl is pinned in the repo and runs in a remote gate.
 
 ## Next
 
-- C4b (TIN-2793): run the Claude Messages adapter in shadow mode around the resident service. It must not change request bytes that carry authority.
 - Compile `Toon.chpl` into the binary, with JSON scalars mapped to TOON cells.
 - Pin quickchpl and run the property tests in a remote gate.
 - Promote the Bazel REAPI compile lane when the repo-scoped ARC runner anchor lands (TIN-2704).
