@@ -505,6 +505,34 @@ def agents_delegation_section(agents_text):
     return marker + body.split("\n## ", 1)[0]
 
 
+# Routing words that may only appear inside the pinned "## Delegation"
+# section of AGENTS.md, so routing guidance cannot sit in an unpinned sibling
+# section (round 4).
+AGENTS_ROUTING_RE = re.compile(
+    r"\b(opus|sonnet|haiku|fable|claude-[a-z]+-\d|mythos\.|j8\d|budget fallback|"
+    r"model class|merge gate|merge-gating|host act)",
+    re.IGNORECASE,
+)
+DELEGATION_HEADING_RE = re.compile(r"^#{1,6}\s*delegation\b", re.IGNORECASE | re.MULTILINE)
+
+
+def agents_routing_outside_violations(agents_text):
+    """Exactly one Delegation heading of any level or spelling, and no routing
+    words outside the pinned Delegation section."""
+    errors = []
+    headings = DELEGATION_HEADING_RE.findall(agents_text)
+    if len(headings) != 1:
+        errors.append(f"AGENTS.md has {len(headings)} Delegation headings, want 1")
+    section = agents_delegation_section(agents_text)
+    if section is None:
+        return errors + ["AGENTS.md needs exactly one '## Delegation' section"]
+    outside = agents_text.replace(section, "\n", 1)
+    for line in outside.splitlines():
+        if AGENTS_ROUTING_RE.search(line):
+            errors.append(f"AGENTS.md routing text outside ## Delegation: {line.strip()}")
+    return errors
+
+
 def claude_skill_link_violations(root):
     """Every .claude/skills entry is a symlink to the same-named .agents
     skill, so the project skill Claude Code loads is the pinned one."""
@@ -519,6 +547,31 @@ def claude_skill_link_violations(root):
                 errors.append(f"{entry.name}: .claude skill is not a symlink")
             elif entry.resolve() != agents_root / entry.name:
                 errors.append(f"{entry.name}: .claude skill points at {entry.resolve()}")
+    return errors
+
+
+# The only project skills and the only .claude content (round 4, nit 2). A new
+# skill, agent definition or root CLAUDE.md that carries routing guidance
+# outside the pinned surfaces fails here instead of slipping in beside them.
+PROJECT_SKILLS = {"mythos-delegation", "prompt-toon"}
+
+
+def instruction_surface_violations(root):
+    errors = []
+    skills = {p.name for p in (root / ".agents" / "skills").iterdir()}
+    if skills != PROJECT_SKILLS:
+        errors.append(f".agents/skills holds {sorted(skills)}, want {sorted(PROJECT_SKILLS)}")
+    claude = root / ".claude"
+    if claude.exists():
+        extra = {p.name for p in claude.iterdir()} - {"skills"}
+        if extra:
+            errors.append(f".claude holds {sorted(extra)} beyond skills/")
+    for name in ("CLAUDE.md", "CLAUDE.local.md"):
+        path = root / name
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if AGENTS_ROUTING_RE.search(line):
+                    errors.append(f"{name} carries routing text: {line.strip()}")
     return errors
 
 
@@ -546,10 +599,9 @@ def golden_digest_violations(skill_bytes, policy, agents_text):
         errors.append(
             f"policy changed: POLICY_CANONICAL_SHA256 is {POLICY_CANONICAL_SHA256}, policy is {actual}"
         )
+    errors.extend(agents_routing_outside_violations(agents_text))
     section = agents_delegation_section(agents_text)
-    if section is None:
-        errors.append("AGENTS.md needs exactly one '## Delegation' section")
-    else:
+    if section is not None:
         actual = hashlib.sha256(section.encode("utf-8")).hexdigest()
         if actual != AGENTS_DELEGATION_SHA256:
             errors.append(
@@ -1219,6 +1271,13 @@ class DelegationPolicyTests(unittest.TestCase):
                 skill, self.policy, agents.replace(bullet_end, bullet_end + added)), added)
         self.assertTrue(golden_digest_violations(
             skill, self.policy, agents.replace("## Delegation\n", "## Routing\n")))
+        # Round 4: routing guidance in an unpinned sibling section.
+        grant = "- When Opus quota is out, Sonnet may also run mythos.act.host.\n"
+        for heading in ("## Delegation ", "## Delegation (amendment)", "### Delegation", "## Model routing"):
+            self.assertTrue(golden_digest_violations(
+                skill, self.policy, agents.replace("## TOON Policy\n", f"{heading}\n\n{grant}\n## TOON Policy\n")), heading)
+        self.assertTrue(golden_digest_violations(
+            skill, self.policy, agents.replace("## Safety\n\n", "## Safety\n\n" + grant)))
 
     def test_claude_skill_paths_are_links_to_the_pinned_skill(self):
         self.assertEqual(claude_skill_link_violations(ROOT), [])
@@ -1242,6 +1301,37 @@ class DelegationPolicyTests(unittest.TestCase):
                 Path("../../.agents/skills/mythos-delegation")
             )
             self.assertEqual(claude_skill_link_violations(root), [])
+
+    def test_instruction_surfaces_are_closed(self):
+        self.assertEqual(instruction_surface_violations(ROOT), [])
+
+    def test_instruction_surface_check_fails_closed(self):
+        # Round 4, M22 to M24: a new skill, a .claude agent definition or a
+        # root CLAUDE.md granting Sonnet the gate.
+        def tree():
+            tmp = tempfile.TemporaryDirectory()
+            root = Path(tmp.name)
+            for name in PROJECT_SKILLS:
+                (root / ".agents" / "skills" / name).mkdir(parents=True)
+            (root / ".claude" / "skills").mkdir(parents=True)
+            return tmp, root
+
+        tmp, root = tree()
+        with tmp:
+            self.assertEqual(instruction_surface_violations(root), [])
+            (root / ".agents" / "skills" / "opus-quota").mkdir()
+            self.assertTrue(instruction_surface_violations(root))
+        tmp, root = tree()
+        with tmp:
+            (root / ".claude" / "agents").mkdir()
+            (root / ".claude" / "agents" / "merge-gate.md").write_text("model: sonnet\n")
+            self.assertTrue(instruction_surface_violations(root))
+        tmp, root = tree()
+        with tmp:
+            (root / "CLAUDE.md").write_text("Sonnet may run mythos.gate.review.\n")
+            self.assertTrue(instruction_surface_violations(root))
+            (root / "CLAUDE.md").write_text("Read AGENTS.md first.\n")
+            self.assertEqual(instruction_surface_violations(root), [])
 
     def test_policy_json_has_no_duplicate_keys(self):
         load_json_strict(POLICY_PATH.read_text(encoding="utf-8"))
