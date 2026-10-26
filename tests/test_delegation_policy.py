@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import shutil
@@ -190,38 +191,80 @@ TABLE_NO_CHANGE_CELL = "No change"
 # Personas whose lanes have one default model: the first model class that
 # carries a seat model_id.
 SINGLE_DEFAULT_PERSONAS = {"critical", "adversarial", "drafting", "mechanical"}
-MODEL_ID_RE = re.compile(r"claude-[a-z]+-\d+(?:-\d+)*")
+# Any Claude model ID, old style (claude-3-opus) or new (claude-opus-5-5).
+MODEL_ID_RE = re.compile(r"claude-(?=[a-z0-9.-]*(?:opus|sonnet|haiku|instant|\d))[a-z0-9][a-z0-9.-]*")
+TABLE_HEADER = ["Route", "Persona", "Default model", "When Opus quota is out"]
+ROUTE_RE = re.compile(r"mythos(?:\.[a-z0-9*-]+)+")
+
+
+def model_ids_in(text):
+    return {m.rstrip(".-") for m in MODEL_ID_RE.findall(text)}
 
 
 def skill_table_rows(skill_text):
-    """Rows of the skill's "Lane to model" table as (routes, cells)."""
-    section = skill_text.split("## Lane to model", 1)
-    if len(section) != 2:
-        return None
-    body = section[1].split("\n## ", 1)[0]
+    """Parse the skill's "Lane to model" table.
+
+    Returns (rows, errors). Every pipe line in the section must be the exact
+    header, the separator or a row naming at least one route, so a row the
+    parser cannot read fails instead of being skipped. A pipe line naming a
+    route anywhere else in the skill is a second, unchecked table and fails.
+    """
+    errors = []
+    marker = "\n## Lane to model\n"
+    if skill_text.count(marker) != 1:
+        return None, ["skill needs exactly one Lane to model section"]
+    before, after = skill_text.split(marker, 1)
+    body, _, rest = after.partition("\n## ")
+    for line in (before + "\n" + rest).splitlines():
+        if line.strip().startswith("|") and ROUTE_RE.search(line):
+            errors.append(f"lane table row outside Lane to model: {line.strip()}")
     rows = []
+    header_seen = False
     for line in body.splitlines():
-        if not line.startswith("| `mythos."):
+        stripped = line.strip()
+        if not stripped.startswith("|"):
             continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        routes = re.findall(r"`(mythos[^`]*)`", cells[0])
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not header_seen:
+            if cells != TABLE_HEADER:
+                errors.append(f"table header is {cells}, want {TABLE_HEADER}")
+            header_seen = True
+            continue
+        if set(stripped) <= set("|-: "):
+            continue
+        routes = ROUTE_RE.findall(cells[0])
+        if not routes or line != stripped:
+            errors.append(f"unparseable table row: {line!r}")
+            continue
         rows.append((routes, cells))
-    return rows
+    if not header_seen:
+        errors.append("Lane to model section has no table")
+    return rows, errors
 
 
 def skill_table_violations(policy, skill_text):
     """The skill's lane-to-model table agrees with the policy (enforcement
-    re-review on PR #49, mutations A10, C8 and D10)."""
-    rows = skill_table_rows(skill_text)
+    re-reviews on PR #49)."""
+    rows, errors = skill_table_rows(skill_text)
+    if rows is None:
+        return errors
     if not rows:
-        return ["skill has no Lane to model table"]
-    errors = []
+        return errors + ["skill Lane to model table has no rows"]
     personas = {p["id"]: p for p in policy["personas"]}
     model_ids = {s["id"]: s.get("model_id") for s in policy["seats"]}
     lanes = {lane["route"]: lane["persona"] for lane in policy["lanes"]}
     fallback_lanes = {
         route for f in policy.get("budget_fallbacks", []) for route in f.get("lanes", [])
     }
+
+    def default_model(persona):
+        if persona not in SINGLE_DEFAULT_PERSONAS or persona not in personas:
+            return None
+        return next(
+            (model_ids[c] for c in personas[persona]["model_classes"] if model_ids.get(c)),
+            None,
+        )
+
     covered = set()
     for routes, cells in rows:
         if len(cells) != 4:
@@ -237,32 +280,33 @@ def skill_table_violations(policy, skill_text):
                 hits = {route} & set(lanes)
             if not hits:
                 errors.append(f"table route {route} matches no policy lane")
+            dup = hits & covered
+            if dup:
+                errors.append(f"table lists {sorted(dup)} twice")
             matched |= hits
         covered |= matched
         for route in matched:
             if lanes[route] not in row_personas:
                 errors.append(f"table row for {route} names {persona_cell}, policy says {lanes[route]}")
-        single = row_personas & SINGLE_DEFAULT_PERSONAS
-        if single and len(row_personas) == 1:
-            persona = next(iter(single))
-            expected = next(
-                (model_ids[c] for c in personas[persona]["model_classes"] if model_ids.get(c)),
-                None,
-            )
-            if default_cell != f"`{expected}`":
-                errors.append(f"table row {cells[0]} default {default_cell}, policy says {expected}")
-        elif MODEL_ID_RE.search(default_cell):
+        if row_personas & SINGLE_DEFAULT_PERSONAS:
+            expected = {default_model(p) for p in row_personas}
+            if len(expected) != 1 or None in expected:
+                errors.append(f"table row {cells[0]} mixes personas with different default models")
+            elif default_cell != f"`{expected.pop()}`":
+                errors.append(f"table row {cells[0]} default {default_cell} disagrees with the policy")
+        elif model_ids_in(default_cell):
             errors.append(f"table row {cells[0]} pins a model for a multi-model persona")
         in_fallback = matched & fallback_lanes
         if in_fallback and in_fallback != matched:
             errors.append(f"table row {cells[0]} mixes fallback and non-fallback lanes")
-        elif in_fallback:
+            continue
+        if in_fallback:
             want = TABLE_FALLBACK_CELL
         elif row_personas & CRITICAL_PERSONAS:
             want = TABLE_WAIT_CELL
         else:
             want = TABLE_NO_CHANGE_CELL
-        if not (in_fallback and in_fallback != matched) and fallback_cell != want:
+        if fallback_cell != want:
             errors.append(f"table row {cells[0]} fallback {fallback_cell!r}, want {want!r}")
     missing = set(lanes) - covered
     if missing:
@@ -277,7 +321,7 @@ def skill_text_violations(policy, skill_text):
     for sentence in SKILL_SENTENCES:
         if sentence not in flat:
             errors.append(f"skill lost: {sentence}")
-    stray = set(MODEL_ID_RE.findall(skill_text)) - set(MODEL_IDS.values())
+    stray = model_ids_in(skill_text) - set(MODEL_IDS.values())
     if stray:
         errors.append(f"skill names model IDs outside the seat registry: {sorted(stray)}")
     lowered = flat.lower()
@@ -425,6 +469,60 @@ def dhall_seat_model_ids(dhall_text):
         r'(?:None Text|Some "(?P<model_id>[^"]+)")'
     )
     return {m["seat"]: m["model_id"] for m in pattern.finditer(dhall_text)}
+
+
+# Golden digests (enforcement re-review on PR #49, second round). The checks
+# above give readable errors for known weakenings, but a phrase list can never
+# catch every paraphrase an agent would act on. So the surfaces an orchestrator
+# reads to pick a model are pinned whole: the shipped skill, the policy
+# document and the AGENTS.md J81 bullet. Any edit to them fails here until the
+# digest is updated in the same commit, which puts the change in front of the
+# Opus merge gate as a deliberate policy edit (J81(a)). Packaging digests do not
+# do this: `just manifest` regenerates them.
+#
+# To update after a reviewed edit: run this module and copy the digest the
+# failure prints.
+SKILL_SHA256 = "062a3685480798c86e444f6f86809e720b766e48f12b61d586179c1c3fe80de0"
+POLICY_CANONICAL_SHA256 = "1034cb4f1f40b11e998af58fef6e86d331bdc3da597b9d515a4f18010e9438ea"
+AGENTS_J81_SHA256 = "4be9da3e7b40f6541cba1ebd20de5ff6ebed5a5e7262cab6d73a9c07026e73dc"
+AGENTS_PATH = ROOT / "AGENTS.md"
+
+
+def canonical_policy_sha256(policy):
+    text = json.dumps(policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def agents_j81_bullet(agents_text):
+    """The AGENTS.md "- J81 (" bullet, up to the next bullet or heading."""
+    lines = agents_text.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.startswith("- J81 (")]
+    if len(starts) != 1:
+        return None
+    end = starts[0] + 1
+    while end < len(lines) and lines[end].startswith("  "):
+        end += 1
+    return "\n".join(lines[starts[0]:end]) + "\n"
+
+
+def golden_digest_violations(skill_bytes, policy, agents_text):
+    errors = []
+    actual = hashlib.sha256(skill_bytes).hexdigest()
+    if actual != SKILL_SHA256:
+        errors.append(f"SKILL.md changed: SKILL_SHA256 is {SKILL_SHA256}, file is {actual}")
+    actual = canonical_policy_sha256(policy)
+    if actual != POLICY_CANONICAL_SHA256:
+        errors.append(
+            f"policy changed: POLICY_CANONICAL_SHA256 is {POLICY_CANONICAL_SHA256}, policy is {actual}"
+        )
+    bullet = agents_j81_bullet(agents_text)
+    if bullet is None:
+        errors.append("AGENTS.md needs exactly one '- J81 (' bullet")
+    else:
+        actual = hashlib.sha256(bullet.encode("utf-8")).hexdigest()
+        if actual != AGENTS_J81_SHA256:
+            errors.append(f"AGENTS.md J81 bullet changed: AGENTS_J81_SHA256 is {AGENTS_J81_SHA256}, bullet is {actual}")
+    return errors
 
 
 def load_policy():
@@ -1042,6 +1140,65 @@ class DelegationPolicyTests(unittest.TestCase):
         )
         for case in cases:
             self.assertTrue(prose_violations(edit(*case)), case)
+
+    def test_golden_digests_pin_the_routing_surfaces(self):
+        self.assertEqual(
+            golden_digest_violations(
+                SKILL_PATH.read_bytes(),
+                self.policy,
+                AGENTS_PATH.read_text(encoding="utf-8"),
+            ),
+            [],
+        )
+
+    def test_golden_digests_fail_closed(self):
+        # Enforcement re-review on PR #49, second round: paraphrases in the
+        # skill description, rule 2, rule 5, pinned prose, unscanned policy
+        # fields and AGENTS.md all used to pass.
+        skill = SKILL_PATH.read_bytes()
+        agents = AGENTS_PATH.read_text(encoding="utf-8")
+        self.assertTrue(golden_digest_violations(skill + b"\n", self.policy, agents))
+        self.assertTrue(golden_digest_violations(
+            skill.replace(b"counts as a first pass only", b"counts as the gate"), self.policy, agents))
+        for collection, field in (
+            ("harness_seats", "purpose"),
+            ("budget_fallbacks", "trigger"),
+            ("lanes", "purpose"),
+            ("personas", "doctrine"),
+            ("seats", "notes"),
+        ):
+            broken = json.loads(json.dumps(self.policy))
+            broken[collection][0][field] += " Sonnet can deploy when the receipt names it."
+            self.assertTrue(golden_digest_violations(skill, broken, agents), (collection, field))
+        self.assertTrue(golden_digest_violations(
+            skill, self.policy,
+            agents.replace("They never run a host act", "They may also run a host act")))
+        self.assertTrue(golden_digest_violations(
+            skill, self.policy, agents.replace("- J81 (", "- J8l (")))
+
+    def test_skill_table_parser_fails_closed(self):
+        # Enforcement re-review on PR #49, second round: rows the parser
+        # skipped, a two-persona bypass, a column swap and old-style IDs.
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        gate = "| `mythos.gate.review` | critical | `claude-opus-5-5` | Wait for Opus or the operator |"
+        adv = "| `mythos.adversarial` | adversarial | `claude-opus-5-5` | Wait for Opus or the operator |"
+        header = "| Route | Persona | Default model | When Opus quota is out |"
+        cases = {
+            "leading-space duplicate": (gate, gate + "\n | `mythos.gate.review` | critical | `claude-sonnet-5-5` | Sonnet |"),
+            "unticked duplicate": (gate, gate + "\n| mythos.gate.review | critical | `claude-sonnet-5-5` | Sonnet |"),
+            "bold duplicate": (gate, gate + "\n| **`mythos.gate.review`** | critical | `claude-sonnet-5-5` | Sonnet |"),
+            "second table": ("## Routing rules", "| Route | Model |\n| --- | --- |\n| `mythos.act.host` | `claude-sonnet-5-5` |\n\n## Routing rules"),
+            "two-persona bypass": (adv, "| `mythos.adversarial` | adversarial, drafting | Sonnet 5.5 | Wait for Opus or the operator |"),
+            "column swap": (header, "| Route | Persona | When Opus quota is out | Default model |"),
+            "extra cell": (gate, gate + " x |"),
+            "unparseable row": (gate, gate + "\n| merge gate | critical | Sonnet | Sonnet |"),
+            "old-style id": ("(claude-opus-5-5) for mission", "(claude-3-opus) for mission"),
+            "heading renamed": ("## Lane to model", "## Lane model map"),
+        }
+        for name, (old, new) in cases.items():
+            self.assertIn(old, skill_text, name)
+            broken = skill_text.replace(old, new, 1)
+            self.assertTrue(skill_text_violations(self.policy, broken), name)
 
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")
