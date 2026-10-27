@@ -41,4 +41,4 @@ jobs:
       - name: MODULE.bazel.lock has not drifted
         run: |
           export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
-          nix develop --command bazelisk --output_user_root="$BAZEL_OUTPUT_USER_ROOT" mod graph --lockfile_mode=error
+          nix develop --command bazelisk --batch --output_user_root="$BAZEL_OUTPUT_USER_ROOT" mod graph --lockfile_mode=error
