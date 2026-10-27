@@ -7,11 +7,11 @@ Public API:
 
 The compiler is an executable Bazel dependency, a wrapper target. Bazel never
 runs a bare `chpl` from the host PATH. Each registered wrapper still resolves
-`chpl` on its executor PATH. A packaged compiler can attach extra runtime files and environment
-variables. The Linux bridge is non-hermetic. Darwin is non-hermetic too,
-because the worker provisions its compiler and Bazel does not declare it as an
-input. An action-keyed policy on the execution platform can still bind it to
-the reviewed Nix closure. Cache eligibility is a separate flag.
+`chpl` on its executor PATH. A packaged compiler can attach extra runtime files
+and environment variables. The Linux bridge is non-hermetic. Darwin is
+non-hermetic too, because the worker provisions its compiler and Bazel does not
+declare it as an input. An action-keyed policy on the execution platform can
+still bind it to the reviewed Nix closure. Cache eligibility is a separate flag.
 """
 
 ChapelToolchainInfo = provider(
@@ -59,7 +59,8 @@ The rule returns `platform_common.ToolchainInfo` whose `chapel` field holds a
 its execution and target constraints. The flags describe the compiler only.
 `chapel_binary` reads three of them. `cacheable` chooses `no-cache`.
 `inherit_default_shell_env` chooses the shell environment.
-`worker_closure_bound` enforces `require_worker_closure_toolchain`. Nothing
+A `chapel_binary` that sets `require_worker_closure_toolchain` fails unless
+`worker_closure_bound` is set. Nothing
 reads `hermetic`. It is informational.
 """,
     attrs = {
