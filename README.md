@@ -21,9 +21,9 @@ byte-identical to the Python oracle. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
 The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
-and the provider gateway. Current v0.3.0 source contains the C4a resident
+and the provider gateway. Current v0.3.1 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
-gateways plus the C4d managed-consumption source contract, but no v0.3.0
+gateways plus the C4d managed-consumption source contract, but no v0.3
 release or fleet service profile exists yet. C4e adds provider-free local
 spool dogfooding and an efficiency ledger. IO enforcement remains locked.
 
@@ -92,7 +92,7 @@ attest arbitrary ledgers or model-visible quality.
 
 ## CLI
 
-`prompt-toon --help` lists these subcommands (v0.3.0 source). Run
+`prompt-toon --help` lists these subcommands (v0.3.1 source). Run
 `prompt-toon <command> --help` for the flags of each one.
 
 | Command | What it does |
@@ -196,9 +196,9 @@ label says which. The same flow as a table:
 | xoxd-lexical projections | huskycat | prompt digest pinned by sha | live |
 | xoxd-lexical projections | lab | flake input pinned to a release | live |
 | xoxd-lexical projections | prompt-toon docs | check CLI from an unpinned local clone | local only |
-| prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/delegation.json` and `policy/io.json` when `dhall-to-json` is on `PATH` | live |
-| prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned after #49 |
-| bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned after #49 |
+| prompt-toon policy Dhall | prompt-toon artifacts | `just gen-policy` writes `policy/delegation.json`, `policy/io.json` and `policy/redaction.json` when `dhall-to-json` is on `PATH` | live |
+| prompt-toon artifacts | bazel-registry | signed tag archive with SRI | planned |
+| bazel-registry | huskycat | `bazel_dep` with `dev_dependency = True` | planned |
 | prompt-toon artifacts | lab | flake input pinned to a rev | live |
 | huskycat | lab | huskycatd Home Manager module | live |
 | lab | estate repos | global git hooks that run huskycat | live |
@@ -227,8 +227,8 @@ estate.
   skills are managed and the package is installed. It does not check the
   skill lock.
 - **huskycat** will read `//:delegation_policy` as Bazel data once the module
-  is registered. Its first consumer is a redaction parity test. That test needs
-  a Dhall-sourced `policy/redaction.json`, which does not exist yet.
+  is registered. Its first consumer is a redaction parity test against the
+  Dhall-sourced `policy/redaction.json`.
 - **xoxd-lexical** sets the house style for these docs. Its styles are
   private, so the check runs on a local clone today. Private estate CI may run
   it later. This repo's public CI does not fetch them, and no style files are
@@ -243,7 +243,7 @@ The root module is `prompt_toon` (version in `MODULE.bazel`, checked against
 
 | Target | Contents |
 | --- | --- |
-| `//:delegation_policy` | every file under `policy/`: `README.md`, `delegation.json`, `delegation.schema.json`, `io.json` and the Dhall sources |
+| `//:delegation_policy` | every file under `policy/`: `README.md`, `delegation.json`, `delegation.schema.json`, `io.json`, `redaction.json` and the Dhall sources |
 | `//:skills` | every file under `.agents/skills/`, the same set `skill_files[]` digests |
 
 Today no registry carries the module. A consumer that needs the data now must
@@ -251,10 +251,10 @@ pin a commit with `git_override` and accept that the pin skips registry checks.
 The module sets `bazel_compatibility = [">=8.2.1"]`. A consumer on Bazel 8.2.1
 or 9.2.0 builds both data targets. The Chapel toolchains are registered with
 `dev_dependency = True`, so a consumer does not inherit them. The registered
-path comes after prompt-toon #49 merges:
+path:
 
-1. Bump to 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`, then run
-   `just manifest`.
+1. The source is at 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`,
+   and `packaging/manifest.json` records it.
 2. Cut the signed `v0.3.1` tag.
 3. Add `modules/prompt_toon/0.3.1` to `xoxd-ai/bazel-registry` with the tag
    archive SRI and a prompt-toon smoke scenario.
@@ -328,7 +328,7 @@ anchored to the signed tag and repository identity. Fleet install will ride
 the lab Home Manager module (rev-pinned under INV-7).
 
 The v0.2.0 release asset does not implement `ptoon serve` and cannot back the
-C4 gateway. v0.3.0 is the first release line whose manifest declares
+C4 gateway. The v0.3 line is the first whose manifest declares
 capabilities for each target. The two `ptoon` targets carry
 `serve_protocol = 1`. The `prompt_toon` wheel carries
 `anthropic_shadow_gateway = 1` and `openai_responses_shadow_gateway = 1`.
@@ -336,14 +336,15 @@ Manifest schema v2 identifies ptoon targets by `(artifact, platform)` and
 authenticates complete Linux and Darwin Nix closure exports, their entrypoint
 binaries, the Darwin GF/Nix bridge provenance and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
-manifest exist. The latest tag is `v0.2.0`. No `v0.3.0` tag exists.
+manifest exist. The latest tag is `v0.2.0`. No `v0.3.0` or `v0.3.1` tag
+exists.
 
 ## Project Surfaces
 
 - CLI package: `prompt_toon/` · Chapel engine: `src/ptoon/` + `c_src/`
 - Hook adapter: `hooks/post_tool_condense.py`
 - Skills: `.agents/skills/{prompt-toon,mythos-delegation}/`
-- Policy SSOTs: `policy/{delegation,io}.json` (Dhall sources: `policy/dhall/`)
+- Policy SSOTs: `policy/{delegation,io,redaction}.json` (Dhall sources: `policy/dhall/`)
 - Packaging SSOT: `packaging/manifest.json` (`tools/packaging/gen_manifest.py`)
 - Managed-consumption contract: `packaging/home-manager.json` and
   `docs/home-manager-adoption.md`

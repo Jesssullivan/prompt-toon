@@ -69,6 +69,7 @@ _CHILD_ENV_ALLOWLIST = (
 
 
 def validate_loopback_url(value: str) -> str:
+    """Return the normalized loopback gateway URL, or raise ValueError."""
     return validate_loopback_gateway(value)
 
 
@@ -77,6 +78,11 @@ def default_claude_bin(
     source: Mapping[str, str] | None = None,
     which: Callable[[str], str | None] = shutil.which,
 ) -> str:
+    """Return the Claude Code binary to launch.
+
+    A non-empty CLAUDE_BIN wins. Otherwise use claude-api from PATH, then
+    plain claude.
+    """
     env = os.environ if source is None else source
     explicit = env.get("CLAUDE_BIN")
     if explicit:
@@ -85,6 +91,10 @@ def default_claude_bin(
 
 
 def claude_route_conflicts(source: Mapping[str, str]) -> list[str]:
+    """Return the sorted names of set variables that would reroute Claude Code.
+
+    The set also covers variables that would reauthenticate it.
+    """
     return sorted(key for key in CLAUDE_ROUTE_CONFLICT_ENV if source.get(key))
 
 
@@ -94,6 +104,12 @@ def claude_profile(
     *,
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
+    """Describe the process-scoped Claude Code profile for a mode.
+
+    The direct mode lists the variables to unset. The shadow mode validates
+    the loopback gateway and lists route conflicts. Any other mode raises
+    ValueError.
+    """
     source = os.environ if base_env is None else base_env
     if mode == "direct":
         return {
@@ -128,6 +144,15 @@ def build_claude_env(
     config_dir: str | Path,
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
+    """Build the child environment for a Claude Code canary.
+
+    Only allowlisted variables pass through. The function sets
+    ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, CLAUDE_CONFIG_DIR and
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC. HOME and TMPDIR become the parent
+    of config_dir. The XDG dirs sit under it. NO_PROXY and no_proxy gain the
+    loopback hosts. An empty api_key or a non-loopback gateway_url raises
+    ValueError.
+    """
     if not api_key:
         raise ValueError("Claude gateway API key must be non-empty")
     gateway = validate_loopback_url(gateway_url)
@@ -160,6 +185,12 @@ def build_claude_command(
     max_budget_usd: float | None,
     session_id: str,
 ) -> list[str]:
+    """Build the argv for one bounded Claude Code canary.
+
+    The run allows only the Read tool, and only on the fixture. A budget, when
+    given, must be in (0, 1]. The session ID must be a UUID. Bad input raises
+    ValueError.
+    """
     if not claude_bin:
         raise ValueError("Claude Code binary path must be non-empty")
     if not model:
@@ -207,6 +238,12 @@ def build_claude_command(
 
 
 def parse_claude_stream(stdout: str) -> dict[str, Any]:
+    """Parse Claude Code stream-json output into a result summary.
+
+    Return the final text, line count, error flag, subtype and API retry count.
+    A non-JSON line, a missing result event or a result event whose result is
+    not a string raises ValueError.
+    """
     final: dict[str, Any] | None = None
     lines = 0
     api_retries = 0
@@ -244,6 +281,12 @@ def run_claude(
     cwd: str | Path,
     timeout_seconds: float,
 ) -> dict[str, Any]:
+    """Run a Claude Code canary and return the parsed stream.
+
+    Raise RuntimeError on a launch failure, timeout, nonzero exit or error
+    result. A timeout_seconds of 0 or less raises ValueError. So does a
+    malformed stream, and that error is not wrapped.
+    """
     if timeout_seconds <= 0:
         raise ValueError("Claude Code timeout must be positive")
     try:

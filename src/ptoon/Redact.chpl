@@ -1,5 +1,5 @@
-/* TIN-2708 C1: redact_text port (parity spec: prompt_toon/cli.py:21-31,
- * 138-145) with Python-exact \b semantics.
+/* TIN-2708 C1: redact_text port (parity spec: prompt_toon/cli.py
+ * SECRET_PATTERNS and redact_text) with Python-exact \b semantics.
  *
  * RE2's \b is ASCII-only; Python's is Unicode (\w = str.isalnum + '_').
  * The C0 parity run showed this as the SOLE divergence: RE2 accepted a
@@ -29,7 +29,7 @@ module Redact {
     var checkRight: bool; // Python pattern asserts a right \b
   }
 
-  /* SECRET_PATTERNS 1-9 (cli.py:21-31). \b handling per the module comment;
+  /* SECRET_PATTERNS 1-9 (cli.py). \b handling per the module comment;
    * everything else is verbatim. */
   const specs = [
     new PatternSpec("pattern-1",
@@ -210,7 +210,7 @@ module Redact {
     return acc;
   }
 
-  /* redact_text (cli.py:138-145): normalize, then the nine patterns in
+  /* redact_text (cli.py): normalize, then the nine patterns in
    * order, each over the previous result. */
   proc redactText(text: string): (string, list(string)) throws {
     var redacted = normalizeText(text);

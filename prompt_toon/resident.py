@@ -709,11 +709,13 @@ class ResidentEngine:
 
     @property
     def pending_count(self) -> int:
+        """Number of requests still waiting for a reply."""
         with self._state_lock:
             return len(self._pending)
 
     @property
     def closed(self) -> bool:
+        """True once the engine is closed, has failed or its process has exited."""
         with self._state_lock:
             if self._closed or self._terminal_error is not None:
                 return True
@@ -721,6 +723,7 @@ class ResidentEngine:
 
     @property
     def returncode(self) -> int | None:
+        """Exit status of the resident process, or None while it runs."""
         return self._process.poll()
 
     @property

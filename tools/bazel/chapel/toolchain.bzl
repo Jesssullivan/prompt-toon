@@ -1,24 +1,30 @@
-"""Toolchain definition shared by the in-repo Chapel rules.
+"""Declare the Chapel toolchain rule and provider for the in-repo Chapel rules.
 
-The compiler is an executable Bazel dependency, not an action-time PATH lookup.
-Consumers may attach additional runtime files and environment variables when a
-packaged compiler needs them. The Linux bridge is non-hermetic. Darwin is also
-explicitly non-hermetic because its compiler is worker-provisioned rather than
-a declared Bazel input, but an action-keyed execution-platform policy can bind
-it to the reviewed Nix closure. Cache eligibility remains separate.
+Public API:
+
+- `ChapelToolchainInfo`: the provider that one Chapel toolchain returns.
+- `chapel_toolchain`: the rule that declares one Chapel compiler toolchain.
+
+The compiler is an executable Bazel dependency, a wrapper target. Bazel never
+runs a bare `chpl` from the host PATH. Each registered wrapper still resolves
+`chpl` on its executor PATH. A packaged compiler can attach extra runtime files
+and environment variables. The Linux bridge is non-hermetic. Darwin is
+non-hermetic too, because the worker provisions its compiler and Bazel does not
+declare it as an input. An action-keyed policy on the execution platform can
+still bind it to the reviewed Nix closure. Cache eligibility is a separate flag.
 """
 
 ChapelToolchainInfo = provider(
     doc = "Inputs and invocation metadata for one Chapel compiler toolchain.",
     fields = {
-        "chpl": "FilesToRunProvider for the chpl executable.",
+        "chpl": "`FilesToRunProvider` for the `chpl` executable.",
         "env": "Environment passed only to Chapel compile actions.",
-        "files": "Transitive compiler/runtime files required by the action.",
-        "hermetic": "Whether all non-system compiler inputs are declared to Bazel.",
+        "files": "Transitive compiler and runtime files that the action needs.",
+        "hermetic": "Whether every non-system compiler input is declared to Bazel.",
         "worker_closure_bound": "Whether an action-keyed worker policy selects the compiler closure.",
-        "inherit_default_shell_env": "Whether the compile action inherits Bazel's default shell environment.",
-        "cacheable": "Whether all compiler identity is represented in the action key.",
-        "identity": "Reviewed compiler/toolchain identity for diagnostics.",
+        "inherit_default_shell_env": "Whether the Bazel default shell environment reaches the compile action.",
+        "cacheable": "Whether the action key covers the full compiler identity.",
+        "identity": "Reviewed identity of the compiler and toolchain, used in diagnostics.",
     },
 )
 
@@ -46,40 +52,51 @@ def _chapel_toolchain_impl(ctx):
 
 chapel_toolchain = rule(
     implementation = _chapel_toolchain_impl,
+    doc = """Declare one Chapel compiler toolchain for `//tools/bazel/chapel:toolchain_type`.
+
+The rule returns `platform_common.ToolchainInfo` whose `chapel` field holds a
+`ChapelToolchainInfo`. Pair each target with a `toolchain()` target that sets
+its execution and target constraints. The flags describe the compiler only.
+`chapel_binary` reads three of them. `cacheable` chooses `no-cache`.
+`inherit_default_shell_env` chooses the shell environment.
+A `chapel_binary` that sets `require_worker_closure_toolchain` fails unless
+`worker_closure_bound` is set. Nothing
+reads `hermetic`. It is informational.
+""",
     attrs = {
         "chpl": attr.label(
             cfg = "exec",
             executable = True,
             mandatory = True,
-            doc = "Declared chpl executable for the selected execution platform.",
+            doc = "Declared `chpl` executable for the selected execution platform.",
         ),
         "env": attr.string_dict(
-            doc = "Compiler-specific environment; do not place credentials here.",
+            doc = "Environment for the compiler only. Never put credentials here.",
         ),
         "hermetic": attr.bool(
             default = False,
-            doc = "True only when all non-system compiler inputs are declared to Bazel.",
+            doc = "Set True only when every non-system compiler input is declared to Bazel.",
         ),
         "cacheable": attr.bool(
             default = False,
-            doc = "True only when compiler closure identity participates in the action key.",
+            doc = "Set True only when the action key covers the identity of the compiler closure.",
         ),
         "worker_closure_bound": attr.bool(
             default = False,
-            doc = "True only for an action-keyed, worker-owned compiler closure.",
+            doc = "Set True only for an action-keyed compiler closure that the worker owns.",
         ),
         "inherit_default_shell_env": attr.bool(
             default = False,
-            doc = "Whether Bazel's default shell environment reaches the compile action.",
+            doc = "Whether the Bazel default shell environment reaches the compile action.",
         ),
         "identity": attr.string(
             mandatory = True,
-            doc = "Stable compiler/toolchain identity recorded in action diagnostics.",
+            doc = "Stable identity of the compiler and toolchain, recorded in action diagnostics.",
         ),
         "runtime_files": attr.label_list(
             allow_files = True,
             cfg = "exec",
-            doc = "Declared compiler closure files not already carried by chpl runfiles.",
+            doc = "Declared compiler closure files that the `chpl` runfiles do not already carry.",
         ),
     },
 )
