@@ -93,18 +93,20 @@ policy-verify:
 gen-policy:
     cd {{root}} && if command -v dhall-to-json >/dev/null 2>&1; then dhall-to-json --pretty --file policy/dhall/delegation.dhall > policy/delegation.json && dhall-to-json --pretty --file policy/dhall/io.dhall > policy/io.json && dhall-to-json --pretty --file policy/dhall/redaction.dhall > policy/redaction.json && just policy-verify; else echo "dhall-to-json not on PATH (degraded mode); validated JSON artifacts remain unchanged"; fi
 
+# TIN-5770 R472: one-shot module graph proof; --batch starts no server.
 bazel-graph:
-    cd {{root}} && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
+    cd {{root}} && bazelisk --batch --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" mod graph >/dev/null
 
 # TIN-2949: analysis-only platform/toolchain proof. This runs no Chapel action:
 # both platforms resolve their exact implementation and remain non-cacheable;
-# Darwin must also declare the native smoke action.
+# Darwin must also declare the native smoke action. TIN-5770 R472: each
+# query runs with --batch, so the contract leaves no Bazel server behind.
 bazel-chapel-toolchain-contract:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{root}}
     output_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}"
-    bazel=(bazelisk --output_user_root="${output_root}")
+    bazel=(bazelisk --batch --output_user_root="${output_root}")
     linux_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-linux-toolchain.XXXXXX")"
     darwin_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-toolchain.XXXXXX")"
     darwin_smoke_log="$(mktemp "${TMPDIR:-/tmp}/prompt-toon-darwin-smoke.XXXXXX")"
@@ -142,10 +144,40 @@ bazel-chapel-toolchain-contract:
       | grep -F '"gf.toolchain-policy": "chapel-ab552d8"' >/dev/null
     echo "CHAPEL TOOLCHAIN CONTRACT: PASS (Linux/Darwin compile and Darwin native smoke are non-cacheable)"
 
+# TIN-5770 R471: explicit bounded local diagnostic. It does not count as a
+# qualifying run; the Flywheel Executor workflow is the qualifying lane.
 bazel-test:
-    cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
+    @echo "bazel-test: local, non-qualifying" >&2
+    cd {{root}} && test_python="$(python3 -c 'import sys; print(sys.executable)')" && bazelisk --output_user_root="${BAZEL_OUTPUT_USER_ROOT:-${TMPDIR:-/tmp}/prompt-toon-bazel-user-root}" test --remote_local_fallback=false --test_env=PROMPT_TOON_TEST_PYTHON="$test_python" //...
 
-check: compile-check secrets-scan test quality-fixtures bazel-graph bazel-chapel-toolchain-contract bazel-test
+# TIN-5770 R471: `check` submits Bazel tests through flywheel-executor-check
+# when this shell is attached (gloriousflywheel-bazel on PATH and
+# BAZEL_REMOTE_EXECUTOR set). An unattached shell runs the labeled local
+# bazel-test. PROMPT_TOON_BAZEL_LANE=flywheel|local pins the lane.
+check-bazel-tests:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{root}}
+    lane="${PROMPT_TOON_BAZEL_LANE:-auto}"
+    case "${lane}" in
+      auto)
+        if command -v gloriousflywheel-bazel >/dev/null 2>&1 && [ -n "${BAZEL_REMOTE_EXECUTOR:-}" ]; then
+          lane=flywheel
+        else
+          lane=local
+          echo "check: shell is not attached to the GF executor lane; see just flywheel-doctor" >&2
+        fi
+        ;;
+      flywheel|local) ;;
+      *) echo "PROMPT_TOON_BAZEL_LANE must be auto, flywheel or local" >&2; exit 2 ;;
+    esac
+    if [ "${lane}" = flywheel ]; then
+      echo "check: Bazel tests through the GF executor lane (flywheel-executor-check)" >&2
+      exec just flywheel-executor-check
+    fi
+    exec just bazel-test
+
+check: compile-check secrets-scan test quality-fixtures bazel-graph bazel-chapel-toolchain-contract check-bazel-tests
 
 package-smoke:
     cd {{root}} && nix build .#prompt-toon
