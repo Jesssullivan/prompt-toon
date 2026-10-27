@@ -6,13 +6,15 @@ Public API:
 
 This file encodes the GloriousFlywheel contract "Bazel validates/bundles, nix
 owns the toolchain version". It comes from TIN-2709 C2, pulled forward into the
-C1 lane. Bazel owns the build graph, the declared compiler boundary and the content-addressed cache. Under
-`--config=executor-backed` it also owns remote execution on GF REAPI.
+C1 lane. Bazel owns the build graph, the declared compiler boundary and the
+content-addressed cache. Under `--config=executor-backed` it also owns remote
+execution on GF REAPI.
 
 `ChapelToolchainInfo` is the mandatory compiler boundary (TIN-2949). Toolchain
 resolution binds both the execution platform and the target platform.
 
-- Linux registers a non-hermetic bridge to the pinned GF executor runtime.
+- On Linux, MODULE.bazel registers a non-hermetic bridge to the pinned GF
+  executor runtime.
 - Darwin resolves only the authenticated GF worker-closure bridge. It never
   falls back to the PATH of the developer host.
 

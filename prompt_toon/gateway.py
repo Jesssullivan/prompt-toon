@@ -1565,7 +1565,10 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
     def process_request(
         self, request: socket.socket, client_address: tuple[Any, ...]
     ) -> None:
-        """Admit a connection when a slot is free. Reject it otherwise."""
+        """Admit a connection when a slot is free and shutdown has not begun.
+
+        Reject it otherwise.
+        """
         with self._active_condition:
             closing = self._closing
         if closing or not self._connection_slots.acquire(blocking=False):
@@ -1882,7 +1885,10 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
         self._send_local_error(404, "not_found_error", "local endpoint not found")
 
     def do_HEAD(self) -> None:
-        """Answer the root probe with 204 while accepting and 503 after."""
+        """Answer the root probe with 204 while accepting and 503 after.
+
+        Any path other than / gets 404.
+        """
         self.close_connection = True
         if urlsplit(self.path).path != "/":
             self.send_response_only(404)
