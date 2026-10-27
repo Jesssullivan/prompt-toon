@@ -262,6 +262,10 @@ class GatewayAuth:
         client_token_file: str | Path | None,
         upstream_token_file: str | Path | None,
     ) -> GatewayAuth | None:
+        """Build split auth from two token files.
+
+        Return None when both are absent. Raise ValueError when only one is given.
+        """
         if client_token_file is None and upstream_token_file is None:
             return None
         if client_token_file is None or upstream_token_file is None:
@@ -276,6 +280,7 @@ class GatewayAuth:
 
 @dataclass(frozen=True)
 class GatewayPolicy:
+    """Service limits, thresholds and trust tiers read from the IO policy."""
     max_concurrent_streams: int
     transform_workers: int
     pending_queue_depth: int
@@ -292,10 +297,15 @@ class GatewayPolicy:
 
     @classmethod
     def load(cls, path: str | Path) -> GatewayPolicy:
+        """Load the policy from a JSON file."""
         return cls.from_bytes(Path(path).read_bytes())
 
     @classmethod
     def from_bytes(cls, data: bytes) -> GatewayPolicy:
+        """Parse and validate the policy from JSON bytes.
+
+        Raise ValueError on a missing or bad field.
+        """
         raw = json.loads(
             data.decode("utf-8"),
             parse_constant=_reject_json_constant,
@@ -371,6 +381,10 @@ class GatewayPolicy:
         )
 
     def classify_tool(self, name: object) -> tuple[str, str] | None:
+        """Map a tool name to its source and trust tier.
+
+        Try the exact name, then the MCP server prefix. Return None for an unknown tool.
+        """
         if not isinstance(name, str):
             return None
         tier = self.trust_tiers.get(name)
@@ -393,6 +407,7 @@ class GatewayPolicy:
 
 @dataclass(frozen=True)
 class ParsedMessage:
+    """Typed context that the gateway selected from one request."""
     requested_model: str | None
     docs: list[dict[str, str]]
     selected_bytes: int
@@ -416,6 +431,10 @@ def _content_texts(content: object) -> Iterable[str]:
 
 
 def parse_message_for_shadow(body: bytes, policy: GatewayPolicy) -> ParsedMessage:
+    """Select tool results with a known trust tier from a Messages request.
+
+    Each result is linked to its tool_use by id. Ambiguous ids are skipped.
+    """
     value = json.loads(body, parse_constant=_reject_json_constant)
     if not isinstance(value, dict):
         raise ValueError("Messages request must be a JSON object")
@@ -589,6 +608,7 @@ class GatewayMetrics:
         self._returned_models: Counter[str] = Counter()
 
     def increment(self, name: str, amount: int = 1) -> None:
+        """Add amount to a named counter."""
         with self._lock:
             self._counters[name] += amount
 
@@ -599,6 +619,7 @@ class GatewayMetrics:
         *,
         provider: str = ANTHROPIC_PROTOCOL,
     ) -> None:
+        """Count one request with its requested model and document count."""
         request_counter = {
             ANTHROPIC_PROTOCOL: "messages_requests",
             OPENAI_PROTOCOL: "responses_requests",
@@ -635,6 +656,7 @@ class GatewayMetrics:
         raw_tokens: int,
         condensed_tokens: int,
     ) -> None:
+        """Count one finished shadow analysis and its token totals."""
         with self._lock:
             self._counters["shadow_completed"] += 1
             self._counters["shadow_documents_completed"] += docs
@@ -649,6 +671,7 @@ class GatewayMetrics:
             self._quality[quality] += 1
 
     def record_shadow_error(self) -> None:
+        """Count one failed shadow analysis."""
         with self._lock:
             self._counters["shadow_failed"] += 1
             self._quality["error"] += 1
@@ -666,6 +689,7 @@ class GatewayMetrics:
         fallback_transitions: int = 0,
         fallback_served: bool = False,
     ) -> None:
+        """Count one upstream response by status, model, usage, refusal and fallback."""
         with self._lock:
             self._counters["upstream_responses"] += 1
             self._counters[f"upstream_status_{status // 100}xx"] += 1
@@ -693,6 +717,7 @@ class GatewayMetrics:
                 self._counters["provider_fallback_served_responses"] += 1
 
     def snapshot(self) -> dict[str, Any]:
+        """Return a sorted copy of every counter for the metrics endpoint."""
         with self._lock:
             return {
                 "schema_version": 1,
@@ -707,6 +732,10 @@ class GatewayMetrics:
 
 
 class ShadowAnalyzer:
+    """Condense typed request context with the resident engine, off the request path.
+
+    The analyzer only observes. It never changes the bytes sent upstream.
+    """
     def __init__(
         self,
         policy: GatewayPolicy,
@@ -748,6 +777,10 @@ class ShadowAnalyzer:
 
     @property
     def engine_available(self) -> bool:
+        """Return True while the resident engine is open.
+
+        A closed engine is dropped on first sight.
+        """
         disabled: Any | None = None
         with self._lock:
             engine = self.engine
@@ -771,15 +804,21 @@ class ShadowAnalyzer:
 
     @property
     def pending_jobs(self) -> int:
+        """Return the number of admitted shadow jobs not yet finished."""
         with self._lock:
             return self._pending_jobs
 
     @property
     def pending_bytes(self) -> int:
+        """Return the bytes held by admitted shadow jobs."""
         with self._lock:
             return self._pending_bytes
 
     def observe_request(self, body: bytes) -> None:
+        """Parse a request body and queue a shadow job when capacity allows.
+
+        Parse errors, empty context and a full queue only bump counters.
+        """
         try:
             parser = (
                 parse_message_for_shadow
@@ -904,6 +943,7 @@ class ShadowAnalyzer:
         return should_close
 
     def close(self) -> None:
+        """Close the engine, cancel queued jobs and wait for running ones."""
         with self._lock:
             if self._closed:
                 return
@@ -962,6 +1002,7 @@ class ResponseObserver:
         self._fallback_message_seen = False
 
     def abort(self) -> None:
+        """Stop observing and drop every buffer."""
         self._enabled = False
         self._json_body.clear()
         self._line_buffer.clear()
@@ -980,6 +1021,7 @@ class ResponseObserver:
         self._fallback_message_seen = False
 
     def feed(self, chunk: bytes) -> None:
+        """Observe one forwarded chunk within the size cap."""
         if not self._enabled:
             return
         try:
@@ -1320,6 +1362,10 @@ class ResponseObserver:
         )
 
     def finish(self) -> None:
+        """Finish at end of stream and record the response telemetry.
+
+        Partial SSE events never count as complete telemetry.
+        """
         if self._enabled:
             if self._sse:
                 # An SSE event is dispatched only by its terminating blank
@@ -1375,6 +1421,7 @@ class ResponseObserver:
 
 @dataclass(frozen=True)
 class GatewayConfig:
+    """Listen address, upstream and limits for one gateway instance."""
     listen_host: str
     listen_port: int
     upstream: str
@@ -1446,20 +1493,24 @@ class GatewayConfig:
 
     @property
     def upstream_parts(self) -> SplitResult:
+        """Return the upstream URL split into parts."""
         return urlsplit(self.upstream)
 
     @property
     def request_path(self) -> str:
+        """Return the POST path this protocol serves."""
         if self.protocol == OPENAI_PROTOCOL:
             return RESPONSES_PATH
         return MESSAGES_PATH
 
     def accepts_request_path(self, path: str) -> bool:
+        """Return True when this protocol serves the path."""
         if self.protocol == OPENAI_PROTOCOL:
             return path in (RESPONSES_PATH, RESPONSES_COMPACT_PATH)
         return path == MESSAGES_PATH
 
     def upstream_path(self, incoming_path: str) -> str:
+        """Map an incoming path onto the upstream base path."""
         base_path = self.upstream_parts.path.rstrip("/")
         if self.protocol == OPENAI_PROTOCOL:
             relative_path = incoming_path.removeprefix("/v1")
@@ -1481,6 +1532,7 @@ class _UnsupportedUpstreamResponse(Exception):
 
 
 class ShadowGatewayServer(http.server.ThreadingHTTPServer):
+    """Threaded HTTP server that bounds connections, requests and ingress bytes."""
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = _LISTEN_BACKLOG
@@ -1513,6 +1565,10 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
     def process_request(
         self, request: socket.socket, client_address: tuple[Any, ...]
     ) -> None:
+        """Admit a connection when a slot is free and shutdown has not begun.
+
+        Reject it otherwise.
+        """
         with self._active_condition:
             closing = self._closing
         if closing or not self._connection_slots.acquire(blocking=False):
@@ -1534,6 +1590,7 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
     def process_request_thread(
         self, request: socket.socket, client_address: tuple[Any, ...]
     ) -> None:
+        """Handle one connection and release its slot."""
         try:
             super().process_request_thread(request, client_address)
         finally:
@@ -1549,16 +1606,19 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
 
     @property
     def active_connection_count(self) -> int:
+        """Return the number of open connections."""
         with self._active_condition:
             return len(self._active_connections)
 
     @property
     def accepting(self) -> bool:
+        """Return True until shutdown begins."""
         with self._active_condition:
             return not self._closing and not self._closed
 
     @property
     def ownership_endpoint(self) -> str:
+        """Return the URL of the ownership endpoint on the listen address."""
         host, port = self.server_address[:2]
         normalized = ipaddress.ip_address(host).compressed
         authority = f"[{normalized}]" if ":" in normalized else normalized
@@ -1566,20 +1626,27 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
 
     @property
     def upstream_state(self) -> str:
+        """Return the last recorded upstream state."""
         with self._active_condition:
             return self._upstream_state
 
     def record_upstream_state(self, state: str) -> None:
+        """Record the upstream as reachable or failed."""
         if state not in ("reachable", "failed"):
             raise ValueError(f"invalid upstream state {state!r}")
         with self._active_condition:
             self._upstream_state = state
 
     def begin_shutdown(self) -> None:
+        """Stop admitting new connections."""
         with self._active_condition:
             self._closing = True
 
     def admit_request_budget(self) -> bool:
+        """Count one request against the total budget.
+
+        Return False once the budget is spent.
+        """
         with self._request_budget_lock:
             limit = self.config.max_total_requests
             if limit is not None and self._requests_started >= limit:
@@ -1588,6 +1655,10 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             return True
 
     def reserve_ingress_bytes(self, amount: int) -> bool:
+        """Reserve request bytes against the in-flight budget.
+
+        Return False when they do not fit.
+        """
         if amount < 0:
             raise ValueError("ingress reservation must not be negative")
         with self._ingress_budget_lock:
@@ -1601,6 +1672,7 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             return True
 
     def release_ingress_bytes(self, amount: int) -> None:
+        """Give reserved request bytes back to the in-flight budget."""
         if amount < 0:
             raise ValueError("ingress release must not be negative")
         with self._ingress_budget_lock:
@@ -1610,6 +1682,7 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
 
     @property
     def inflight_request_bytes(self) -> int:
+        """Return the request bytes reserved right now."""
         with self._ingress_budget_lock:
             return self._inflight_request_bytes
 
@@ -1647,6 +1720,10 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
             request.close()
 
     def server_close(self) -> None:
+        """Wait up to the grace period for open connections to finish.
+
+        Then cut the rest and close the analyzer.
+        """
         with self._active_condition:
             if self._closed:
                 return
@@ -1671,13 +1748,16 @@ class ShadowGatewayServer(http.server.ThreadingHTTPServer):
 
 
 class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
+    """Forward requests upstream and feed a copy to the shadow analyzer."""
     protocol_version = "HTTP/1.1"
     server: ShadowGatewayServer
 
     def log_message(self, format: str, *args: object) -> None:
+        """Suppress the default access log."""
         return
 
     def handle_one_request(self) -> None:
+        """Handle one request. Drop it when its headers arrive too slowly."""
         header_complete = threading.Event()
         self._header_complete = header_complete
         self._header_expired = threading.Event()
@@ -1695,6 +1775,10 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             timer.cancel()
 
     def parse_request(self) -> bool:
+        """Parse the request line and headers.
+
+        Reject the request when the header timer has fired.
+        """
         try:
             parsed = super().parse_request()
         finally:
@@ -1716,6 +1800,7 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
             pass
 
     def do_GET(self) -> None:
+        """Serve the ownership, health, readiness and metrics endpoints."""
         self.close_connection = True
         path = urlsplit(self.path).path
         if (
@@ -1800,6 +1885,10 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
         self._send_local_error(404, "not_found_error", "local endpoint not found")
 
     def do_HEAD(self) -> None:
+        """Answer the root probe with 204 while accepting and 503 after.
+
+        Any path other than / gets 404.
+        """
         self.close_connection = True
         if urlsplit(self.path).path != "/":
             self.send_response_only(404)
@@ -1811,6 +1900,10 @@ class ShadowGatewayHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        """Forward one request upstream and stream the response back.
+
+        The analyzer and the observer see copies. Neither one alters the bytes.
+        """
         request_path = self.server.config.request_path
         incoming_path = urlsplit(self.path).path
         if not self.server.config.accepts_request_path(incoming_path):
@@ -2278,6 +2371,10 @@ def create_gateway_server(
     analyzer: ShadowAnalyzer,
     metrics: GatewayMetrics,
 ) -> ShadowGatewayServer:
+    """Create the gateway server on an IPv4 or IPv6 address.
+
+    localhost maps to 127.0.0.1.
+    """
     listen_host = (
         "127.0.0.1" if config.listen_host == "localhost" else config.listen_host
     )
@@ -2292,6 +2389,11 @@ def create_gateway_server(
 
 
 def run_gateway(args: Any) -> int:
+    """Load the policy, start the resident engine and serve until a signal.
+
+    When the engine fails to start, the gateway runs without it.
+    --require-ptoon makes that failure fatal.
+    """
     policy_path = Path(args.policy)
     policy_bytes = policy_path.read_bytes()
     policy = GatewayPolicy.from_bytes(policy_bytes)

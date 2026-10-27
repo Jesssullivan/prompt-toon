@@ -1,7 +1,7 @@
 # TIN-2707 C0 spike: Chapel normalize+redact parity
 
 Phase C0 of the Chapel-first rewrite (`docs/mythos-delivery-design.md` §7).
-Ports `normalize_text` + `redact_text` (`prompt_toon/cli.py:119-145`) to
+Ports `normalize_text` + `redact_text` (`prompt_toon/cli.py`) to
 Chapel and measures byte parity + throughput against the Python oracle.
 
 ## Remote-only compilation (operator doctrine, 2026-07-09)
