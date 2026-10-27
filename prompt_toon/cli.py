@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import shutil
+import site
 import stat
 import sys
 import tempfile
@@ -46,17 +47,89 @@ from .provider_usage import (
     load_provider_usage_sidecar,
 )
 
-SECRET_PATTERNS = [
-    re.compile(r"\b(?:sk|ghp|gho|github_pat|xox[baprs])-[-_A-Za-z0-9]{16,}\b"),
-    re.compile(r"\b(?:sk|ghp|gho|github_pat)_[-_A-Za-z0-9]{16,}\b"),
-    re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
-    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
-    re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]+?-----END[A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
-    re.compile(r"(?i)\b(api[_-]?key|token|password|secret)\s*[:=]\s*['\"]?[^'\"\s]{8,}"),
-    re.compile(r"\b(?:\d[ -]?){13,19}\b"),
-]
+REDACTION_POLICY_SCHEMA_VERSION = 1
+# sha256 of the canonical patterns list in policy/redaction.json. The loader
+# rejects any other list, so a stale, truncated or foreign policy file cannot
+# narrow redaction. Appending a pattern updates this pin in the same change.
+# tests/test_redaction_policy.py keeps it in sync with the shipped JSON.
+REDACTION_PATTERNS_SHA256 = "33eed59033dca27c430425ce4b40050257c9121b7e82e86578a5cd58d86d38b6"
+
+
+def redaction_patterns_digest(patterns: Any) -> str:
+    """Return the sha256 of a patterns list in canonical JSON form."""
+
+    canonical = json.dumps(patterns, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def redaction_policy_candidates() -> tuple[Path, ...]:
+    """Return the places policy/redaction.json can live, in lookup order.
+
+    A source checkout or Bazel runfiles tree reads the policy beside the
+    package. The Nix package layout maps $out/lib/prompt-toon/prompt_toon to
+    $out/share. A wheel install reads its data files under sys.prefix and
+    the user base first. There the directory beside the package is shared
+    site-packages, so it is only a last resort.
+    """
+
+    here = Path(__file__).resolve()
+    relative = Path("share") / "prompt-toon" / "policy" / "redaction.json"
+    beside = here.parent.parent / "policy" / "redaction.json"
+    nix = [here.parents[3] / relative] if len(here.parents) > 3 else []
+    data = [Path(sys.prefix) / relative, Path(site.getuserbase()) / relative]
+    if {"site-packages", "dist-packages"} & set(here.parts):
+        return tuple(data + nix + [beside])
+    return tuple([beside] + nix + data)
+
+
+def load_secret_patterns(path: Path | None = None) -> list[re.Pattern[str]]:
+    """Compile SECRET_PATTERNS from the Dhall-rendered redaction policy.
+
+    Redaction fails closed. A missing, malformed, reordered or altered
+    policy raises at import time. The patterns list must match
+    REDACTION_PATTERNS_SHA256, so a truncated or weakened file never loads.
+    """
+
+    if path is None:
+        path = next((c for c in redaction_policy_candidates() if c.is_file()), None)
+        if path is None:
+            raise RuntimeError(
+                "prompt-toon: policy/redaction.json not found. Redaction "
+                "fails closed (looked in: "
+                + ", ".join(str(c) for c in redaction_policy_candidates())
+                + ")"
+            )
+    policy = json.loads(Path(path).read_text(encoding="utf-8"))
+    if policy.get("schema_version") != REDACTION_POLICY_SCHEMA_VERSION:
+        raise RuntimeError(f"prompt-toon: unsupported redaction policy schema in {path}")
+    patterns = policy.get("patterns")
+    if not isinstance(patterns, list) or not patterns:
+        raise RuntimeError(f"prompt-toon: redaction policy {path} has no patterns")
+    entries: list[tuple[str, bool]] = []
+    for index, entry in enumerate(patterns, start=1):
+        # Finding ids are positional (redact_text reports pattern-<index>),
+        # so the policy ids must match list order exactly.
+        entry_id = entry.get("id") if isinstance(entry, dict) else None
+        if entry_id != f"pattern-{index}":
+            raise RuntimeError(
+                f"prompt-toon: redaction policy {path} entry {index} has id "
+                f"{entry_id!r}, expected 'pattern-{index}'"
+            )
+        source = entry.get("source")
+        case_insensitive = entry.get("case_insensitive")
+        if not isinstance(source, str) or not isinstance(case_insensitive, bool):
+            raise RuntimeError(f"prompt-toon: redaction policy {path} entry {index} is malformed")
+        entries.append((source, case_insensitive))
+    digest = redaction_patterns_digest(patterns)
+    if digest != REDACTION_PATTERNS_SHA256:
+        raise RuntimeError(
+            f"prompt-toon: redaction policy {path} patterns digest {digest} does "
+            f"not match the pinned {REDACTION_PATTERNS_SHA256}"
+        )
+    return [re.compile(source, re.IGNORECASE if ci else 0) for source, ci in entries]
+
+
+SECRET_PATTERNS = load_secret_patterns()
 
 URL_RE = re.compile(r"https?://[^\s)>\]]+")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
