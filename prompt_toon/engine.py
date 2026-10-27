@@ -84,7 +84,11 @@ class ChapelEngine:
         self._path = binary_path if binary_path is not None else resolve_binary_path()
 
     def available(self) -> bool:
-        """Return True when a ptoon binary was found."""
+        """Return True when this engine has a binary path.
+
+        The default lookup returns a path only for a file that exists. An
+        explicit binary_path counts as given and is not checked.
+        """
         return self._path is not None
 
     def _require_binary(self) -> Path:

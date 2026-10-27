@@ -80,8 +80,8 @@ def default_claude_bin(
 ) -> str:
     """Return the Claude Code binary to launch.
 
-    CLAUDE_BIN wins when set. Otherwise use claude-api from PATH, then plain
-    claude.
+    A non-empty CLAUDE_BIN wins. Otherwise use claude-api from PATH, then
+    plain claude.
     """
     env = os.environ if source is None else source
     explicit = env.get("CLAUDE_BIN")
@@ -149,8 +149,9 @@ def build_claude_env(
     Only allowlisted variables pass through. The function sets
     ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, CLAUDE_CONFIG_DIR and
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC. HOME and TMPDIR become the parent
-    of config_dir. The XDG dirs sit under it. NO_PROXY gains the loopback
-    hosts. An empty api_key or a non-loopback gateway_url raises ValueError.
+    of config_dir. The XDG dirs sit under it. NO_PROXY and no_proxy gain the
+    loopback hosts. An empty api_key or a non-loopback gateway_url raises
+    ValueError.
     """
     if not api_key:
         raise ValueError("Claude gateway API key must be non-empty")
@@ -240,8 +241,8 @@ def parse_claude_stream(stdout: str) -> dict[str, Any]:
     """Parse Claude Code stream-json output into a result summary.
 
     Return the final text, line count, error flag, subtype and API retry count.
-    A non-JSON line, a missing result event or a result event with no text
-    raises ValueError.
+    A non-JSON line, a missing result event or a result event whose result is
+    not a string raises ValueError.
     """
     final: dict[str, Any] | None = None
     lines = 0
