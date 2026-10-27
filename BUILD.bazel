@@ -15,7 +15,9 @@ filegroup(
 sh_binary(
     name = "prompt-toon",
     srcs = ["scripts/prompt-toon"],
-    data = glob(["prompt_toon/**/*.py"]),
+    # prompt_toon/cli.py loads the redaction policy at import and fails
+    # closed without it, so the runfiles tree must carry the JSON.
+    data = ["policy/redaction.json"] + glob(["prompt_toon/**/*.py"]),
 )
 
 filegroup(
@@ -71,6 +73,8 @@ sh_test(
         ":delegation_policy",
         ":gf_cache_probe",
         ":skills",
+        # J82(d): tests/test_redaction_policy.py diffs the Chapel RE2 specs.
+        "//src/ptoon:Redact.chpl",
         # TIN-2706: tests/test_manifest.py regenerates the manifest in-sandbox.
         ":manifest_srcs",
         "tools/anthropic_gateway_canary.py",
