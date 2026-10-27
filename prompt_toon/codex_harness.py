@@ -70,6 +70,12 @@ _CHILD_ENV_ALLOWLIST = (
 
 
 def validate_loopback_gateway(value: str) -> str:
+    """Return the gateway URL as scheme://host:port, or raise ValueError.
+
+    The host must be loopback. Credentials, a non-root path, a query and a
+    fragment are all refused. localhost becomes 127.0.0.1. A missing port
+    gets the scheme default.
+    """
     parts = urlsplit(value)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("gateway URL must be absolute HTTP(S)")
@@ -103,6 +109,10 @@ def validate_loopback_gateway(value: str) -> str:
 
 
 def loopback_proxy_bypass_configured(source: Mapping[str, str]) -> bool:
+    """Return True when NO_PROXY and no_proxy both bypass every loopback host.
+
+    A wildcard entry counts as a bypass.
+    """
     for key in ("NO_PROXY", "no_proxy"):
         values = {part.strip() for part in source.get(key, "").split(",")}
         if "*" not in values and not set(LOOPBACK_NO_PROXY_VALUES).issubset(values):
@@ -111,6 +121,10 @@ def loopback_proxy_bypass_configured(source: Mapping[str, str]) -> bool:
 
 
 def render_codex_profile(gateway_url: str, *, auth_mode: str) -> str:
+    """Render the Codex TOML profile that routes Responses calls to the gateway.
+
+    auth_mode is openai or api-key. Any other value raises ValueError.
+    """
     gateway = validate_loopback_gateway(gateway_url)
     if auth_mode == "openai":
         auth_lines = ["requires_openai_auth = true"]
@@ -149,6 +163,12 @@ def codex_profile(
     auth_mode: str,
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
+    """Describe the Codex profile for a mode without writing user config.
+
+    The shadow mode validates the gateway, lists route and proxy conflicts and
+    includes the rendered TOML. Any mode other than direct or shadow raises
+    ValueError.
+    """
     source = os.environ if base_env is None else base_env
     if mode == "direct":
         return {
@@ -194,6 +214,13 @@ def build_codex_env(
     gateway_token: str,
     base_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
+    """Build the child environment for a Codex probe.
+
+    Only allowlisted variables pass through, plus CODEX_HOME and the gateway
+    token. HOME and TMPDIR become the parent of codex_home. The XDG dirs sit
+    under it. NO_PROXY and no_proxy gain the loopback hosts. An empty token
+    raises ValueError.
+    """
     if not gateway_token:
         raise ValueError("Codex gateway token must be non-empty")
     source = os.environ if base_env is None else base_env
@@ -223,6 +250,12 @@ def build_codex_command(
     fixture: str | Path,
     profile_name: str | None = PROFILE_NAME,
 ) -> list[str]:
+    """Build the argv for one read-only, ephemeral Codex exec probe.
+
+    The prompt asks Codex to read the fixture once with sed and follow its
+    final-answer instruction. Pass profile_name=None to run without the shadow
+    profile.
+    """
     if not codex_bin:
         raise ValueError("Codex binary path must be non-empty")
     if not model:
@@ -294,6 +327,11 @@ def _parse_codex_usage(value: object) -> dict[str, int]:
 
 
 def parse_codex_stream(stdout: str) -> dict[str, Any]:
+    """Parse Codex JSON event output into a result summary.
+
+    The stream must hold exactly one completed turn and a final agent message.
+    Otherwise raise ValueError. Return the text, counts and turn usage.
+    """
     final_message: str | None = None
     completed_turn_usage: dict[str, int] | None = None
     stream_lines = 0
@@ -345,6 +383,13 @@ def run_codex(
     cwd: str | Path,
     timeout_seconds: float,
 ) -> dict[str, Any]:
+    """Run a Codex probe and return the parsed stream.
+
+    Raise RuntimeError on a launch failure, timeout, nonzero exit or error
+    event. A timeout_seconds of 0 or less raises ValueError. So does a
+    malformed stream, and that error is not wrapped. A turn.failed event with
+    no completed turn is a malformed stream, so it raises ValueError.
+    """
     if timeout_seconds <= 0:
         raise ValueError("Codex timeout must be positive")
     child_env = dict(env)

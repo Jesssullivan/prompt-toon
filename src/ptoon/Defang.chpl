@@ -1,4 +1,4 @@
-/* TIN-2708 C1: defang_text port (parity spec: prompt_toon/cli.py:129-135,
+/* TIN-2708 C1: defang_text port (parity spec: prompt_toon/cli.py defang_text,
  * INV-4). Neutralizes markdown image/link syntax and dangerous URI schemes
  * before model-facing emission, in exactly the Python sub/replace order:
  *

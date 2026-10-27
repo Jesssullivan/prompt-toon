@@ -1,6 +1,5 @@
 /* TIN-2708 C1: pure-function Chapel port of the TOON row-encoding surface
- * from prompt_toon/cli.py (toon_escape, cli.py:272-300; encode_rows_to_toon,
- * cli.py:303-315).
+ * from prompt_toon/cli.py (toon_escape and encode_rows_to_toon).
  *
  * Scope for C1 (see mythos-delivery-design.md phase table): this module is
  * exercised ONLY by property tests in this phase —
@@ -24,21 +23,23 @@
  * PRE-STRINGIFICATION AND THE None/True/False SHORTCUT (explicit scope cut):
  * cli.py's toon_escape(value: Any, ...) special-cases Python's `None`,
  * `True`, and `False` objects with early returns ("null"/"true"/"false",
- * always unquoted — cli.py:273-278) *before* it ever calls `str(value)`.
+ * always unquoted; the early returns in toon_escape) *before* it ever
+ * calls `str(value)`.
  * That branch depends on Python's dynamic typing (knowing the *original*
  * value was the bool True, not the string "true") and has no equivalent
  * here: Chapel's toonEscape takes a `string` that the caller has already
- * stringified (the moral equivalent of cli.py's `text = str(value)` at
- * cli.py:279), so a cell that is literally the text "true" is, from this
+ * stringified (the moral equivalent of toon_escape's `text = str(value)`),
+ * so a cell that is literally the text "true" is, from this
  * module's point of view, indistinguishable from a stringified Python
  * `True`. Per the C1 task scope, this module ports exactly the needs_quote
- * decision table and escape order that follow cli.py:279 onward — i.e. a
+ * decision table and escape order that follow `text = str(value)`. So a
  * pre-stringified cell whose lowercase form is "true"/"false"/"null" is
- * always quoted here (cli.py:289), even though a *live* Python bool/None
- * value would have bypassed quoting entirely at cli.py:275-278. Recovering
- * that distinction (so a real JSON `true` round-trips unquoted while the
- * string "true" round-trips quoted) requires carrying a type tag alongside
- * each cell and is explicitly C2 work (typed row handling).
+ * always quoted here (the `text.lower()` test), even though a *live*
+ * Python bool/None value would have bypassed quoting entirely through
+ * those early returns. Recovering that distinction (so a real JSON `true`
+ * round-trips unquoted while the string "true" round-trips quoted)
+ * requires carrying a type tag alongside each cell and is explicitly C2
+ * work (typed row handling).
  */
 module Toon {
 
@@ -58,7 +59,8 @@ module Toon {
     return result;
   }
 
-  /* Mirrors `json.dumps(delimiter)` as used at cli.py:311 to render the
+  /* Mirrors `json.dumps(delimiter)` as used for `delim_name` in
+   * encode_rows_to_toon to render the
    * ` delimiter=...` header suffix when the delimiter is not the default
    * ",". json.dumps there is called with its default `ensure_ascii=True`,
    * so CPython's encoder \u-escapes every non-ASCII codepoint in addition
@@ -107,28 +109,29 @@ module Toon {
     return acc;
   }
 
-  /* Port of toon_escape (cli.py:272-300), restricted to the
-   * post-stringification path (cli.py:279-300) per the PRE-STRINGIFICATION
-   * note above: `value` here is the moral equivalent of cli.py's `text`
-   * right after `text = str(value)`, not the original Any-typed value.
+  /* Port of toon_escape (cli.py), restricted to the
+   * post-stringification path (from `text = str(value)` on) per the
+   * PRE-STRINGIFICATION note above: `value` here is the moral equivalent
+   * of cli.py's `text` right after `text = str(value)`, not the original
+   * Any-typed value.
    *
-   * needs_quote (cli.py:280-290), ported condition-for-condition:
-   *   - text == ""                                  (cli.py:281)
-   *   - text.strip() != text                         (cli.py:282)
-   *   - "\n" in text                                  (cli.py:283)
-   *   - "\r" in text                                  (cli.py:284)
-   *   - "\t" in text                                  (cli.py:285)
-   *   - "\\" in text                                  (cli.py:286)
-   *   - delimiter in text                             (cli.py:287)
-   *   - any of '"', '[', ']', '{', '}', ':' in text    (cli.py:288)
-   *   - text.lower() in {"true", "false", "null"}      (cli.py:289)
+   * needs_quote (toon_escape), ported condition-for-condition in order:
+   *   - text == ""
+   *   - text.strip() != text
+   *   - "\n" in text
+   *   - "\r" in text
+   *   - "\t" in text
+   *   - "\\" in text
+   *   - delimiter in text
+   *   - any of '"', '[', ']', '{', '}', ':' in text
+   *   - text.lower() in {"true", "false", "null"}
    *
-   * Escape order when quoting (cli.py:293-299), applied in this exact
-   * order so a literal backslash in the source can never be misread as
-   * introducing one of the later escapes:
+   * Escape order when quoting (the `.replace` chain in toon_escape),
+   * applied in this exact order so a literal backslash in the source can
+   * never be misread as introducing one of the later escapes:
    *   backslash -> quote -> \n -> \r -> \t, then wrapped in `"..."`.
    *
-   * UNCERTAINTY (flagged for review): Python's `str.strip()` (cli.py:282,
+   * UNCERTAINTY (flagged for review): Python's `str.strip()` (needs_quote,
    * no-arg form) strips every Unicode codepoint for which
    * `str.isspace()` is true — beyond ASCII space/tab/CR/LF/VT/FF, that
    * includes things like NBSP (U+00A0) and various Unicode space
@@ -138,7 +141,7 @@ module Toon {
    * quote solely because it is padded with a non-ASCII Unicode space.
    * Cells built from ASCII/typical JSON text are unaffected.
    *
-   * UNCERTAINTY (flagged for review): `text.lower()` (cli.py:289) uses
+   * UNCERTAINTY (flagged for review): `text.lower()` (needs_quote) uses
    * Chapel's `string.toLower()`, which may diverge from CPython's Unicode
    * case-folding on exotic codepoints (e.g. Turkish dotless i, German
    * sharp s expansions). Immaterial for the literal ASCII targets
@@ -176,30 +179,31 @@ module Toon {
     return "\"" + escaped + "\"";
   }
 
-  /* Port of encode_rows_to_toon's line-assembly (cli.py:303-315), over
+  /* Port of encode_rows_to_toon's line-assembly (cli.py), over
    * PRE-STRINGIFIED cell matrices: `header` is the column-name row (the
-   * analogue of cli.py's `fields = list(rows[0].keys())`, cli.py:306) and
+   * analogue of cli.py's `fields = list(rows[0].keys())`) and
    * `rows` holds, per row, the already-`str()`-ified scalar cell values
-   * (the analogue of `row[field]` at cli.py:314, before toon_escape is
+   * (the analogue of `row[field]` in the per-row join, before toon_escape is
    * applied) — this proc applies toonEscape to each cell itself, exactly
-   * as cli.py:314 does inline during line assembly.
+   * as encode_rows_to_toon does inline during line assembly.
    *
    * DESIGN DECISION (flagged for review — signature deviation from
    * cli.py): cli.py's encode_rows_to_toon takes a `name` and emits
    * `f"{name}[{len(rows)}]{{{fields}}}{delim_name}:"` as the header line
-   * (cli.py:312). The signature given for this port —
+   * (the first entry of `lines`). The signature given for this port —
    * `encodeRows(header, rows, delimiter)` — has no `name` parameter, so
    * this proc emits the name-less form `"[{rows.size}]{{header}}{delim
    * name}:"` and leaves prefixing the JSON-path `name` (e.g. `orders`) to
    * whatever composes the final document (deferred to C2 integration with
    * typed rows, where the caller holds the source JSON path). The empty
    * -rows short-circuit mirrors this: cli.py returns `f"{name}[0]:"`
-   * (cli.py:304-305, no trailing newline) when rows is empty; this port
-   * returns `"[0]:"` for the same reason and the same missing-name caveat.
+   * (the `if not rows` guard, no trailing newline) when rows is empty;
+   * this port returns `"[0]:"` for the same reason and the same
+   * missing-name caveat.
    *
    * Column-shift resistance: cli.py's dict-keyed rows make a field-order
    * mismatch impossible to represent silently once decoded into per-row
-   * dicts (cli.py:307-308 raises ValueError on a field-order mismatch
+   * dicts (encode_rows_to_toon raises ValueError on a field-order mismatch
    * before any line is emitted). The string-matrix representation here
    * has no such structural guarantee — a caller could hand in a `rows[i]`
    * whose width does not match `header` — so this proc throws an
@@ -215,7 +219,7 @@ module Toon {
           "Toon.encodeRows: row " + i: string + " has " + row.size: string +
           " column(s) but header has " + header.size: string +
           " (column-shift: TOON row encoding requires every row to match " +
-          "the header width, cli.py:307-308)");
+          "the header width, as in encode_rows_to_toon)");
     }
 
     const delimName = if delimiter == "," then "" else " delimiter=" + jsonQuoteDelimiter(delimiter);

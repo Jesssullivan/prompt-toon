@@ -1,8 +1,8 @@
-# Vendored utf8proc v2.9.0 + the pt_* NFKC/word-class FFI shim. Exposed as a
-# filegroup so //src/ptoon:ptoon can hand the whole tree to chpl as action
-# inputs -- the Chapel modules pull these in via file-relative `require`
-# ("../../c_src/normalize_ffi.h", ...), so every header the compile touches
-# (including utf8proc_data.c #include'd by utf8proc.c) must be present.
+# Vendored utf8proc v2.9.0 and the pt_* NFKC and word-class FFI shim. A
+# filegroup lets //src/ptoon:ptoon hand the whole tree to chpl as action
+# inputs. The Chapel modules pull these in through a file-relative `require`
+# ("../../c_src/normalize_ffi.h" and others). So every file the compile touches
+# must be present, including utf8proc_data.c, which utf8proc.c includes.
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
@@ -16,9 +16,9 @@ filegroup(
     ],
 )
 
-# Vendored public-domain sha256 (B-Con/crypto-algorithms) + the pt_sha256_hex
-# FFI shim, pulled in by src/ptoon/Sha256.chpl via file-relative `require`
-# (TIN-2709 C2d). Same shape as normalize_ffi_srcs above.
+# Vendored public-domain sha256 (B-Con/crypto-algorithms) and the
+# pt_sha256_hex FFI shim. src/ptoon/Sha256.chpl pulls them in through a
+# file-relative `require` (TIN-2709 C2d). Same shape as normalize_ffi_srcs.
 filegroup(
     name = "sha256_srcs",
     srcs = [

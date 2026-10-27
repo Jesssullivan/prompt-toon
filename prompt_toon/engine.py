@@ -84,6 +84,11 @@ class ChapelEngine:
         self._path = binary_path if binary_path is not None else resolve_binary_path()
 
     def available(self) -> bool:
+        """Return True when this engine has a binary path.
+
+        The default lookup returns a path only for a file that exists. An
+        explicit binary_path counts as given and is not checked.
+        """
         return self._path is not None
 
     def _require_binary(self) -> Path:
@@ -118,12 +123,18 @@ class ChapelEngine:
         return self._run_bytes(subcommand, text.encode("utf-8"))
 
     def normalize_text(self, text: str) -> str:
+        """Normalize text through the ptoon binary."""
         return self._run("normalize", text).decode("utf-8", errors="replace")
 
     def defang_text(self, text: str) -> str:
+        """Defang text through the ptoon binary."""
         return self._run("defang", text).decode("utf-8", errors="replace")
 
     def redact_text(self, text: str) -> tuple[str, list[str]]:
+        """Redact text through the ptoon binary.
+
+        Return the redacted text and the findings from its header line.
+        """
         raw = self._run("redact", text)
         prefix = b"findings:"
         if not raw.startswith(prefix):
@@ -713,6 +724,7 @@ class ChapelEngine:
         return results
 
     def engine_caps(self) -> dict[str, Any]:
+        """Return the capability map that ptoon caps prints, or an empty dict."""
         raw = self._run("caps", "")
         if not raw:
             return {}

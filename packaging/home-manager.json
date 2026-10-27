@@ -195,7 +195,7 @@
   "policy": {
     "delegation": {
       "file": "policy/delegation.json",
-      "sha256": "66a8b9c756026524c5b9cbc65e72732305abf5004ff3767a957b0c8228fae370"
+      "sha256": "fabe2900c5ce844c47a4d9d290775296eff5ea2fd6606849a13aeff431bd1d80"
     },
     "io": {
       "file": "policy/io.json",
@@ -298,5 +298,5 @@
       "reviewed_upstream_default": "https://api.openai.com/v1"
     }
   ],
-  "version": "0.3.0"
+  "version": "0.3.1"
 }

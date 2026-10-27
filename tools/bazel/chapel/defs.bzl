@@ -1,20 +1,27 @@
-"""Bazel rule for compiling Chapel binaries through a selected toolchain.
+"""Compile Chapel binaries through the registered Chapel toolchain.
 
-TIN-2709 C2, pulled forward into the C1 lane: this encodes the GloriousFlywheel
-"Bazel validates/bundles, nix owns the toolchain version" contract. Bazel owns
-the build graph, declared compiler boundary, content-addressed cache, and --
-under `--config=executor-backed` -- remote execution on GF REAPI.
+Public API:
 
-TIN-2949 introduces the mandatory `ChapelToolchainInfo` boundary. The registered
-Linux implementation remains an explicitly non-hermetic bridge to the pinned GF
-executor runtime. Darwin resolves an action-keyed, worker-owned Nix closure but
-also remains non-hermetic and non-cacheable until Bazel declares or keys every
-compiler input. Full reusable `rules_chapel` extraction remains TIN-2710.
+- `chapel_binary`: compile one Chapel entry point into an executable.
 
-Toolchain resolution binds both execution and target platforms. Darwin resolves
-only the authenticated GF worker-closure bridge; it cannot fall through to the
-developer host's PATH and remains non-cacheable until its closure digest is
-part of the action key.
+This file encodes the GloriousFlywheel contract "Bazel validates/bundles, nix
+owns the toolchain version". It comes from TIN-2709 C2, pulled forward into the
+C1 lane. Bazel owns the build graph, the declared compiler boundary and the
+content-addressed cache. Under `--config=executor-backed` it also owns remote
+execution on GF REAPI.
+
+`ChapelToolchainInfo` is the mandatory compiler boundary (TIN-2949). Toolchain
+resolution binds both the execution platform and the target platform.
+
+- On Linux, MODULE.bazel registers a non-hermetic bridge to the pinned GF
+  executor runtime.
+- Darwin resolves only the authenticated GF worker-closure bridge. It never
+  falls back to the PATH of the developer host.
+
+Both bridges stay non-hermetic and non-cacheable. Darwin can become cacheable
+once the action key covers its closure digest. Linux does not. TIN-2949 and
+TIN-2710 replace it with a declared rules_nixpkgs compiler closure. TIN-2710
+also tracks the extraction of a reusable `rules_chapel`.
 """
 
 _CHAPEL_TOOLCHAIN_TYPE = "//tools/bazel/chapel:toolchain_type"
@@ -42,13 +49,14 @@ def _chapel_binary_impl(ctx):
     args.add(out)
 
     # Upstream references for this exact shape:
-    # - Chapel chpl man page: --fast, -M/--module-dir, -o.
-    # - Chapel C interop technote: require paths are source-file-relative.
-    # - Bazel actions.run: tools and transitive compiler files are declared
-    #   inputs; only the transitional Linux toolchain inherits its worker env.
-    # chpl resolves the modules' file-relative `require "../../c_src/..."` from the
-    # main source's directory, so the whole srcs+data tree must be action inputs and
-    # the action must run from the exec root (Bazel's default cwd).
+    # - Chapel chpl man page: --fast, -M/--module-dir and -o.
+    # - Chapel C interop technote: require paths are relative to the source file.
+    # - Bazel actions.run: the tools and the transitive compiler files are
+    #   declared inputs. Only the transitional Linux toolchain inherits its
+    #   worker env.
+    # chpl resolves each file-relative `require "../../c_src/..."` from the
+    # directory of the main source. So the whole srcs and data tree must be action
+    # inputs, and the action must run from the exec root (the Bazel default cwd).
     ctx.actions.run(
         arguments = [args],
         env = toolchain.env,
@@ -99,40 +107,51 @@ def _chapel_binary_impl(ctx):
 
 chapel_binary = rule(
     implementation = _chapel_binary_impl,
+    doc = """Compile one Chapel program into an executable with `chpl --fast`.
+
+The rule resolves `//tools/bazel/chapel:toolchain_type` and runs `chpl` from
+the exec root. Every file in `srcs` and `data` is an action input, so the
+file-relative `require` paths in the modules resolve inside the sandbox. A
+toolchain that is not cacheable compiles with `no-cache`.
+
+When `native_smoke_script` is set, a second action runs the built binary
+through it and writes `<binary>.native-smoke.json`. The default outputs carry
+the binary and that sidecar.
+""",
     executable = True,
     attrs = {
         "main": attr.label(
             allow_single_file = [".chpl"],
             mandatory = True,
-            doc = "The .chpl file with `proc main` (the binary entry point).",
+            doc = "The `.chpl` file that holds `proc main`. It is the binary entry point.",
         ),
         "srcs": attr.label_list(
             allow_files = [".chpl", ".c", ".h"],
-            doc = "All Chapel modules + vendored C sources/headers reachable via `require`.",
+            doc = "Chapel modules and the vendored C sources and headers that `require` reaches.",
         ),
         "data": attr.label_list(
             allow_files = True,
-            doc = "Extra runtime/compile inputs (e.g. utf8proc data tables).",
+            doc = "Extra inputs for the compile action, such as the utf8proc data tables.",
         ),
         "module_paths": attr.string_list(
-            doc = "Directories passed as `-M` so chpl finds sibling modules.",
+            doc = "Directories passed to `chpl` as `-M`, so it finds sibling modules.",
         ),
         "require_worker_closure_toolchain": attr.bool(
             default = True,
-            doc = "Reject toolchains not selected by an action-keyed worker closure policy.",
+            doc = "Fail analysis unless an action-keyed worker-closure policy selected the toolchain.",
         ),
         "binary_name": attr.string(
-            doc = "Output basename; defaults to the target name.",
+            doc = "Basename of the output binary. It defaults to the target name.",
         ),
         "native_smoke_script": attr.label(
             allow_files = True,
             cfg = "exec",
             executable = True,
-            doc = "Optional executable that runs the built binary and writes a smoke JSON sidecar.",
+            doc = "Optional executable that runs the built binary and writes a smoke JSON sidecar. It gets the binary path and the sidecar path as arguments.",
         ),
         "native_smoke_data": attr.label_list(
             allow_files = True,
-            doc = "Declared inputs used by native_smoke_script.",
+            doc = "Declared inputs for `native_smoke_script`.",
         ),
     },
     toolchains = [_CHAPEL_TOOLCHAIN_TYPE],
