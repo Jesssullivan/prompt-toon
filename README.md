@@ -265,7 +265,10 @@ path:
 ## Gates
 
 - `just check`: compile/secrets/tests + Bazel graph and test (includes the
-  packaging-manifest drift gate).
+  packaging-manifest drift gate). Bazel tests go through
+  `flywheel-executor-check` in an attached shell. Otherwise they run local and
+  print `local, non-qualifying`. `PROMPT_TOON_BAZEL_LANE=flywheel|local` pins
+  the lane.
 - `just dogfood <files-or-directories...>`: provider-free spool replay with
   output hashes, local byte/token estimates, TOON selection evidence, engine
   identity and caller-observed Mythos/model labels.

@@ -36,6 +36,9 @@ jobs:
       - name: Check (compile + secrets + tests + bazel graph/test)
         run: |
           export BAZEL_OUTPUT_USER_ROOT="$RUNNER_TEMP/bazel-user-root"
+          # TIN-5770 R471: this job mints no GF profile, so it keeps the
+          # local, non-qualifying Bazel lane. ci-flywheel.yml qualifies.
+          export PROMPT_TOON_BAZEL_LANE=local
           nix develop --command just check
       - name: Package smoke (nix build .#prompt-toon)
         run: |
