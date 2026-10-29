@@ -52,8 +52,11 @@ this repository's product and dependency boundaries.
 - SSOT: `policy/delegation.json`, rendered from the typed Dhall source in
   `policy/dhall/` by `just gen-policy`. Dhall and `dhall-json` are in the
   dev shell. Document shape: `policy/delegation.schema.json`.
-- `fable`, `opus`, `sonnet`, and `haiku` are first-class seat records under
-  `.seats[]`, not free-form `model_classes` strings. `operator` is not a seat.
+- `fable`, `opus`, `sonnet`, `haiku` and `kimi` are first-class seat records
+  under `.seats[]`, not free-form `model_classes` strings. `operator` is not a
+  seat. Each seat names a provider on the `.providers[]` allow-list: the
+  Anthropic 5.5 family, or `kimi-k3.1-pro` through the Kimi Code
+  subscription.
 - `tinyland-inc/lab` has a same-named `policy/delegation.json` for
   interview-HITL work; different schema, not this routing SSOT.
 - Fable-class models take the synthesis/architecture/review seat only. Never
@@ -71,6 +74,13 @@ this repository's product and dependency boundaries.
   The downgrade goes in the receipt. The merge gate, host acts and
   adversarial work never fall back: they wait for Opus or go to the
   operator. This deliberately narrows J81(e) to keep J81(a).
+- TIN-7760 (2026-10-29): Kimi K3.1 Pro serves only the `cade.*` lanes that
+  name it, for research, drafting, business, marketing, CEO-ops and
+  evidentiary review. It never gates a merge, never owns the
+  refutation-of-record, never carries the operator WORD leg and never runs
+  a critical host act. Cade orchestrates the `cade.*` lanes. A child's
+  custody follows its parent home: confidential work stays on Opus or
+  on-prem and never reaches Kimi. Cross-provider review is advisory.
 - `tests/test_delegation_policy.py` enforces the fail-closed invariants as
   part of `just check`. Skill surface: `.agents/skills/mythos-delegation/`.
 
