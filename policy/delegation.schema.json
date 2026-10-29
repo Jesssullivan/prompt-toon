@@ -10,11 +10,13 @@
     "schema_version",
     "metadata",
     "scarce_resources",
+    "providers",
     "seats",
     "harness_seats",
     "personas",
     "lanes",
     "budget_fallbacks",
+    "cade",
     "enforcement",
     "attribution"
   ],
@@ -25,7 +27,7 @@
     },
     "schema_version": {
       "type": "integer",
-      "const": 3
+      "const": 4
     },
     "metadata": {
       "type": "object",
@@ -58,6 +60,38 @@
         }
       }
     },
+    "providers": {
+      "description": "Provider allow-list (TIN-7760). Each entry names the exact model ids a seat on that provider may run and its access path. A seat whose provider or model id is not listed fails closed.",
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "model_ids", "access", "notes"],
+        "properties": {
+          "id": { "$ref": "#/$defs/providerId" },
+          "model_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/modelId" }
+          },
+          "access": { "$ref": "#/$defs/nonEmptyString" },
+          "notes": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["id"], "properties": { "id": { "const": "anthropic" } } },
+            "then": { "properties": { "model_ids": { "items": { "pattern": "^claude-(opus|sonnet|haiku)-5-5$" } } } }
+          },
+          {
+            "if": { "required": ["id"], "properties": { "id": { "const": "kimi" } } },
+            "then": { "properties": { "model_ids": { "items": { "enum": ["kimi-k3.1-pro"] } } } }
+          }
+        ]
+      }
+    },
     "seats": {
       "description": "First-class seat records. Seat names are load-bearing routing identities, not free-form model_classes strings.",
       "type": "array",
@@ -69,6 +103,7 @@
         "required": [
           "id",
           "model_class",
+          "provider",
           "cost_tier",
           "default_personas",
           "forbidden_personas",
@@ -80,6 +115,10 @@
           "model_id": {
             "description": "Exact model the seat runs (J81). Omitted for a provider-managed seat such as fable.",
             "$ref": "#/$defs/modelId"
+          },
+          "provider": {
+            "description": "The providers[] entry whose allow-list admits this seat's model_id.",
+            "$ref": "#/$defs/providerId"
           },
           "cost_tier": { "enum": ["scarce", "high", "medium", "low"] },
           "default_personas": {
@@ -97,19 +136,39 @@
         "allOf": [
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "fable" } } },
-            "then": { "not": { "required": ["model_id"] } }
+            "then": { "not": { "required": ["model_id"] }, "properties": { "provider": { "const": "anthropic" } } }
+          },
+          {
+            "if": { "required": ["model_class"], "properties": { "model_class": { "const": "kimi" } } },
+            "then": {
+              "required": ["model_id"],
+              "properties": {
+                "model_id": { "const": "kimi-k3.1-pro" },
+                "provider": { "const": "kimi" },
+                "default_personas": {
+                  "not": { "contains": { "enum": ["fable", "critical", "adversarial"] } }
+                },
+                "forbidden_personas": {
+                  "allOf": [
+                    { "contains": { "const": "fable" } },
+                    { "contains": { "const": "critical" } },
+                    { "contains": { "const": "adversarial" } }
+                  ]
+                }
+              }
+            }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "opus" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-opus-" } } }
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-opus-" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "sonnet" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-sonnet-" } } }
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-sonnet-" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "haiku" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-haiku-" } } }
+            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-haiku-" }, "provider": { "const": "anthropic" } } }
           }
         ]
       }
@@ -227,7 +286,7 @@
           "from_seat": { "$ref": "#/$defs/seatId" },
           "to_seat": {
             "$ref": "#/$defs/seatId",
-            "not": { "enum": ["fable", "haiku"] }
+            "not": { "enum": ["fable", "haiku", "kimi"] }
           },
           "trigger": { "$ref": "#/$defs/nonEmptyString" },
           "personas": {
@@ -258,6 +317,114 @@
               { "contains": { "const": "merge-waits-for-opus-review" } },
               { "contains": { "const": "no-host-or-credential-act" } },
               { "contains": { "const": "downgrade-recorded-in-receipt" } }
+            ]
+          }
+        }
+      }
+    },
+    "cade": {
+      "description": "Cade orchestration (TIN-7760): the orchestrator, the advisory cross-provider review, the auto-level child rule, custody classes and the cade.* lanes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orchestrator", "cross_provider_review", "children", "custody_classes", "lanes"],
+      "properties": {
+        "orchestrator": { "$ref": "#/$defs/nonEmptyString" },
+        "cross_provider_review": { "$ref": "#/$defs/nonEmptyString" },
+        "children": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "custody", "provider_fallback", "bindings", "notes"],
+          "properties": {
+            "level": { "const": "auto" },
+            "custody": { "const": "follows-parent-home" },
+            "provider_fallback": { "const": "none" },
+            "bindings": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/identifier" },
+              "allOf": [
+                { "contains": { "const": "batch-confirm-for-external-acts" } },
+                { "contains": { "const": "health-never-hosted" } },
+                { "contains": { "const": "client-exports-never-kimi" } },
+                { "contains": { "const": "ownership-and-live-session-checks" } },
+                { "contains": { "const": "hooks-advisory" } }
+              ]
+            },
+            "notes": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        "custody_classes": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "seats", "notes"],
+            "properties": {
+              "id": { "$ref": "#/$defs/custodyId" },
+              "seats": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "enum": ["opus", "kimi"] }
+              },
+              "notes": { "$ref": "#/$defs/nonEmptyString" }
+            },
+            "allOf": [
+              {
+                "if": { "required": ["id"], "properties": { "id": { "const": "confidential" } } },
+                "then": { "properties": { "seats": { "items": { "const": "opus" } } } }
+              },
+              {
+                "if": { "required": ["id"], "properties": { "id": { "const": "health" } } },
+                "then": { "properties": { "seats": { "type": "array", "not": { "contains": {} } } } }
+              }
+            ]
+          }
+        },
+        "lanes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["route", "persona", "custody", "default_seat", "alternate_seats", "gate", "purpose"],
+            "properties": {
+              "route": { "$ref": "#/$defs/cadeRoute" },
+              "persona": { "$ref": "#/$defs/identifier" },
+              "custody": {
+                "$ref": "#/$defs/custodyId",
+                "not": { "const": "health" }
+              },
+              "default_seat": { "enum": ["opus", "kimi"] },
+              "alternate_seats": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "enum": ["opus", "kimi"] }
+              },
+              "gate": { "$ref": "#/$defs/nonEmptyString" },
+              "purpose": { "$ref": "#/$defs/nonEmptyString" }
+            },
+            "allOf": [
+              {
+                "if": { "required": ["custody"], "properties": { "custody": { "const": "confidential" } } },
+                "then": {
+                  "properties": {
+                    "default_seat": { "const": "opus" },
+                    "alternate_seats": { "not": { "contains": { "const": "kimi" } } }
+                  }
+                }
+              },
+              {
+                "if": { "required": ["persona"], "properties": { "persona": { "enum": ["critical", "adversarial"] } } },
+                "then": {
+                  "properties": {
+                    "default_seat": { "const": "opus" },
+                    "alternate_seats": { "not": { "contains": { "const": "kimi" } } }
+                  }
+                }
+              }
             ]
           }
         }
@@ -306,14 +473,26 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*$"
     },
+    "cadeRoute": {
+      "type": "string",
+      "pattern": "^cade(\\.[a-z0-9-]+)+$"
+    },
     "seatId": {
       "description": "First-class seat names. Adding a seat is a policy change, not a string edit.",
-      "enum": ["fable", "opus", "sonnet", "haiku"]
+      "enum": ["fable", "opus", "sonnet", "haiku", "kimi"]
+    },
+    "providerId": {
+      "description": "Allow-listed providers. Adding one is a policy change, not a string edit.",
+      "enum": ["anthropic", "kimi"]
+    },
+    "custodyId": {
+      "description": "Cade custody classes. A child's custody class follows its parent home.",
+      "enum": ["confidential", "health", "ops", "public"]
     },
     "modelId": {
-      "description": "An exact Claude model ID such as claude-opus-5-5.",
+      "description": "An exact allow-listed model ID: a Claude ID such as claude-opus-5-5, or kimi-k3.1-pro.",
       "type": "string",
-      "pattern": "^claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+$"
+      "pattern": "^(claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+|kimi-k3\\.1-pro)$"
     },
     "harnessSeatId": {
       "description": "First-class harness-seat names. Adding one is a policy change, not a string edit.",
@@ -325,7 +504,7 @@
     },
     "modelClass": {
       "description": "A seat name, or the operator taking the lane personally.",
-      "enum": ["fable", "opus", "sonnet", "haiku", "operator"]
+      "enum": ["fable", "opus", "sonnet", "haiku", "kimi", "operator"]
     }
   }
 }

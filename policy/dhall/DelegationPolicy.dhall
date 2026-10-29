@@ -27,13 +27,27 @@ let Persona =
       }
 
 {-
+A provider is an allow-list entry: the exact model ids a seat on that provider
+may run and the access path it uses. A seat whose provider or model id is not
+listed here fails closed (TIN-7760).
+-}
+let Provider =
+      { id : Text
+      , model_ids : List Text
+      , access : Text
+      , notes : Text
+      }
+
+{-
 model_id names the exact model a seat runs (J81). It is Optional because the
 fable seat stays provider-managed; dhall-to-json omits the field when None.
+provider names the providers[] entry whose allow-list admits that model_id.
 -}
 let Seat =
       { id : Text
       , model_class : Text
       , model_id : Optional Text
+      , provider : Text
       , cost_tier : Text
       , default_personas : List Text
       , forbidden_personas : List Text
@@ -88,6 +102,53 @@ let Rule =
       , rule : Text
       }
 
+{-
+A custody class names the seats that may see a Cade child's data. A child's
+custody class follows its parent home. An empty seat list means no hosted
+seat serves that class at all.
+-}
+let CustodyClass =
+      { id : Text
+      , seats : List Text
+      , notes : Text
+      }
+
+{-
+A Cade lane is a business-side route. Its seats are the default seat plus the
+permitted alternates; every one must sit in the lane persona's model classes
+and in the lane's custody class. gate names the standing confirm that binds
+the lane's external acts.
+-}
+let CadeLane =
+      { route : Text
+      , persona : Text
+      , custody : Text
+      , default_seat : Text
+      , alternate_seats : List Text
+      , gate : Text
+      , purpose : Text
+      }
+
+{-
+Cade's children: the level they run at, where their custody comes from, what
+happens when their seat is unavailable, and the standing rules that bind them.
+-}
+let CadeChildren =
+      { level : Text
+      , custody : Text
+      , provider_fallback : Text
+      , bindings : List Text
+      , notes : Text
+      }
+
+let Cade =
+      { orchestrator : Text
+      , cross_provider_review : Text
+      , children : CadeChildren
+      , custody_classes : List CustodyClass
+      , lanes : List CadeLane
+      }
+
 let Attribution =
       { convention : Text
       , values : List Text
@@ -98,23 +159,30 @@ let Policy =
       , schema_version : Natural
       , metadata : Metadata
       , scarce_resources : List ScarceResource
+      , providers : List Provider
       , seats : List Seat
       , harness_seats : List HarnessSeat
       , personas : List Persona
       , lanes : List Lane
       , budget_fallbacks : List BudgetFallback
+      , cade : Cade
       , enforcement : List Rule
       , attribution : Attribution
       }
 
 in  { Metadata
     , ScarceResource
+    , Provider
     , Seat
     , HarnessSeat
     , Persona
     , BudgetFallback
     , Lane
     , Rule
+    , CustodyClass
+    , CadeLane
+    , CadeChildren
+    , Cade
     , Attribution
     , Policy
     }
