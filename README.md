@@ -257,7 +257,7 @@ path:
 
 1. The source is at 0.4.0 in `prompt_toon/__init__.py` and `MODULE.bazel`,
    and `packaging/manifest.json` records it.
-2. Cut the signed `v0.4.0` tag after the version PR merges.
+2. The signed `v0.4.0` tag marks the version merge commit.
 3. Add `modules/prompt_toon/0.4.0` to `xoxd-ai/bazel-registry` with the tag
    archive SRI and a prompt-toon smoke scenario.
 4. huskycat adds
@@ -339,15 +339,17 @@ Manifest schema v2 identifies ptoon targets by `(artifact, platform)` and
 authenticates complete Linux and Darwin Nix closure exports, their entrypoint
 binaries, the Darwin GF/Nix bridge provenance and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
-manifest exist. The latest tag is `v0.3.1`, which has no GitHub release.
-No `v0.4.0` tag exists yet.
+manifest exist. The latest tag is `v0.4.0`, a signed tag on the #63 merge
+commit. Neither `v0.4.0` nor `v0.3.1` has a GitHub release or a stamped
+manifest. `just release` refuses a version whose tag already exists, so
+neither version can get a stamped release under its own number.
 
 ### Release notes
 
 The signed tag message carries the release summary. This list keeps the same
 notes in the tree.
 
-- **0.4.0** (source prepared, not tagged). New seats and lanes in the
+- **0.4.0** (signed tag, no GitHub release). New seats and lanes in the
   delegation policy, schema version 4 (#62, rulings SPR-142 to SPR-148):
   - Kimi K3.1 Pro is the `kimi` seat. It runs `k3.1-pro` on the Kimi Code
     `kimi-coding` endpoint, which is not yet measured. The Platform endpoint
