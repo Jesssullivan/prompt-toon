@@ -440,21 +440,25 @@ in    { `$comment` =
           , custody_classes =
             [ { id = "confidential"
               , seats = [ "opus" ]
+              , harness_seats = [] : List Text
               , notes =
                   "Confidential-home work, including client raw exports and confidential papers. Opus 5.5 or on-prem only. Never Kimi."
               }
             , { id = "health"
               , seats = [] : List Text
+              , harness_seats = [] : List Text
               , notes =
                   "Health data is never hosted (SP-4). It stays on-prem, no seat in this policy serves it and no cade.* lane carries it."
               }
             , { id = "ops"
               , seats = [ "opus", "kimi" ]
+              , harness_seats = [ "pi-k3" ]
               , notes =
-                  "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro."
+                  "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro. Every Kimi seat gets this class, the pi-k3 harness seat included (SPR-182)."
               }
             , { id = "public"
               , seats = [ "opus", "kimi" ]
+              , harness_seats = [ "pi-k3" ]
               , notes =
                   "Public-home work over public or synthetic material. Opus 5.5 or Kimi K3.1 Pro."
               }

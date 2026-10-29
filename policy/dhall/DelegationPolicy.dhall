@@ -125,11 +125,15 @@ let Rule =
 {-
 A custody class names the seats that may see a Cade child's data. A child's
 custody class follows its parent home. An empty seat list means no hosted
-seat serves that class at all.
+seat serves that class at all. harness_seats names the harness seats that may
+see the class's data. Child seat resolution reads seats only, so a harness
+seat never becomes a Cade child. SPR-182 puts every Kimi seat, the pi-k3
+harness seat included, in the ops class.
 -}
 let CustodyClass =
       { id : Text
       , seats : List Text
+      , harness_seats : List Text
       , notes : Text
       }
 
