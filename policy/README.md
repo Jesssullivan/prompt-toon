@@ -73,7 +73,9 @@ Delegation:
   the parent home's custody and never reroute to another provider. A
   child's effective seats are its lane's seats within the parent home's
   custody class; with none left it waits. A confidential parent resolves
-  every lane to Opus only and a health parent to no seat.
+  every lane to Opus only and a health parent to no seat. Every Kimi seat,
+  the `pi-k3` harness seat included, sits in the ops class (SPR-182).
+  `harness_seats` records it, and child seat resolution never reads it.
   Cross-provider review is advisory.
 - `opus-quota-exhausted` is the only budget fallback. It lets Sonnet
   continue `mythos.implement.merge` and `mythos.gate.security`. Merges wait

@@ -361,6 +361,8 @@ notes in the tree.
     the parent home's custody class, and the child waits when none remain. A
     confidential parent resolves to Opus only, and a health parent resolves
     to no seat.
+  - Every Kimi seat, the `pi-k3` harness seat included, gets the ops
+    custody class (ruling SPR-182). Custody classes gain `harness_seats`.
   - Bazel servers are bounded, and `just check` routes Bazel tests to the
     Flywheel executor when a shell is attached (#58).
 - **0.3.1** (tagged). The Dhall-sourced redaction policy, the J81

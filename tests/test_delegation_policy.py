@@ -116,6 +116,15 @@ CUSTODY_SEATS = {
     "ops": {"opus", "kimi"},
     "public": {"opus", "kimi"},
 }
+# SPR-182: every Kimi seat gets the ops class, the pi-k3 harness seat
+# included. Harness seats sit beside the model seats in a custody class, and
+# child seat resolution never reads them.
+CUSTODY_HARNESS_SEATS = {
+    "confidential": set(),
+    "health": set(),
+    "ops": {"pi-k3"},
+    "public": {"pi-k3"},
+}
 # SPR-144: Cade's children run auto-level, and these standing rules bind them.
 CHILD_BINDINGS = {
     "batch-confirm-for-external-acts",
@@ -816,6 +825,35 @@ def child_resolution_violations(policy):
     return errors
 
 
+def kimi_seats(policy):
+    """Every Kimi seat: a model seat on the kimi provider, or a harness seat
+    whose model lane runs on a Kimi endpoint."""
+    seats = {s.get("id") for s in policy.get("seats", []) if s.get("provider") == "kimi"}
+    seats |= {
+        h.get("id")
+        for h in policy.get("harness_seats", [])
+        if str(h.get("model_lane", "")).startswith("kimi")
+    }
+    return seats
+
+
+def kimi_custody_violations(policy):
+    """SPR-182: every Kimi seat, pi-k3 included, sits in the ops class and
+    never in the confidential or health class."""
+    errors = []
+    members = {}
+    for entry in policy.get("cade", {}).get("custody_classes", []):
+        for seat in [*entry.get("seats", []), *entry.get("harness_seats", [])]:
+            members.setdefault(seat, set()).add(entry.get("id"))
+    for seat in sorted(map(str, kimi_seats(policy))):
+        classes = members.get(seat, set())
+        if "ops" not in classes:
+            errors.append(f"Kimi seat {seat} lacks the ops class (SPR-182)")
+        for klass in sorted(classes & {"confidential", "health"}):
+            errors.append(f"Kimi seat {seat} sits in the {klass} class")
+    return errors
+
+
 def cade_violations(policy):
     """SPR-142 to SPR-145: cade.* lanes, custody classes, the auto-level child
     rule and advisory cross-provider review. Fails closed on Kimi in a
@@ -832,6 +870,12 @@ def cade_violations(policy):
         custody[entry.get("id")] = set(entry.get("seats", []))
     if custody != CUSTODY_SEATS:
         errors.append(f"custody classes {custody} disagree with {CUSTODY_SEATS}")
+    harness_custody = {
+        entry.get("id"): set(entry.get("harness_seats", [])) for entry in cade.get("custody_classes", [])
+    }
+    if harness_custody != CUSTODY_HARNESS_SEATS:
+        errors.append(f"custody harness seats {harness_custody} disagree with {CUSTODY_HARNESS_SEATS}")
+    errors.extend(kimi_custody_violations(policy))
     children = cade.get("children", {})
     if children.get("level") != "auto":
         errors.append("cade children must run auto-level (SPR-144)")
@@ -970,9 +1014,9 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "1ce503077c70b20059a1f1d80adc2c88430283ecffbff3243025e8717749d3f3"
-POLICY_CANONICAL_SHA256 = "2491888633f1ffa3353dd4a239b627cc07318b138c07b9f45df5da0622f2c5bb"
-AGENTS_DELEGATION_SHA256 = "53ea4c364f813afbbcc4894047529775e4efa67ebc7a40bbd50cf288c3b202e0"
+SKILL_SHA256 = "08b57b6985aadfadf9cb9a57d16fdd4cc038ce6e0f7b504b3127fca20a87f238"
+POLICY_CANONICAL_SHA256 = "7344fc96a5f2b691b7737455669b4e4b02f775fecf42ea8bdf4d3e0693bf0642"
+AGENTS_DELEGATION_SHA256 = "55682a42f1de2524fcd573f41e99d942c72d44fb2605c1ce33e2a28b80edd225"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
 
@@ -1771,6 +1815,33 @@ class DelegationPolicyTests(unittest.TestCase):
                 set(),
                 persona["id"],
             )
+
+    def test_every_kimi_seat_gets_the_ops_class(self):
+        # SPR-182 (TIN-7125 38d94764): all Kimi seats get the ops class,
+        # including the pi-k3 harness seat.
+        self.assertEqual(kimi_seats(self.policy), {"kimi", "pi-k3"})
+        self.assertEqual(kimi_custody_violations(self.policy), [])
+
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        klass = lambda doc, cid: next(c for c in doc["cade"]["custody_classes"] if c["id"] == cid)
+        cases = {
+            "pi-k3 dropped from ops": lambda d: klass(d, "ops")["harness_seats"].remove("pi-k3"),
+            "kimi dropped from ops": lambda d: klass(d, "ops")["seats"].remove("kimi"),
+            "pi-k3 in confidential": lambda d: klass(d, "confidential")["harness_seats"].append("pi-k3"),
+            "pi-k3 in health": lambda d: klass(d, "health")["harness_seats"].append("pi-k3"),
+            "harness seats dropped": lambda d: klass(d, "ops").pop("harness_seats"),
+        }
+        for name, fn in cases.items():
+            self.assertTrue(cade_violations(mutate(fn)), name)
+            self.assertTrue(structural_schema_violations(mutate(fn), self.schema), f"schema: {name}")
+        new_kimi_harness = lambda d: d["harness_seats"].append(
+            dict(next(h for h in d["harness_seats"] if h["id"] == "pi"), id="pi-k4", model_lane="kimi-coding/k4")
+        )
+        self.assertTrue(kimi_custody_violations(mutate(new_kimi_harness)), "unclassed Kimi harness seat")
 
     def test_cade_lanes_custody_and_children(self):
         self.assertEqual(cade_violations(self.policy), [])
