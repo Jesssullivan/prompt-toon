@@ -122,7 +122,10 @@ separate record from the `pi-k3` harness seat.
   refutation-of-record, never carries the operator WORD leg and never runs
   a critical host act. It never takes the fable, `critical` or
   `adversarial` persona.
-- **Custody:** Kimi never sees confidential, client or health data.
+- **Custody:** Kimi never sees confidential, client or health data. Every
+  Kimi seat, the `pi-k3` harness seat included, sits in the `ops` and
+  `public` custody classes (SPR-182). `.cade.custody_classes[].harness_seats`
+  records the harness seat. Child seat resolution never reads it.
 - **Engineering:** Kimi authors only on `cade.*` lanes that name it.
   `mythos.*` lanes keep their J81 seats. No `mythos.*` lane resolves to a
   persona that lists kimi.
@@ -278,6 +281,8 @@ repo's `just check`. It fails closed when:
   or stop following the parent home's custody;
 - a child under a confidential parent resolves to Kimi, or one under a
   health parent resolves to any seat;
+- a Kimi seat, `pi-k3` included, leaves the `ops` custody class or enters
+  the `confidential` or `health` class;
 - the Cade lanes table in this skill disagrees with `.cade.lanes[]`;
 - a purpose string is missing, the JSON fails `policy/delegation.schema.json`
   or the Dhall and JSON disagree.
