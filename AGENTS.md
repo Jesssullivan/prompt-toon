@@ -84,7 +84,8 @@ this repository's product and dependency boundaries.
   CORE-5. A child's custody follows its parent home: its seats are its
   lane's seats within the parent home's custody class, and it waits when
   none remain. Confidential work stays on Opus or on-prem and never reaches
-  Kimi. Cross-provider review is advisory.
+  Kimi. Cross-provider review is advisory. SPR-182: every Kimi seat, the
+  `pi-k3` harness seat included, gets the ops custody class.
 - `tests/test_delegation_policy.py` enforces the fail-closed invariants as
   part of `just check`. Skill surface: `.agents/skills/mythos-delegation/`.
 

@@ -52,6 +52,7 @@
     "cross_provider_review": "Advisory (SPR-145). Consequential Cade output may get a review on cade.review from the provider other than its author's. Cross-provider review is advisory evidence. It never blocks, never gates a merge and never stands in for Jess's approval or a batch confirm. A same-provider review is recorded as same-provider.",
     "custody_classes": [
       {
+        "harness_seats": [],
         "id": "confidential",
         "notes": "Confidential-home work, including client raw exports and confidential papers. Opus 5.5 or on-prem only. Never Kimi.",
         "seats": [
@@ -59,19 +60,26 @@
         ]
       },
       {
+        "harness_seats": [],
         "id": "health",
         "notes": "Health data is never hosted (SP-4). It stays on-prem, no seat in this policy serves it and no cade.* lane carries it.",
         "seats": []
       },
       {
+        "harness_seats": [
+          "pi-k3"
+        ],
         "id": "ops",
-        "notes": "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro.",
+        "notes": "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro. Every Kimi seat gets this class, the pi-k3 harness seat included (SPR-182).",
         "seats": [
           "opus",
           "kimi"
         ]
       },
       {
+        "harness_seats": [
+          "pi-k3"
+        ],
         "id": "public",
         "notes": "Public-home work over public or synthetic material. Opus 5.5 or Kimi K3.1 Pro.",
         "seats": [

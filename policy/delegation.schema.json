@@ -431,7 +431,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "seats", "notes"],
+            "required": ["id", "seats", "harness_seats", "notes"],
             "properties": {
               "id": { "$ref": "#/$defs/custodyId" },
               "seats": {
@@ -439,16 +439,41 @@
                 "uniqueItems": true,
                 "items": { "enum": ["opus", "kimi"] }
               },
+              "harness_seats": {
+                "description": "Harness seats that may see this class's data. Child seat resolution reads seats only. SPR-182 puts every Kimi seat, pi-k3 included, in the ops class.",
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/harnessSeatId" }
+              },
               "notes": { "$ref": "#/$defs/nonEmptyString" }
             },
             "allOf": [
               {
                 "if": { "required": ["id"], "properties": { "id": { "const": "confidential" } } },
-                "then": { "properties": { "seats": { "items": { "const": "opus" } } } }
+                "then": {
+                  "properties": {
+                    "seats": { "items": { "const": "opus" } },
+                    "harness_seats": { "type": "array", "not": { "contains": {} } }
+                  }
+                }
               },
               {
                 "if": { "required": ["id"], "properties": { "id": { "const": "health" } } },
-                "then": { "properties": { "seats": { "type": "array", "not": { "contains": {} } } } }
+                "then": {
+                  "properties": {
+                    "seats": { "type": "array", "not": { "contains": {} } },
+                    "harness_seats": { "type": "array", "not": { "contains": {} } }
+                  }
+                }
+              },
+              {
+                "if": { "required": ["id"], "properties": { "id": { "const": "ops" } } },
+                "then": {
+                  "properties": {
+                    "seats": { "contains": { "const": "kimi" } },
+                    "harness_seats": { "contains": { "const": "pi-k3" } }
+                  }
+                }
               }
             ]
           }
