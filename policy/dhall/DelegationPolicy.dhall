@@ -27,14 +27,30 @@ let Persona =
       }
 
 {-
+An endpoint is one access path to a provider. Model ids are keyed by endpoint
+because the same model can carry a different id on each path. admitted says
+whether any seat may run on it; a refused endpoint is listed so a consumer can
+recognise and refuse it. status is in-service, unmeasured or forbidden.
+-}
+let ProviderEndpoint =
+      { id : Text
+      , model_ids : List Text
+      , admitted : Bool
+      , status : Text
+      , notes : Text
+      }
+
+{-
 A provider is an allow-list entry: the exact model ids a seat on that provider
-may run and the access path it uses. A seat whose provider or model id is not
-listed here fails closed (TIN-7760).
+may run, the access path it uses and its endpoints. model_ids lists only the
+ids on admitted endpoints. A seat whose provider, endpoint or model id is not
+admitted here fails closed (TIN-7760).
 -}
 let Provider =
       { id : Text
       , model_ids : List Text
       , access : Text
+      , endpoints : List ProviderEndpoint
       , notes : Text
       }
 
@@ -42,12 +58,16 @@ let Provider =
 model_id names the exact model a seat runs (J81). It is Optional because the
 fable seat stays provider-managed; dhall-to-json omits the field when None.
 provider names the providers[] entry whose allow-list admits that model_id.
+endpoint names the admitted provider endpoint whose model_ids hold that
+model_id. It is set for a seat whose provider keys model ids by endpoint and
+omitted otherwise.
 -}
 let Seat =
       { id : Text
       , model_class : Text
       , model_id : Optional Text
       , provider : Text
+      , endpoint : Optional Text
       , cost_tier : Text
       , default_personas : List Text
       , forbidden_personas : List Text
@@ -130,12 +150,20 @@ let CadeLane =
       }
 
 {-
-Cade's children: the level they run at, where their custody comes from, what
-happens when their seat is unavailable, and the standing rules that bind them.
+Cade's children: the level they run at, where their custody comes from, how
+their seats resolve, what happens when no seat remains or their seat is
+unavailable, and the standing rules that bind them.
+
+seat_resolution names how the two custody sources combine: a child's
+effective seats are its lane's default and alternate seats, in that order,
+that also sit in the custody class of its parent home. on_no_seat says what a
+child does when that set is empty.
 -}
 let CadeChildren =
       { level : Text
       , custody : Text
+      , seat_resolution : Text
+      , on_no_seat : Text
       , provider_fallback : Text
       , bindings : List Text
       , notes : Text
@@ -172,6 +200,7 @@ let Policy =
 
 in  { Metadata
     , ScarceResource
+    , ProviderEndpoint
     , Provider
     , Seat
     , HarnessSeat

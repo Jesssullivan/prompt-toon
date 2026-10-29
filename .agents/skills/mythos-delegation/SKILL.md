@@ -1,6 +1,6 @@
 ---
 name: mythos-delegation
-description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model per subagent or per lane, deciding whether a fable-class model should run a task or attributing a session to a lane. Core rules - rely on Opus 5.5 (claude-opus-5-5) for mission-critical work such as implementation that merges, merge-gating review, security-sensitive code and host acts; use Sonnet 5.5 and Haiku 5.5 freely for research, drafting and mechanical lanes; never route adversarial, purple-team, red-team or deep-iteration hammering work to fable-class models; Kimi K3.1 Pro (kimi-k3.1-pro) serves only the cade.* lanes that name it and never gates a merge; Cade orchestrates cade.* business, marketing and CEO-ops lanes under custody rules.
+description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model per subagent or per lane, deciding whether a fable-class model should run a task or attributing a session to a lane. Core rules - rely on Opus 5.5 (claude-opus-5-5) for mission-critical work such as implementation that merges, merge-gating review, security-sensitive code and host acts; use Sonnet 5.5 and Haiku 5.5 freely for research, drafting and mechanical lanes; never route adversarial, purple-team, red-team or deep-iteration hammering work to fable-class models; Kimi K3.1 Pro (k3.1-pro on the Kimi Code endpoint) serves only the cade.* lanes that name it and never gates a merge; Cade orchestrates cade.* business, marketing and CEO-ops lanes under custody rules.
 when_to_use: Spawning subagents or workflows, picking a model for each lane, routing Cade's children, session attribution or reviewing whether scarce fable tokens, Opus quota and operator attention are spent where they shine.
 ---
 
@@ -20,8 +20,8 @@ restating it:
 
 ```sh
 # inside a Jesssullivan/prompt-toon checkout
-jq '.providers[] | {id, model_ids, access}' policy/delegation.json
-jq '.seats[] | {id, provider, model_id, cost_tier, default_personas}' policy/delegation.json
+jq '.providers[] | {id, model_ids, access, endpoints}' policy/delegation.json
+jq '.seats[] | {id, provider, endpoint, model_id, cost_tier, default_personas}' policy/delegation.json
 jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks}' policy/delegation.json
 jq '.personas[] | {id, model_classes, forbidden_tasks}' policy/delegation.json
 jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.json
@@ -97,26 +97,35 @@ and Kimi also carry their exact `model_id`. Fable stays provider-managed.
 `operator` is not a seat: it means the operator takes the lane personally.
 
 Every seat's provider and model ID must sit on the `.providers[]`
-allow-list. The `anthropic` entry admits only the 5.5 family. The `kimi`
-entry admits only `kimi-k3.1-pro`, through the Kimi Code subscription and
-never a Platform key. Any other provider or model ID fails closed.
+allow-list. Model IDs are keyed by endpoint, because one model can carry a
+different ID on each access path. The `anthropic` entry admits only the 5.5
+family. The `kimi` entry admits only `k3.1-pro` on the `kimi-coding`
+endpoint, through the Kimi Code subscription. That route is still
+unmeasured (TIN-7125). The Platform endpoint and any Platform key are
+forbidden. The Platform ID `kimi-k3.1-pro` is listed only under the refused
+`moonshot-platform` endpoint, so a consumer can recognise and refuse it. Any
+other provider or model ID fails closed.
+
+`pi` and `pi-k3` are **harness** seats under `.harness_seats[]`. They are
+dispatch identities, not model classes. See "Harness delegation" below.
 
 ## Kimi seat
 
-The `kimi` seat runs Kimi K3.1 Pro (`kimi-k3.1-pro`). It sits beside the
-`pi-k3` harness seat and does not replace it.
+The `kimi` seat runs Kimi K3.1 Pro (`k3.1-pro` on `kimi-coding`). It is a
+separate record from the `pi-k3` harness seat.
 
 - **Allowed:** research, drafting, business, marketing, CEO-ops and
   evidentiary review, on the `cade.*` lanes that name it as a default or
-  alternate seat.
+  alternate seat. Its research and drafting run on the `cade-research` and
+  `cade-drafting` personas, which only `cade.*` lanes use.
 - **Forbidden:** The kimi seat never gates a merge. It never owns the
   refutation-of-record, never carries the operator WORD leg and never runs
   a critical host act. It never takes the fable, `critical` or
   `adversarial` persona.
 - **Custody:** Kimi never sees confidential, client or health data.
 - **Engineering:** Kimi authors only on `cade.*` lanes that name it.
-  `mythos.*` lanes keep their J81 seats. Kimi engineering review rides the
-  `pi-k3` harness seat as evidence.
+  `mythos.*` lanes keep their J81 seats. No `mythos.*` lane resolves to a
+  persona that lists kimi.
 
 ## Cade orchestration
 
@@ -124,14 +133,14 @@ Cade is an orchestrator, not a seat and not the operator. It breaks
 business, marketing and CEO-ops work into `cade.*` lanes and picks each
 lane's seat from its default and permitted alternates within the lane's
 custody class. It spawns children to run them and collects a receipt per
-child. Code work Cade delegates runs on the `mythos.*` lanes under J81.
+child. Cade's code work follows CORE-5, and J81 governs the `mythos.*` lanes.
 
 ### Cade lanes
 
 | Cade route | Persona | Custody | Default seat | Alternates |
 | --- | --- | --- | --- | --- |
-| `cade.research` | research | public | kimi | opus |
-| `cade.draft` | drafting | public | kimi | opus |
+| `cade.research` | cade-research | public | kimi | opus |
+| `cade.draft` | cade-drafting | public | kimi | opus |
 | `cade.business` | business | ops | opus | kimi |
 | `cade.marketing` | marketing | public | kimi | opus |
 | `cade.ceo-ops` | ceo-ops | ops | opus | kimi |
@@ -147,11 +156,15 @@ confirms each act.
 
 ### Custody follows the parent
 
-A child's custody class follows its parent home. Confidential work runs on
-Opus or on-prem only and never routes to Kimi. Public and ops work runs on
-Opus or Kimi. Health data is never hosted: no seat serves the `health`
-custody class and no `cade.*` lane carries it. Fable never serves a
-`cade.*` lane.
+A child's custody class follows its parent home. A child's effective seats
+are its lane's default and alternate seats that also sit in its parent
+home's custody class. When none remain, the child waits. So a
+confidential-home child on `cade.research`, `cade.draft`, `cade.marketing`
+or `cade.review` runs on Opus only, and a health-home child gets no seat.
+Confidential work runs on Opus or on-prem only and never routes to Kimi.
+Public and ops work runs on Opus or Kimi. Health data is never hosted: no
+seat serves the `health` custody class and no `cade.*` lane carries it.
+Fable never serves a `cade.*` lane.
 
 ### Children are auto-level workers
 
@@ -176,9 +189,6 @@ merge and never stands in for Jess's approval or a batch confirm. The
 `cade.review` lane runs the review on the provider other than the
 author's. A same-provider review is recorded as same-provider.
 Confidential output is reviewed only on Opus inside its own lane.
-
-`pi` and `pi-k3` are **harness** seats under `.harness_seats[]`. They are
-dispatch identities, not model classes. See "Harness delegation" below.
 
 ## Fan-out doctrine
 
@@ -257,12 +267,17 @@ repo's `just check`. It fails closed when:
 - a harness seat drops the evidentiary-only posture;
 - a seat names a provider or model ID outside the `.providers[]`
   allow-list;
+- a seat runs on an endpoint that is not admitted, or the Platform endpoint
+  is admitted;
 - the kimi seat reaches the `critical`, `adversarial` or fable persona, a
   merge gate or a budget fallback;
+- a `mythos.*` lane resolves to a persona that lists kimi;
 - a `cade.*` lane names Kimi under confidential custody, a seat outside its
   custody class or persona, or a route outside the known set;
 - the Cade children lose a standing-rule binding, gain a provider fallback
   or stop following the parent home's custody;
+- a child under a confidential parent resolves to Kimi, or one under a
+  health parent resolves to any seat;
 - the Cade lanes table in this skill disagrees with `.cade.lanes[]`;
 - a purpose string is missing, the JSON fails `policy/delegation.schema.json`
   or the Dhall and JSON disagree.
