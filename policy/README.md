@@ -19,8 +19,10 @@ Text only, so the JSON stays easy to compare.
 | `dhall/RedactionPolicy.dhall`, `dhall/redaction.dhall` | `redaction.json` | `tests/test_redaction_policy.py` |
 
 - `delegation.schema.json` is the JSON Schema (draft 2020-12) for
-  `delegation.json`. It fixes the seat names (`fable`, `opus`, `sonnet` and
-  `haiku`), closes every record and constrains severities to an enum.
+  `delegation.json`. It fixes the seat names (`fable`, `opus`, `sonnet`,
+  `haiku` and `kimi`), the provider allow-list and its endpoints, the Cade
+  custody classes, the child seat resolution and the `cade.*` route shape. It closes every record and constrains severities
+  to an enum.
 - `io.json` holds the enforcement gate, thresholds, surfaces, trust tiers
   and failure modes. The gate stays locked, with every surface disabled,
   until TIN-2695 and TIN-2699 close and INV-1 to INV-6 hold.
@@ -52,6 +54,27 @@ Delegation:
   merges, the merge gate, security and host acts. A new lane that is not on
   the known non-critical list must sit on a critical persona. Seats carry
   the 5.5 model IDs. The Dhall and the JSON agree on them.
+- Every seat names a provider on the `providers` allow-list. Anthropic seats
+  keep the 5.5 family. Kimi model IDs are keyed by endpoint: the only other
+  pair is `kimi` with `k3.1-pro` on the admitted `kimi-coding` endpoint,
+  through the Kimi Code subscription and still unmeasured (TIN-7125). The
+  `moonshot-platform` endpoint (`kimi-k3.1-pro`) is listed as forbidden. Any
+  other provider, endpoint or model ID fails.
+- The kimi seat never gates a merge. It never owns the
+  refutation-of-record, the operator WORD leg or a critical host act, and
+  never reaches a budget fallback. It authors only on the `cade.*` lanes
+  that name it, through the `cade-research`, `cade-drafting`, business,
+  marketing, CEO-ops and evidentiary-review personas. No `mythos.*` lane
+  resolves to a persona that lists kimi.
+- Every `cade.*` lane names a default seat and alternates inside its
+  persona and its custody class. Confidential custody is Opus only and
+  health custody has no hosted seat. Fable never serves a `cade.*` lane.
+  Cade's children run auto-level, keep every standing-rule binding, follow
+  the parent home's custody and never reroute to another provider. A
+  child's effective seats are its lane's seats within the parent home's
+  custody class; with none left it waits. A confidential parent resolves
+  every lane to Opus only and a health parent to no seat.
+  Cross-provider review is advisory.
 - `opus-quota-exhausted` is the only budget fallback. It lets Sonnet
   continue `mythos.implement.merge` and `mythos.gate.security`. Merges wait
   for an Opus review. No host act or credential change runs on Sonnet. The
