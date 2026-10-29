@@ -55,8 +55,9 @@ this repository's product and dependency boundaries.
 - `fable`, `opus`, `sonnet`, `haiku` and `kimi` are first-class seat records
   under `.seats[]`, not free-form `model_classes` strings. `operator` is not a
   seat. Each seat names a provider on the `.providers[]` allow-list: the
-  Anthropic 5.5 family, or `kimi-k3.1-pro` through the Kimi Code
-  subscription.
+  Anthropic 5.5 family, or Kimi K3.1 Pro as `k3.1-pro` on the Kimi Code
+  `kimi-coding` endpoint. Kimi model IDs are keyed by endpoint, and the
+  Platform endpoint and any Platform key are forbidden.
 - `tinyland-inc/lab` has a same-named `policy/delegation.json` for
   interview-HITL work; different schema, not this routing SSOT.
 - Fable-class models take the synthesis/architecture/review seat only. Never
@@ -78,9 +79,12 @@ this repository's product and dependency boundaries.
   name it, for research, drafting, business, marketing, CEO-ops and
   evidentiary review. It never gates a merge, never owns the
   refutation-of-record, never carries the operator WORD leg and never runs
-  a critical host act. Cade orchestrates the `cade.*` lanes. A child's
-  custody follows its parent home: confidential work stays on Opus or
-  on-prem and never reaches Kimi. Cross-provider review is advisory.
+  a critical host act. No `mythos.*` lane resolves to a persona that lists
+  kimi. Cade orchestrates the `cade.*` lanes; Cade's code work follows
+  CORE-5. A child's custody follows its parent home: its seats are its
+  lane's seats within the parent home's custody class, and it waits when
+  none remain. Confidential work stays on Opus or on-prem and never reaches
+  Kimi. Cross-provider review is advisory.
 - `tests/test_delegation_policy.py` enforces the fail-closed invariants as
   part of `just check`. Skill surface: `.agents/skills/mythos-delegation/`.
 
