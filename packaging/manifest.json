@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "058e9f73c6151b8dfae654527af10d83a39e45a2a0547fd4662d3985becb2829"
+      "sha256": "f84b5e188799e8ab86a651b1d2c07567503a7468f2731f57ad43db047e72fae6"
     },
     "nix": {
       "enabled": true
@@ -154,5 +154,5 @@
       "wheel_tag": "py3-none-any"
     }
   ],
-  "version": "0.3.1"
+  "version": "0.4.0"
 }
