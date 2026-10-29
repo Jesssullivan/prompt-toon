@@ -61,33 +61,91 @@
       }
     },
     "providers": {
-      "description": "Provider allow-list (TIN-7760). Each entry names the exact model ids a seat on that provider may run and its access path. A seat whose provider or model id is not listed fails closed.",
+      "description": "Provider allow-list (TIN-7760). Each entry names the exact model ids a seat on that provider may run, its access path and its endpoints. Model ids are keyed by endpoint. A seat whose provider, endpoint or model id is not admitted fails closed.",
       "type": "array",
       "minItems": 2,
       "uniqueItems": true,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "model_ids", "access", "notes"],
+        "required": ["id", "model_ids", "access", "endpoints", "notes"],
         "properties": {
           "id": { "$ref": "#/$defs/providerId" },
           "model_ids": {
+            "description": "The model ids on this provider's admitted endpoints. A forbidden endpoint's ids never appear here.",
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
             "items": { "$ref": "#/$defs/modelId" }
           },
           "access": { "$ref": "#/$defs/nonEmptyString" },
+          "endpoints": {
+            "description": "Access paths to the provider, each with the model ids it uses. A refused endpoint is listed with admitted false so a consumer can recognise and refuse it.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "model_ids", "admitted", "status", "notes"],
+              "properties": {
+                "id": { "$ref": "#/$defs/endpointId" },
+                "model_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/modelId" }
+                },
+                "admitted": { "type": "boolean" },
+                "status": { "enum": ["in-service", "unmeasured", "forbidden"] },
+                "notes": { "$ref": "#/$defs/nonEmptyString" }
+              },
+              "allOf": [
+                {
+                  "if": { "required": ["id"], "properties": { "id": { "const": "moonshot-platform" } } },
+                  "then": { "properties": { "admitted": { "const": false }, "status": { "const": "forbidden" } } }
+                },
+                {
+                  "if": { "required": ["id"], "properties": { "id": { "const": "kimi-coding" } } },
+                  "then": { "properties": { "model_ids": { "items": { "enum": ["k3.1-pro"] } } } }
+                },
+                {
+                  "if": { "required": ["status"], "properties": { "status": { "const": "forbidden" } } },
+                  "then": { "properties": { "admitted": { "const": false } } }
+                },
+                {
+                  "if": { "required": ["admitted"], "properties": { "admitted": { "const": false } } },
+                  "then": { "properties": { "status": { "const": "forbidden" } } }
+                }
+              ]
+            }
+          },
           "notes": { "$ref": "#/$defs/nonEmptyString" }
         },
         "allOf": [
           {
             "if": { "required": ["id"], "properties": { "id": { "const": "anthropic" } } },
-            "then": { "properties": { "model_ids": { "items": { "pattern": "^claude-(opus|sonnet|haiku)-5-5$" } } } }
+            "then": {
+              "properties": {
+                "model_ids": { "items": { "pattern": "^claude-(opus|sonnet|haiku)-5-5$" } },
+                "endpoints": { "items": { "properties": { "id": { "const": "anthropic" } } } }
+              }
+            }
           },
           {
             "if": { "required": ["id"], "properties": { "id": { "const": "kimi" } } },
-            "then": { "properties": { "model_ids": { "items": { "enum": ["kimi-k3.1-pro"] } } } }
+            "then": {
+              "properties": {
+                "model_ids": { "items": { "enum": ["k3.1-pro"] } },
+                "endpoints": {
+                  "items": { "properties": { "id": { "enum": ["kimi-coding", "moonshot-platform"] } } },
+                  "allOf": [
+                    { "contains": { "properties": { "id": { "const": "kimi-coding" }, "admitted": { "const": true } } } },
+                    { "contains": { "properties": { "id": { "const": "moonshot-platform" }, "admitted": { "const": false } } } }
+                  ]
+                }
+              }
+            }
           }
         ]
       }
@@ -120,6 +178,10 @@
             "description": "The providers[] entry whose allow-list admits this seat's model_id.",
             "$ref": "#/$defs/providerId"
           },
+          "endpoint": {
+            "description": "The admitted provider endpoint whose model_ids hold this seat's model_id. Omitted for Anthropic seats, whose ids do not vary by endpoint.",
+            "$ref": "#/$defs/endpointId"
+          },
           "cost_tier": { "enum": ["scarce", "high", "medium", "low"] },
           "default_personas": {
             "type": "array",
@@ -136,15 +198,16 @@
         "allOf": [
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "fable" } } },
-            "then": { "not": { "required": ["model_id"] }, "properties": { "provider": { "const": "anthropic" } } }
+            "then": { "allOf": [ { "not": { "required": ["model_id"] } }, { "not": { "required": ["endpoint"] } } ], "properties": { "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "kimi" } } },
             "then": {
-              "required": ["model_id"],
+              "required": ["model_id", "endpoint"],
               "properties": {
-                "model_id": { "const": "kimi-k3.1-pro" },
+                "model_id": { "const": "k3.1-pro" },
                 "provider": { "const": "kimi" },
+                "endpoint": { "const": "kimi-coding" },
                 "default_personas": {
                   "not": { "contains": { "enum": ["fable", "critical", "adversarial"] } }
                 },
@@ -160,15 +223,15 @@
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "opus" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-opus-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-opus-" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "sonnet" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-sonnet-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-sonnet-" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "haiku" } } },
-            "then": { "required": ["model_id"], "properties": { "model_id": { "pattern": "^claude-haiku-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-haiku-" }, "provider": { "const": "anthropic" } } }
           }
         ]
       }
@@ -333,10 +396,18 @@
         "children": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["level", "custody", "provider_fallback", "bindings", "notes"],
+          "required": ["level", "custody", "seat_resolution", "on_no_seat", "provider_fallback", "bindings", "notes"],
           "properties": {
             "level": { "const": "auto" },
             "custody": { "const": "follows-parent-home" },
+            "seat_resolution": {
+              "description": "A child's effective seats are its lane's default and alternate seats, in that order, that also sit in its parent home's custody class.",
+              "const": "lane-seats-within-parent-custody"
+            },
+            "on_no_seat": {
+              "description": "When no effective seat remains the child waits. It never borrows a seat from outside its parent home's custody.",
+              "const": "wait"
+            },
             "provider_fallback": { "const": "none" },
             "bindings": {
               "type": "array",
@@ -490,9 +561,13 @@
       "enum": ["confidential", "health", "ops", "public"]
     },
     "modelId": {
-      "description": "An exact allow-listed model ID: a Claude ID such as claude-opus-5-5, or kimi-k3.1-pro.",
+      "description": "An exact model ID: a Claude ID such as claude-opus-5-5, the Kimi Code id k3.1-pro, or the forbidden Platform id kimi-k3.1-pro, which only a refused endpoint may list.",
       "type": "string",
-      "pattern": "^(claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+|kimi-k3\\.1-pro)$"
+      "pattern": "^(claude-(opus|sonnet|haiku)-[0-9]+-[0-9]+|k3\\.1-pro|kimi-k3\\.1-pro)$"
+    },
+    "endpointId": {
+      "description": "Provider endpoints. Adding one is a policy change, not a string edit.",
+      "enum": ["anthropic", "kimi-coding", "moonshot-platform"]
     },
     "harnessSeatId": {
       "description": "First-class harness-seat names. Adding one is a policy change, not a string edit.",

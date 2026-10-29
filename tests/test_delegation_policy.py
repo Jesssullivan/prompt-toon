@@ -56,8 +56,24 @@ MODEL_IDS = {
 # JSON, the schema and this table together.
 PROVIDER_ALLOW_LIST = {
     "anthropic": set(MODEL_IDS.values()),
-    "kimi": {"kimi-k3.1-pro"},
+    "kimi": {"k3.1-pro"},
 }
+# Model ids are keyed by endpoint (design P16). Each endpoint maps to its ids,
+# whether it is admitted and its status. kimi-coding stays "unmeasured" until a
+# live turn is measured (TIN-7125); flip it here and in the Dhall together. The
+# Platform endpoint is listed only so consumers can refuse it (SP-34, SPR-143).
+PROVIDER_ENDPOINTS = {
+    "anthropic": {
+        "anthropic": (set(MODEL_IDS.values()), True, "in-service"),
+    },
+    "kimi": {
+        "kimi-coding": ({"k3.1-pro"}, True, "unmeasured"),
+        "moonshot-platform": ({"kimi-k3.1-pro"}, False, "forbidden"),
+    },
+}
+# Seats whose provider keys model ids by endpoint, and the endpoint each uses.
+# Every other seat names no endpoint.
+SEAT_ENDPOINTS = {"kimi": "kimi-coding"}
 SEAT_PROVIDERS = {
     "fable": "anthropic",
     "opus": "anthropic",
@@ -65,11 +81,13 @@ SEAT_PROVIDERS = {
     "haiku": "anthropic",
     "kimi": "kimi",
 }
-SEAT_MODEL_IDS = {**MODEL_IDS, "kimi": "kimi-k3.1-pro"}
-# What the Kimi seat may and may never serve (SPR-142).
+SEAT_MODEL_IDS = {**MODEL_IDS, "kimi": "k3.1-pro"}
+# What the Kimi seat may and may never serve (SPR-142). Every persona here is
+# used only by cade.* lanes: Kimi has its own cade-research and cade-drafting
+# personas so that no mythos.* lane can resolve to it.
 KIMI_ALLOWED_PERSONAS = {
-    "research",
-    "drafting",
+    "cade-research",
+    "cade-drafting",
     "business",
     "marketing",
     "ceo-ops",
@@ -106,6 +124,9 @@ CHILD_BINDINGS = {
     "ownership-and-live-session-checks",
     "hooks-advisory",
 }
+# How a child's seats resolve and what it does when none remain (SPR-144).
+CHILD_SEAT_RESOLUTION = "lane-seats-within-parent-custody"
+CHILD_ON_NO_SEAT = "wait"
 CADE_TABLE_HEADER = ["Cade route", "Persona", "Custody", "Default seat", "Alternates"]
 CADE_ROUTE_RE = re.compile(r"cade(?:\.[a-z0-9*-]+)+")
 
@@ -189,9 +210,12 @@ RULE_SENTENCES = {
         "Every seat names a provider listed in providers.",
         "A seat's model_id must be on its provider's allow-list.",
         "Anthropic seats stay on the 5.5 family and fable stays provider-managed.",
-        "The kimi seat runs kimi-k3.1-pro through the Kimi Code subscription, never "
-        "a Platform key.",
-        "A provider or model id outside the allow-list fails closed.",
+        "A seat that names an endpoint runs only on an admitted endpoint whose "
+        "model_ids hold its model_id.",
+        "The kimi seat runs k3.1-pro on the kimi-coding endpoint through the Kimi "
+        "Code subscription.",
+        "The Platform endpoint and any Platform key are forbidden.",
+        "A provider, endpoint or model id outside the allow-list fails closed.",
     ),
     "kimi-never-gates": (
         "The kimi seat never gates a merge.",
@@ -199,9 +223,13 @@ RULE_SENTENCES = {
         "and never runs a critical host act.",
         "The critical and adversarial personas never list kimi.",
         "Kimi authors only on cade.* lanes that name it as a default or alternate seat.",
+        "No mythos.* lane resolves to a persona that lists kimi.",
     ),
     "cade-custody-follows-parent": (
         "A child's custody class follows its parent home.",
+        "A child's effective seats are its lane's default and alternate seats that "
+        "also sit in its parent home's custody class.",
+        "When none remain, the child waits.",
         "Confidential work runs on Opus or on-prem only and never routes to Kimi.",
         "Public and ops work runs on Opus or Kimi.",
         "Health data is never hosted.",
@@ -239,8 +267,14 @@ SKILL_SENTENCES = (
     "and never runs a critical host act.",
     "Kimi never sees confidential, client or health data.",
     "Kimi authors only on `cade.*` lanes that name it.",
+    "No `mythos.*` lane resolves to a persona that lists kimi.",
+    "The Platform endpoint and any Platform key are forbidden.",
     "Cade is an orchestrator, not a seat and not the operator.",
+    "Cade's code work follows CORE-5, and J81 governs the `mythos.*` lanes.",
     "A child's custody class follows its parent home.",
+    "A child's effective seats are its lane's default and alternate seats that "
+    "also sit in its parent home's custody class.",
+    "When none remain, the child waits.",
     "Confidential work runs on Opus or on-prem only and never routes to Kimi.",
     "Public and ops work runs on Opus or Kimi.",
     "Health data is never hosted",
@@ -285,7 +319,9 @@ PROSE_SENTENCES = {
         "Never falls back to Sonnet: it waits for Opus or goes to the operator.",
     ),
     ("seats", "kimi", "notes"): (
-        "through the Kimi Code subscription, never a Platform key.",
+        "on the kimi-coding endpoint through the Kimi Code subscription.",
+        "The Platform endpoint and any Platform key are forbidden.",
+        "No mythos.* lane resolves to a persona that lists kimi.",
         "It never gates a merge.",
         "It never owns the refutation-of-record, never carries the operator WORD leg "
         "and never runs a critical host act.",
@@ -297,11 +333,11 @@ PROSE_SENTENCES = {
         "approval or a batch confirm.",
     ),
     ("personas", "research", "doctrine"): (
-        "Kimi K3.1 Pro researches only on the cade.* lanes that name it.",
+        "Kimi K3.1 Pro never takes this persona: Cade research runs on cade-research.",
     ),
     ("personas", "drafting", "doctrine"): (
         "It never stands in for a merge-gating review and never merges on its own.",
-        "Kimi K3.1 Pro drafts only on the cade.* lanes that name it.",
+        "Kimi K3.1 Pro never takes this persona: Cade drafts run on cade-drafting.",
     ),
 }
 
@@ -322,6 +358,10 @@ FORBIDDEN_GRANTS = (
     "confidential work may run on kimi",
     "children are read-only",
     "blocking review",
+    # Design premise 3 and SP-8: pi-k3 is not a rail Kimi review is dispatched to.
+    "engineering review rides the pi-k3",
+    # No ruling extends J81 to Cade's own code work (SPR-142 keeps CORE-5).
+    "code work cade delegates runs on the mythos",
 )
 
 # The skill's lane-to-model table cells (J81).
@@ -611,13 +651,28 @@ def fallback_violations(policy):
 def provider_allow_list_violations(policy):
     """TIN-7760: every seat sits on the provider allow-list. The Anthropic
     seats keep the exact 5.5 IDs, fable stays provider-managed and the only
-    other admitted pair is kimi / kimi-k3.1-pro."""
+    other admitted pair is kimi / k3.1-pro on the kimi-coding endpoint."""
     errors = []
     providers = {}
+    endpoints = {}
     for entry in policy.get("providers", []):
         if entry.get("id") in providers:
             errors.append(f"duplicate provider {entry.get('id')}")
         providers[entry.get("id")] = set(entry.get("model_ids", []))
+        found = {}
+        for ep in entry.get("endpoints", []):
+            if ep.get("id") in found:
+                errors.append(f"provider {entry.get('id')} lists endpoint {ep.get('id')} twice")
+            found[ep.get("id")] = (set(ep.get("model_ids", [])), ep.get("admitted"), ep.get("status"))
+        endpoints[entry.get("id")] = found
+        want = PROVIDER_ENDPOINTS.get(entry.get("id"))
+        if want is not None and found != want:
+            errors.append(f"provider {entry.get('id')} endpoints {found}, want {want}")
+        admitted_ids = set().union(*[ids for ids, ok, _ in found.values() if ok is True])
+        if providers[entry.get("id")] != admitted_ids:
+            errors.append(
+                f"provider {entry.get('id')} model_ids must equal its admitted endpoints' ids"
+            )
     if set(providers) != set(PROVIDER_ALLOW_LIST):
         errors.append(
             f"providers must be exactly {sorted(PROVIDER_ALLOW_LIST)}, got {sorted(map(str, providers))}"
@@ -637,6 +692,15 @@ def provider_allow_list_violations(policy):
             errors.append(f"seat {sid} names provider {provider} missing from providers")
         if SEAT_PROVIDERS.get(sid) != provider:
             errors.append(f"seat {sid} names provider {provider}, want {SEAT_PROVIDERS.get(sid)}")
+        endpoint = seat.get("endpoint")
+        if SEAT_ENDPOINTS.get(sid) != endpoint:
+            errors.append(f"seat {sid} names endpoint {endpoint!r}, want {SEAT_ENDPOINTS.get(sid)!r}")
+        if endpoint is not None:
+            ids, admitted, status = endpoints.get(provider, {}).get(endpoint, (set(), None, None))
+            if admitted is not True or status == "forbidden":
+                errors.append(f"seat {sid} runs on endpoint {endpoint!r}, which is not admitted")
+            if model_id not in ids:
+                errors.append(f"seat {sid} runs {model_id!r}, not an id on endpoint {endpoint!r}")
         if sid == "fable":
             if model_id is not None:
                 errors.append("fable stays provider-managed and carries no model_id")
@@ -672,6 +736,7 @@ def kimi_violations(policy):
     for f in policy.get("budget_fallbacks", []):
         if "kimi" in (f.get("from_seat"), f.get("to_seat")):
             errors.append(f"budget fallback {f.get('id')} touches kimi")
+    errors.extend(mythos_kimi_violations(policy))
     review = next((p for p in policy.get("personas", []) if p["id"] == "evidentiary-review"), None)
     if review is None:
         errors.append("missing persona evidentiary-review")
@@ -686,6 +751,68 @@ def kimi_violations(policy):
         for task in ("merge", "merge-gating-review", "external-send-without-confirm"):
             if task not in tasks:
                 errors.append(f"persona {persona} must forbid {task}")
+    return errors
+
+
+def mythos_kimi_violations(policy):
+    """No mythos.* lane may resolve to a persona that lists kimi, and every
+    persona that lists kimi is used only by cade.* lanes. This is the
+    structural fence; the prose sentence alone is not enough."""
+    errors = []
+    personas = {p["id"]: p for p in policy.get("personas", [])}
+    kimi_personas = {pid for pid, p in personas.items() if "kimi" in p.get("model_classes", [])}
+    for lane in policy.get("lanes", []):
+        if lane.get("persona") in kimi_personas:
+            errors.append(f"{lane.get('route')}: mythos lane resolves to persona {lane['persona']}, which lists kimi")
+    cade_personas = {lane.get("persona") for lane in policy.get("cade", {}).get("lanes", [])}
+    mythos_personas = {lane.get("persona") for lane in policy.get("lanes", [])}
+    for pid in sorted(kimi_personas & mythos_personas):
+        errors.append(f"persona {pid} lists kimi and serves a mythos lane")
+    for pid in sorted(kimi_personas - cade_personas):
+        errors.append(f"persona {pid} lists kimi but no cade lane uses it")
+    return errors
+
+
+def resolve_child_seats(policy, route, parent_custody):
+    """A Cade child's effective seats: its lane's default then alternate seats
+    that also sit in its parent home's custody class. An unknown route or
+    custody class, or an empty result, means the child waits: []."""
+    cade = policy.get("cade", {})
+    children = cade.get("children", {})
+    if children.get("seat_resolution") != CHILD_SEAT_RESOLUTION:
+        return []
+    lane = next((l for l in cade.get("lanes", []) if l.get("route") == route), None)
+    custody = {c.get("id"): c.get("seats", []) for c in cade.get("custody_classes", [])}
+    if lane is None or parent_custody not in custody:
+        return []
+    allowed = set(custody[parent_custody])
+    ordered = [lane.get("default_seat"), *lane.get("alternate_seats", [])]
+    return [seat for seat in ordered if seat in allowed]
+
+
+def child_resolution_violations(policy):
+    """Fail closed when any parent custody resolves a child to a seat its
+    custody forbids: confidential never reaches Kimi, health reaches nothing
+    and a child never gets a seat its lane does not name."""
+    errors = []
+    children = policy.get("cade", {}).get("children", {})
+    if children.get("seat_resolution") != CHILD_SEAT_RESOLUTION:
+        errors.append(f"cade children seat_resolution must be {CHILD_SEAT_RESOLUTION}")
+    if children.get("on_no_seat") != CHILD_ON_NO_SEAT:
+        errors.append(f"cade children on_no_seat must be {CHILD_ON_NO_SEAT}")
+    lanes = {l.get("route"): l for l in policy.get("cade", {}).get("lanes", [])}
+    for route, lane in sorted(lanes.items()):
+        named = {lane.get("default_seat"), *lane.get("alternate_seats", [])}
+        for parent, allowed in CUSTODY_SEATS.items():
+            seats = resolve_child_seats(policy, route, parent)
+            if not set(seats) <= allowed:
+                errors.append(f"{parent} parent on {route} resolves to {seats}, outside {sorted(allowed)}")
+            if not set(seats) <= named:
+                errors.append(f"{parent} parent on {route} resolves to seats the lane does not name: {seats}")
+            if parent in ("confidential", "health") and "kimi" in seats:
+                errors.append(f"{parent} parent on {route} resolves to Kimi")
+            if parent == "health" and seats:
+                errors.append(f"health parent on {route} resolves to {seats}; health is never hosted")
     return errors
 
 
@@ -710,6 +837,10 @@ def cade_violations(policy):
         errors.append("cade children must run auto-level (SPR-144)")
     if children.get("custody") != "follows-parent-home":
         errors.append("cade child custody must follow the parent home")
+    errors.extend(child_resolution_violations(policy))
+    orchestrator = " ".join(cade.get("orchestrator", "").split())
+    if "Cade's code work follows CORE-5, and J81 governs the mythos.* lanes." not in orchestrator:
+        errors.append("cade.orchestrator must keep Cade's code work on CORE-5")
     if children.get("provider_fallback") != "none":
         errors.append("cade children never reroute to another provider")
     missing = CHILD_BINDINGS - set(children.get("bindings", []))
@@ -839,9 +970,9 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "5647853c09f8b56f2642a7edf1b37b8c1c26901a08da1611fedd861e9424a0a7"
-POLICY_CANONICAL_SHA256 = "a49c158bdffd9301739e3b05cf43b6215e37ab5b9e19ec56668e7056eda085aa"
-AGENTS_DELEGATION_SHA256 = "3fd3f67e42195e61317f7cd98b8cf60f24a71842c537ba16234ee044e6961217"
+SKILL_SHA256 = "1ce503077c70b20059a1f1d80adc2c88430283ecffbff3243025e8717749d3f3"
+POLICY_CANONICAL_SHA256 = "2491888633f1ffa3353dd4a239b627cc07318b138c07b9f45df5da0622f2c5bb"
+AGENTS_DELEGATION_SHA256 = "53ea4c364f813afbbcc4894047529775e4efa67ebc7a40bbd50cf288c3b202e0"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
 
@@ -1194,13 +1325,15 @@ class DelegationPolicyTests(unittest.TestCase):
 
     def test_seat_model_ids_pin_the_5_5_family(self):
         # TIN-7760: the 5.5 pin is kept, and the only other admitted seat is
-        # kimi / kimi-k3.1-pro on the provider allow-list.
+        # kimi / k3.1-pro on the kimi-coding endpoint.
         for seat_id, model_id in MODEL_IDS.items():
             self.assertEqual(self.seats[seat_id].get("model_id"), model_id, seat_id)
             self.assertEqual(self.seats[seat_id]["provider"], "anthropic", seat_id)
+            self.assertNotIn("endpoint", self.seats[seat_id], seat_id)
         self.assertNotIn("model_id", self.seats["fable"], "fable stays provider-managed")
-        self.assertEqual(self.seats["kimi"]["model_id"], "kimi-k3.1-pro")
+        self.assertEqual(self.seats["kimi"]["model_id"], "k3.1-pro")
         self.assertEqual(self.seats["kimi"]["provider"], "kimi")
+        self.assertEqual(self.seats["kimi"]["endpoint"], "kimi-coding")
         self.assertEqual(provider_allow_list_violations(self.policy), [])
 
     def test_provider_allow_list_fails_closed(self):
@@ -1211,12 +1344,34 @@ class DelegationPolicyTests(unittest.TestCase):
 
         seat = lambda doc, sid: next(s for s in doc["seats"] if s["id"] == sid)
         provider = lambda doc, pid: next(p for p in doc["providers"] if p["id"] == pid)
+        endpoint = lambda doc, pid, eid: next(
+            e for e in provider(doc, pid)["endpoints"] if e["id"] == eid
+        )
         cases = {
             "non-allow-listed provider": lambda d: seat(d, "kimi").update(provider="openai"),
             "provider entry added": lambda d: d["providers"].append(
-                {"id": "openai", "model_ids": ["gpt-5"], "access": "x", "notes": "x"}
+                {"id": "openai", "model_ids": ["gpt-5"], "access": "x", "endpoints": [], "notes": "x"}
             ),
             "kimi off its model": lambda d: seat(d, "kimi").update(model_id="kimi-k3-pro"),
+            "kimi on the platform id": lambda d: seat(d, "kimi").update(model_id="kimi-k3.1-pro"),
+            "kimi on the platform endpoint": lambda d: seat(d, "kimi").update(
+                endpoint="moonshot-platform", model_id="kimi-k3.1-pro"
+            ),
+            "kimi names no endpoint": lambda d: seat(d, "kimi").pop("endpoint"),
+            "platform admitted": lambda d: endpoint(d, "kimi", "moonshot-platform").update(
+                admitted=True, status="unmeasured"
+            ),
+            "platform id on the allow-list": lambda d: provider(d, "kimi")["model_ids"].append(
+                "kimi-k3.1-pro"
+            ),
+            "platform endpoint dropped": lambda d: provider(d, "kimi")["endpoints"].pop(),
+            "kimi-coding marked measured": lambda d: endpoint(d, "kimi", "kimi-coding").update(
+                status="in-service"
+            ),
+            "kimi-coding refused": lambda d: endpoint(d, "kimi", "kimi-coding").update(
+                admitted=False, status="forbidden"
+            ),
+            "opus names an endpoint": lambda d: seat(d, "opus").update(endpoint="kimi-coding"),
             "kimi runs claude": lambda d: seat(d, "kimi").update(model_id="claude-opus-5-5"),
             "opus on kimi": lambda d: seat(d, "opus").update(provider="kimi"),
             "sonnet leaves 5.5": lambda d: seat(d, "sonnet").update(model_id="claude-sonnet-4-5"),
@@ -1232,6 +1387,14 @@ class DelegationPolicyTests(unittest.TestCase):
         schema_cases = (
             "non-allow-listed provider",
             "kimi off its model",
+            "kimi on the platform id",
+            "kimi on the platform endpoint",
+            "kimi names no endpoint",
+            "platform admitted",
+            "platform id on the allow-list",
+            "platform endpoint dropped",
+            "kimi-coding refused",
+            "opus names an endpoint",
             "kimi runs claude",
             "opus on kimi",
             "allow-list widened",
@@ -1250,6 +1413,89 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertEqual(set(kimi["default_personas"]), KIMI_ALLOWED_PERSONAS)
         self.assertTrue(KIMI_FORBIDDEN_PERSONAS <= set(kimi["forbidden_personas"]))
         self.assertEqual(self.harness_seats["pi-k3"]["harness"], "pi", "pi-k3 stays beside kimi")
+
+    def test_no_mythos_lane_resolves_to_kimi(self):
+        # Finding: kimi on the research and drafting personas let every
+        # mythos.research.*, mythos.draft and mythos.review.first-pass lane
+        # resolve to Kimi. Resolve every mythos lane through its persona.
+        self.assertEqual(mythos_kimi_violations(self.policy), [])
+        for lane in self.policy["lanes"]:
+            persona = self.personas.get(lane["persona"])
+            if persona is not None:
+                self.assertNotIn("kimi", persona["model_classes"], lane["route"])
+        for route, persona in (("cade.research", "cade-research"), ("cade.draft", "cade-drafting")):
+            lane = next(l for l in self.policy["cade"]["lanes"] if l["route"] == route)
+            self.assertEqual(lane["persona"], persona, route)
+
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        persona = lambda doc, pid: next(p for p in doc["personas"] if p["id"] == pid)
+        seat = lambda doc, sid: next(s for s in doc["seats"] if s["id"] == sid)
+        lane = lambda doc, route: next(l for l in doc["lanes"] if l["route"] == route)
+        cade_lane = lambda doc, route: next(l for l in doc["cade"]["lanes"] if l["route"] == route)
+        cases = {
+            "kimi back on research": lambda d: persona(d, "research")["model_classes"].append("kimi"),
+            "kimi back on drafting": lambda d: persona(d, "drafting")["model_classes"].append("kimi"),
+            "kimi defaults to research": lambda d: seat(d, "kimi")["default_personas"].append("research"),
+            "mythos.draft on cade-drafting": lambda d: lane(d, "mythos.draft").update(persona="cade-drafting"),
+            "first pass on cade-drafting": lambda d: lane(d, "mythos.review.first-pass").update(
+                persona="cade-drafting"
+            ),
+            "mythos.research.web on cade-research": lambda d: lane(d, "mythos.research.web").update(
+                persona="cade-research"
+            ),
+            "mythos.research.linear on business": lambda d: lane(d, "mythos.research.linear").update(
+                persona="business"
+            ),
+            "cade.research back on research": lambda d: cade_lane(d, "cade.research").update(persona="research"),
+            "cade.draft back on drafting": lambda d: cade_lane(d, "cade.draft").update(persona="drafting"),
+        }
+        for name, fn in cases.items():
+            broken = mutate(fn)
+            found = kimi_violations(broken) + mythos_kimi_violations(broken) + cade_violations(broken)
+            self.assertTrue(found, name)
+
+    def test_child_seats_resolve_within_parent_custody(self):
+        # Finding: lane custody and parent-home custody both bind a child.
+        # Effective seats are the lane's seats within the parent's class; an
+        # empty set means the child waits.
+        self.assertEqual(child_resolution_violations(self.policy), [])
+        children = self.policy["cade"]["children"]
+        self.assertEqual(children["seat_resolution"], CHILD_SEAT_RESOLUTION)
+        self.assertEqual(children["on_no_seat"], CHILD_ON_NO_SEAT)
+        for route in ("cade.research", "cade.draft", "cade.marketing", "cade.review"):
+            self.assertEqual(resolve_child_seats(self.policy, route, "confidential"), ["opus"], route)
+        for route in CADE_ROUTES:
+            self.assertEqual(resolve_child_seats(self.policy, route, "health"), [], route)
+            self.assertEqual(resolve_child_seats(self.policy, route, "unknown-home"), [], route)
+            self.assertNotIn("kimi", resolve_child_seats(self.policy, route, "confidential"), route)
+        self.assertEqual(resolve_child_seats(self.policy, "cade.research", "public"), ["kimi", "opus"])
+        self.assertEqual(resolve_child_seats(self.policy, "cade.client", "public"), ["opus"])
+        self.assertEqual(resolve_child_seats(self.policy, "cade.critical", "ops"), ["opus"])
+        self.assertEqual(resolve_child_seats(self.policy, "cade.unknown", "public"), [])
+
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        custody = lambda doc, cid: next(c for c in doc["cade"]["custody_classes"] if c["id"] == cid)
+        children_of = lambda doc: doc["cade"]["children"]
+        cases = {
+            "kimi admitted to confidential": lambda d: custody(d, "confidential")["seats"].append("kimi"),
+            "health hosted on opus": lambda d: custody(d, "health")["seats"].append("opus"),
+            "health hosted on kimi": lambda d: custody(d, "health")["seats"].append("kimi"),
+            "resolution dropped": lambda d: children_of(d).pop("seat_resolution"),
+            "lane custody wins": lambda d: children_of(d).update(seat_resolution="lane-custody-only"),
+            "empty set falls back": lambda d: children_of(d).update(on_no_seat="fallback"),
+        }
+        for name, fn in cases.items():
+            self.assertTrue(child_resolution_violations(mutate(fn)) + cade_violations(mutate(fn)), name)
+        for name in cases:
+            self.assertTrue(structural_schema_violations(mutate(cases[name]), self.schema), f"schema: {name}")
 
     def test_kimi_never_gates_a_merge(self):
         # Fail closed on every path that would let Kimi gate a merge, own the
@@ -1589,9 +1835,13 @@ class DelegationPolicyTests(unittest.TestCase):
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
         self.assertEqual(cade_skill_table_violations(self.policy, skill_text), [])
         client = "| `cade.client` | business | confidential | opus | none |"
-        research = "| `cade.research` | research | public | kimi | opus |"
+        research = "| `cade.research` | cade-research | public | kimi | opus |"
         cases = {
             "client on kimi": (client, client.replace("| none |", "| kimi |")),
+            "research back on the mythos persona": (
+                research,
+                research.replace("| cade-research |", "| research |"),
+            ),
             "row dropped": (client + "\n", ""),
             "custody drift": (research, research.replace("public", "ops")),
             "second table": ("### Custody follows the parent", "| `cade.client` | business | public | kimi | none |\n\n### Custody follows the parent"),

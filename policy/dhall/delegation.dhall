@@ -47,15 +47,41 @@ in    { `$comment` =
               [ "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" ]
             , access =
                 "Anthropic subscription or API, per seat. The fable seat stays provider-managed and carries no model_id."
+            , endpoints =
+              [ { id = "anthropic"
+                , model_ids =
+                  [ "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" ]
+                , admitted = True
+                , status = "in-service"
+                , notes =
+                    "Anthropic subscription or API. The model ids are the same on every Anthropic access path, so Anthropic seats name no endpoint."
+                }
+              ]
             , notes =
                 "Anthropic seats stay pinned to the 5.5 family (J81). A new Claude model id is a policy change, not a string edit."
             }
           , { id = "kimi"
-            , model_ids = [ "kimi-k3.1-pro" ]
+            , model_ids = [ "k3.1-pro" ]
             , access =
-                "Kimi Code subscription only. Never a Platform key."
+                "Kimi Code subscription on the kimi-coding endpoint only. The Platform endpoint and any Platform key are forbidden."
+            , endpoints =
+              [ { id = "kimi-coding"
+                , model_ids = [ "k3.1-pro" ]
+                , admitted = True
+                , status = "unmeasured"
+                , notes =
+                    "Kimi Code subscription endpoint, model id k3.1-pro. Unattended Kimi children run here under the extended risk acceptance (SPR-143). No live turn on this route has been measured yet (TIN-7125)."
+                }
+              , { id = "moonshot-platform"
+                , model_ids = [ "kimi-k3.1-pro" ]
+                , admitted = False
+                , status = "forbidden"
+                , notes =
+                    "The Platform endpoint names the model kimi-k3.1-pro. It is forbidden: no seat runs here and no Platform key is used (SP-34, SPR-143). It is listed so a consumer can recognise and refuse it."
+                }
+              ]
             , notes =
-                "Kimi K3.1 Pro for the cade.* lanes that name it. Unattended Kimi children run on the Kimi Code subscription under the extended risk acceptance (SPR-143). The engineering pi-k3 harness seat is a separate dispatch identity."
+                "Kimi K3.1 Pro for the cade.* lanes that name it. Model ids are keyed by endpoint. The pi-k3 harness seat is separate and this entry does not change it."
             }
           ]
       , seats =
@@ -63,6 +89,7 @@ in    { `$comment` =
             , model_class = "fable"
             , model_id = None Text
             , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "scarce"
             , default_personas = [ "fable" ]
             , forbidden_personas = [ "adversarial", "critical" ]
@@ -73,6 +100,7 @@ in    { `$comment` =
             , model_class = "opus"
             , model_id = Some "claude-opus-5-5"
             , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "high"
             , default_personas =
               [ "critical"
@@ -90,6 +118,7 @@ in    { `$comment` =
             , model_class = "sonnet"
             , model_id = Some "claude-sonnet-5-5"
             , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "medium"
             , default_personas = [ "research", "drafting" ]
             , forbidden_personas = [ "adversarial" ]
@@ -100,6 +129,7 @@ in    { `$comment` =
             , model_class = "haiku"
             , model_id = Some "claude-haiku-5-5"
             , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "low"
             , default_personas = [ "mechanical", "research" ]
             , forbidden_personas = [ "adversarial", "critical" ]
@@ -108,12 +138,13 @@ in    { `$comment` =
             }
           , { id = "kimi"
             , model_class = "kimi"
-            , model_id = Some "kimi-k3.1-pro"
+            , model_id = Some "k3.1-pro"
             , provider = "kimi"
+            , endpoint = Some "kimi-coding"
             , cost_tier = "high"
             , default_personas =
-              [ "research"
-              , "drafting"
+              [ "cade-research"
+              , "cade-drafting"
               , "business"
               , "marketing"
               , "ceo-ops"
@@ -121,7 +152,7 @@ in    { `$comment` =
               ]
             , forbidden_personas = [ "fable", "critical", "adversarial" ]
             , notes =
-                "Kimi K3.1 Pro (kimi-k3.1-pro) through the Kimi Code subscription, never a Platform key. It serves research, drafting, business, marketing, CEO-ops and evidentiary review on the cade.* lanes that name it. It never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. It never serves confidential or health custody. Kimi engineering review rides the pi-k3 harness seat as evidence."
+                "Kimi K3.1 Pro (k3.1-pro) on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. It serves research, drafting, business, marketing, CEO-ops and evidentiary review on the cade.* lanes that name it, through personas that only cade.* lanes use. No mythos.* lane resolves to a persona that lists kimi. It never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. It never serves confidential or health custody."
             }
           ]
       , harness_seats =
@@ -194,19 +225,19 @@ in    { `$comment` =
             , forbidden_tasks = [] : List Text
             }
           , { id = "research"
-            , model_classes = [ "haiku", "sonnet", "opus", "kimi" ]
+            , model_classes = [ "haiku", "sonnet", "opus" ]
             , purpose =
                 "Wide research, deep Linear exploration, web sweeps, multi-repo recon."
             , doctrine =
-                "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction and broad recon, opus for the deepest research lanes. Use haiku and sonnet freely here. Kimi K3.1 Pro researches only on the cade.* lanes that name it."
+                "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction and broad recon, opus for the deepest research lanes. Use haiku and sonnet freely here. Kimi K3.1 Pro never takes this persona: Cade research runs on cade-research."
             , forbidden_tasks = [ "final-synthesis" ]
             }
           , { id = "drafting"
-            , model_classes = [ "sonnet", "opus", "kimi" ]
+            , model_classes = [ "sonnet", "opus" ]
             , purpose =
                 "Drafting, non-merging prototypes and first-pass review ahead of an Opus gate."
             , doctrine =
-                "Sonnet 5.5 by default; use it freely. Output is a draft or a first pass. It never stands in for a merge-gating review and never merges on its own. Kimi K3.1 Pro drafts only on the cade.* lanes that name it."
+                "Sonnet 5.5 by default; use it freely. Output is a draft or a first pass. It never stands in for a merge-gating review and never merges on its own. Kimi K3.1 Pro never takes this persona: Cade drafts run on cade-drafting."
             , forbidden_tasks = [ "merge", "merge-gating-review", "final-synthesis" ]
             }
           , { id = "mechanical"
@@ -216,6 +247,28 @@ in    { `$comment` =
             , doctrine =
                 "Cheapest lane. Keep prompts narrow and mechanical; return raw structured data."
             , forbidden_tasks = [ "design-decisions", "final-synthesis" ]
+            }
+          , { id = "cade-research"
+            , model_classes = [ "kimi", "opus" ]
+            , purpose =
+                "Cade's public market, competitor and lead research. Only cade.* lanes use this persona."
+            , doctrine =
+                "Kimi K3.1 Pro by default, with Opus 5.5 as the alternate, within the custody the child's parent home admits. Research returns evidence to the orchestrator. No mythos.* lane uses this persona: engineering research stays on the research persona."
+            , forbidden_tasks =
+              [ "merge", "merge-gating-review", "final-synthesis" ]
+            }
+          , { id = "cade-drafting"
+            , model_classes = [ "kimi", "opus" ]
+            , purpose =
+                "Cade's proposals, briefs and other business drafts. Only cade.* lanes use this persona."
+            , doctrine =
+                "Kimi K3.1 Pro by default, with Opus 5.5 as the alternate, within the custody the child's parent home admits. Drafts only: anything sent goes through the daily batch confirm or Jess's confirm. No mythos.* lane uses this persona: engineering drafts stay on the drafting persona."
+            , forbidden_tasks =
+              [ "merge"
+              , "merge-gating-review"
+              , "final-synthesis"
+              , "external-send-without-confirm"
+              ]
             }
           , { id = "business"
             , model_classes = [ "opus", "kimi" ]
@@ -365,12 +418,14 @@ in    { `$comment` =
           ]
       , cade =
           { orchestrator =
-              "Cade is an orchestrator, not a seat and not the operator. It decomposes business, marketing and CEO-ops work into cade.* lanes, picks each lane's seat from its default and permitted alternates within the lane's custody class, spawns children to run them and collects a receipt per child. Code work Cade delegates runs on the mythos.* lanes under J81."
+              "Cade is an orchestrator, not a seat and not the operator. It decomposes business, marketing and CEO-ops work into cade.* lanes, picks each lane's seat from its default and permitted alternates within the lane's custody class, spawns children to run them and collects a receipt per child. Cade's code work follows CORE-5, and J81 governs the mythos.* lanes."
           , cross_provider_review =
               "Advisory (SPR-145). Consequential Cade output may get a review on cade.review from the provider other than its author's. Cross-provider review is advisory evidence. It never blocks, never gates a merge and never stands in for Jess's approval or a batch confirm. A same-provider review is recorded as same-provider."
           , children =
             { level = "auto"
             , custody = "follows-parent-home"
+            , seat_resolution = "lane-seats-within-parent-custody"
+            , on_no_seat = "wait"
             , provider_fallback = "none"
             , bindings =
               [ "batch-confirm-for-external-acts"
@@ -380,7 +435,7 @@ in    { `$comment` =
               , "hooks-advisory"
               ]
             , notes =
-                "Cade's children are auto-level workers, like a fresh harness with bypass permissions and subagents (SPR-144). They are not read-only. Standing rules still bind them: external acts go through the daily batch confirm (BIZ-5) or Jess's confirm (CORE-5), health data is never hosted (SP-4), client raw exports stay in the confidential home or on Opus and never reach Kimi (SPR-102), ownership and live-session checks precede any signal (R-N11) and hook rulings stay advisory (R-N12). A child's custody class follows its parent home, so confidential-home children never route to Kimi. A child never reroutes to another provider when its seat is unavailable: it waits."
+                "Cade's children are auto-level workers, like a fresh harness with bypass permissions and subagents (SPR-144). They are not read-only. Standing rules still bind them: external acts go through the daily batch confirm (BIZ-5) or Jess's confirm (CORE-5), health data is never hosted (SP-4), client raw exports stay in the confidential home or on Opus and never reach Kimi (SPR-102), ownership and live-session checks precede any signal (R-N11) and hook rulings stay advisory (R-N12). A child's custody class follows its parent home, so confidential-home children never route to Kimi. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. A child never reroutes to another provider when its seat is unavailable: it waits."
             }
           , custody_classes =
             [ { id = "confidential"
@@ -406,7 +461,7 @@ in    { `$comment` =
             ]
           , lanes =
             [ { route = "cade.research"
-              , persona = "research"
+              , persona = "cade-research"
               , custody = "public"
               , default_seat = "kimi"
               , alternate_seats = [ "opus" ]
@@ -415,7 +470,7 @@ in    { `$comment` =
                   "Public market, competitor and lead research. Confidential papers and client material stay off this lane."
               }
             , { route = "cade.draft"
-              , persona = "drafting"
+              , persona = "cade-drafting"
               , custody = "public"
               , default_seat = "kimi"
               , alternate_seats = [ "opus" ]
@@ -513,17 +568,17 @@ in    { `$comment` =
           , { id = "provider-allow-list"
             , severity = "error"
             , rule =
-                "Every seat names a provider listed in providers. A seat's model_id must be on its provider's allow-list. Anthropic seats stay on the 5.5 family and fable stays provider-managed. The kimi seat runs kimi-k3.1-pro through the Kimi Code subscription, never a Platform key. A provider or model id outside the allow-list fails closed."
+                "Every seat names a provider listed in providers. A seat's model_id must be on its provider's allow-list. Anthropic seats stay on the 5.5 family and fable stays provider-managed. A seat that names an endpoint runs only on an admitted endpoint whose model_ids hold its model_id. The kimi seat runs k3.1-pro on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. A provider, endpoint or model id outside the allow-list fails closed."
             }
           , { id = "kimi-never-gates"
             , severity = "error"
             , rule =
-                "The kimi seat never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. The critical and adversarial personas never list kimi. Kimi authors only on cade.* lanes that name it as a default or alternate seat. Kimi engineering review rides the pi-k3 harness seat as evidence."
+                "The kimi seat never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. The critical and adversarial personas never list kimi. Kimi authors only on cade.* lanes that name it as a default or alternate seat. No mythos.* lane resolves to a persona that lists kimi."
             }
           , { id = "cade-custody-follows-parent"
             , severity = "error"
             , rule =
-                "A child's custody class follows its parent home. Confidential work runs on Opus or on-prem only and never routes to Kimi. Public and ops work runs on Opus or Kimi. Health data is never hosted. Every seat a cade.* lane names sits in its custody class and in its persona's model classes. Fable never serves a cade.* lane."
+                "A child's custody class follows its parent home. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. Confidential work runs on Opus or on-prem only and never routes to Kimi. Public and ops work runs on Opus or Kimi. Health data is never hosted. Every seat a cade.* lane names sits in its custody class and in its persona's model classes. Fable never serves a cade.* lane."
             }
           , { id = "cade-children-auto-level"
             , severity = "error"
