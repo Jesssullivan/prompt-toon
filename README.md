@@ -21,11 +21,12 @@ byte-identical to the Python oracle. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
 The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
-and the provider gateway. Current v0.3.1 source contains the C4a resident
+and the provider gateway. Current v0.4.0 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
-gateways plus the C4d managed-consumption source contract, but no v0.3
-release or fleet service profile exists yet. C4e adds provider-free local
-spool dogfooding and an efficiency ledger. IO enforcement remains locked.
+gateways plus the C4d managed-consumption source contract. The only GitHub
+release is v0.2.0, and no fleet service profile exists yet. C4e adds
+provider-free local spool dogfooding and an efficiency ledger. IO enforcement
+remains locked.
 
 TOON support is deliberately narrow. The tool measures flat uniform row sets
 against compact JSON/JSONL and emits TOON only when explicitly requested or when
@@ -92,7 +93,7 @@ attest arbitrary ledgers or model-visible quality.
 
 ## CLI
 
-`prompt-toon --help` lists these subcommands (v0.3.1 source). Run
+`prompt-toon --help` lists these subcommands (v0.4.0 source). Run
 `prompt-toon <command> --help` for the flags of each one.
 
 | Command | What it does |
@@ -233,7 +234,7 @@ estate.
   private, so the check runs on a local clone today. Private estate CI may run
   it later. This repo's public CI does not fetch them, and no style files are
   vendored here.
-- **bazel-registry** will hold `modules/prompt_toon` from 0.3.1 on.
+- **bazel-registry** holds `modules/prompt_toon` from 0.3.1 on.
 
 ## Bazel consumption
 
@@ -246,21 +247,23 @@ The root module is `prompt_toon` (version in `MODULE.bazel`, checked against
 | `//:delegation_policy` | every file under `policy/`: `README.md`, `delegation.json`, `delegation.schema.json`, `io.json`, `redaction.json` and the Dhall sources |
 | `//:skills` | every file under `.agents/skills/`, the same set `skill_files[]` digests |
 
-Today no registry carries the module. A consumer that needs the data now must
-pin a commit with `git_override` and accept that the pin skips registry checks.
+`xoxd-ai/bazel-registry` carries `modules/prompt_toon/0.3.1`. A consumer that
+needs a newer unregistered source must pin a commit with `git_override` and
+accept that the pin skips registry checks.
 The module sets `bazel_compatibility = [">=8.2.1"]`. A consumer on Bazel 8.2.1
 or 9.2.0 builds both data targets. The Chapel toolchains are registered with
 `dev_dependency = True`, so a consumer does not inherit them. The registered
 path:
 
-1. The source is at 0.3.1 in `prompt_toon/__init__.py` and `MODULE.bazel`,
+1. The source is at 0.4.0 in `prompt_toon/__init__.py` and `MODULE.bazel`,
    and `packaging/manifest.json` records it.
-2. Cut the signed `v0.3.1` tag.
-3. Add `modules/prompt_toon/0.3.1` to `xoxd-ai/bazel-registry` with the tag
+2. Cut the signed `v0.4.0` tag after the version PR merges.
+3. Add `modules/prompt_toon/0.4.0` to `xoxd-ai/bazel-registry` with the tag
    archive SRI and a prompt-toon smoke scenario.
 4. huskycat adds
-   `bazel_dep(name = "prompt_toon", version = "0.3.1", dev_dependency = True)`
+   `bazel_dep(name = "prompt_toon", version = "0.4.0", dev_dependency = True)`
    with a `single_version_override` that names the registry commit.
+5. lab moves its prompt-toon pin with `just bump-prompt-toon`.
 
 ## Gates
 
@@ -336,8 +339,33 @@ Manifest schema v2 identifies ptoon targets by `(artifact, platform)` and
 authenticates complete Linux and Darwin Nix closure exports, their entrypoint
 binaries, the Darwin GF/Nix bridge provenance and the universal wheel.
 Source version preparation is not a release claim until the tag and stamped
-manifest exist. The latest tag is `v0.2.0`. No `v0.3.0` or `v0.3.1` tag
-exists.
+manifest exist. The latest tag is `v0.3.1`, which has no GitHub release.
+No `v0.4.0` tag exists yet.
+
+### Release notes
+
+The signed tag message carries the release summary. This list keeps the same
+notes in the tree.
+
+- **0.4.0** (source prepared, not tagged). New seats and lanes in the
+  delegation policy, schema version 4 (#62, rulings SPR-142 to SPR-148):
+  - Kimi K3.1 Pro is the `kimi` seat. It runs `k3.1-pro` on the Kimi Code
+    `kimi-coding` endpoint, which is not yet measured. The Platform endpoint
+    is listed only as forbidden. A provider allow-list sits beside the
+    Anthropic 5.5 family pin.
+  - Eight `cade.*` lanes serve Cade, an orchestrator that is not a seat. Kimi
+    serves only the `cade.*` lanes that name it. It never gates a merge,
+    never takes the fable, critical or adversarial persona and never reaches
+    a budget fallback. Cross-provider review is advisory.
+  - Custody follows the parent: a child's seats are the lane's seats within
+    the parent home's custody class, and the child waits when none remain. A
+    confidential parent resolves to Opus only, and a health parent resolves
+    to no seat.
+  - Bazel servers are bounded, and `just check` routes Bazel tests to the
+    Flywheel executor when a shell is attached (#58).
+- **0.3.1** (tagged). The Dhall-sourced redaction policy, the J81
+  Opus-primary delegation routing and the J82 docs lane (#51, #53, #55, #56,
+  #57, #59, #61).
 
 ## Project Surfaces
 
