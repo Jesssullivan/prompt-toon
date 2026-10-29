@@ -17,7 +17,7 @@ let T = ./DelegationPolicy.dhall
 
 in    { `$comment` =
           "Generated artifact. Typed source of truth: policy/dhall/delegation.dhall. Regenerate with: just gen-policy (dhall-to-json --pretty --file policy/dhall/delegation.dhall); dhall-json ships in the flake dev shell. Degraded mode when dhall-to-json is off PATH: hand-sync this file to the Dhall byte-for-byte, per the lab test/dhall convention. Document shape is described by policy/delegation.schema.json. Invariants enforced by tests/test_delegation_policy.py."
-      , schema_version = 3
+      , schema_version = 4
       , metadata =
           { name = "toon-of-mythos-delegation"
           , owner_linear_issue = "TIN-2698"
@@ -41,10 +41,55 @@ in    { `$comment` =
                 "Opus 5.5 subagent quota. Spend it on mission-critical lanes first. When it runs out the opus-quota-exhausted budget fallback applies (J81(e))."
             }
           ]
+      , providers =
+          [ { id = "anthropic"
+            , model_ids =
+              [ "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" ]
+            , access =
+                "Anthropic subscription or API, per seat. The fable seat stays provider-managed and carries no model_id."
+            , endpoints =
+              [ { id = "anthropic"
+                , model_ids =
+                  [ "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5" ]
+                , admitted = True
+                , status = "in-service"
+                , notes =
+                    "Anthropic subscription or API. The model ids are the same on every Anthropic access path, so Anthropic seats name no endpoint."
+                }
+              ]
+            , notes =
+                "Anthropic seats stay pinned to the 5.5 family (J81). A new Claude model id is a policy change, not a string edit."
+            }
+          , { id = "kimi"
+            , model_ids = [ "k3.1-pro" ]
+            , access =
+                "Kimi Code subscription on the kimi-coding endpoint only. The Platform endpoint and any Platform key are forbidden."
+            , endpoints =
+              [ { id = "kimi-coding"
+                , model_ids = [ "k3.1-pro" ]
+                , admitted = True
+                , status = "unmeasured"
+                , notes =
+                    "Kimi Code subscription endpoint, model id k3.1-pro. Unattended Kimi children run here under the extended risk acceptance (SPR-143). No live turn on this route has been measured yet (TIN-7125)."
+                }
+              , { id = "moonshot-platform"
+                , model_ids = [ "kimi-k3.1-pro" ]
+                , admitted = False
+                , status = "forbidden"
+                , notes =
+                    "The Platform endpoint names the model kimi-k3.1-pro. It is forbidden: no seat runs here and no Platform key is used (SP-34, SPR-143). It is listed so a consumer can recognise and refuse it."
+                }
+              ]
+            , notes =
+                "Kimi K3.1 Pro for the cade.* lanes that name it. Model ids are keyed by endpoint. The pi-k3 harness seat is separate and this entry does not change it."
+            }
+          ]
       , seats =
           [ { id = "fable"
             , model_class = "fable"
             , model_id = None Text
+            , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "scarce"
             , default_personas = [ "fable" ]
             , forbidden_personas = [ "adversarial", "critical" ]
@@ -54,8 +99,17 @@ in    { `$comment` =
           , { id = "opus"
             , model_class = "opus"
             , model_id = Some "claude-opus-5-5"
+            , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "high"
-            , default_personas = [ "critical", "adversarial", "research" ]
+            , default_personas =
+              [ "critical"
+              , "adversarial"
+              , "research"
+              , "business"
+              , "ceo-ops"
+              , "evidentiary-review"
+              ]
             , forbidden_personas = [] : List Text
             , notes =
                 "Opus 5.5 is the primary execution and verification seat (J81). It is the default for mission-critical lanes: implementation that merges, merge-gating and adversarial review, refutation-of-record, security-sensitive work plus cluster and host acts. It is also the deepest-research seat and the default escalation target whenever fable tokens must be protected."
@@ -63,6 +117,8 @@ in    { `$comment` =
           , { id = "sonnet"
             , model_class = "sonnet"
             , model_id = Some "claude-sonnet-5-5"
+            , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "medium"
             , default_personas = [ "research", "drafting" ]
             , forbidden_personas = [ "adversarial" ]
@@ -72,11 +128,31 @@ in    { `$comment` =
           , { id = "haiku"
             , model_class = "haiku"
             , model_id = Some "claude-haiku-5-5"
+            , provider = "anthropic"
+            , endpoint = None Text
             , cost_tier = "low"
             , default_personas = [ "mechanical", "research" ]
             , forbidden_personas = [ "adversarial", "critical" ]
             , notes =
                 "Haiku 5.5 is the cheapest seat and is used freely for mechanical lanes: locators, inventories, shallow greps, format conversions, polling, log summaries and checklist execution."
+            }
+          , { id = "kimi"
+            , model_class = "kimi"
+            , model_id = Some "k3.1-pro"
+            , provider = "kimi"
+            , endpoint = Some "kimi-coding"
+            , cost_tier = "high"
+            , default_personas =
+              [ "cade-research"
+              , "cade-drafting"
+              , "business"
+              , "marketing"
+              , "ceo-ops"
+              , "evidentiary-review"
+              ]
+            , forbidden_personas = [ "fable", "critical", "adversarial" ]
+            , notes =
+                "Kimi K3.1 Pro (k3.1-pro) on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. It serves research, drafting, business, marketing, CEO-ops and evidentiary review on the cade.* lanes that name it, through personas that only cade.* lanes use. No mythos.* lane resolves to a persona that lists kimi. It never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. It never serves confidential or health custody."
             }
           ]
       , harness_seats =
@@ -153,7 +229,7 @@ in    { `$comment` =
             , purpose =
                 "Wide research, deep Linear exploration, web sweeps, multi-repo recon."
             , doctrine =
-                "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction and broad recon, opus for the deepest research lanes. Use haiku and sonnet freely here."
+                "Fan out wide and return dense structured reports. Escalate model class with task depth: haiku for locators, sonnet for pattern extraction and broad recon, opus for the deepest research lanes. Use haiku and sonnet freely here. Kimi K3.1 Pro never takes this persona: Cade research runs on cade-research."
             , forbidden_tasks = [ "final-synthesis" ]
             }
           , { id = "drafting"
@@ -161,7 +237,7 @@ in    { `$comment` =
             , purpose =
                 "Drafting, non-merging prototypes and first-pass review ahead of an Opus gate."
             , doctrine =
-                "Sonnet 5.5 by default; use it freely. Output is a draft or a first pass. It never stands in for a merge-gating review and never merges on its own."
+                "Sonnet 5.5 by default; use it freely. Output is a draft or a first pass. It never stands in for a merge-gating review and never merges on its own. Kimi K3.1 Pro never takes this persona: Cade drafts run on cade-drafting."
             , forbidden_tasks = [ "merge", "merge-gating-review", "final-synthesis" ]
             }
           , { id = "mechanical"
@@ -171,6 +247,81 @@ in    { `$comment` =
             , doctrine =
                 "Cheapest lane. Keep prompts narrow and mechanical; return raw structured data."
             , forbidden_tasks = [ "design-decisions", "final-synthesis" ]
+            }
+          , { id = "cade-research"
+            , model_classes = [ "kimi", "opus" ]
+            , purpose =
+                "Cade's public market, competitor and lead research. Only cade.* lanes use this persona."
+            , doctrine =
+                "Kimi K3.1 Pro by default, with Opus 5.5 as the alternate, within the custody the child's parent home admits. Research returns evidence to the orchestrator. No mythos.* lane uses this persona: engineering research stays on the research persona."
+            , forbidden_tasks =
+              [ "merge", "merge-gating-review", "final-synthesis" ]
+            }
+          , { id = "cade-drafting"
+            , model_classes = [ "kimi", "opus" ]
+            , purpose =
+                "Cade's proposals, briefs and other business drafts. Only cade.* lanes use this persona."
+            , doctrine =
+                "Kimi K3.1 Pro by default, with Opus 5.5 as the alternate, within the custody the child's parent home admits. Drafts only: anything sent goes through the daily batch confirm or Jess's confirm. No mythos.* lane uses this persona: engineering drafts stay on the drafting persona."
+            , forbidden_tasks =
+              [ "merge"
+              , "merge-gating-review"
+              , "final-synthesis"
+              , "external-send-without-confirm"
+              ]
+            }
+          , { id = "business"
+            , model_classes = [ "opus", "kimi" ]
+            , purpose =
+                "Business work for Cade: offers, partnerships, pipeline analysis and operating plans short of a commitment."
+            , doctrine =
+                "Opus 5.5 by default. Kimi K3.1 Pro is a permitted alternate where the lane's custody admits it. Output is a draft or a recommendation. Pricing, commitments, contracts and brand claims move to cade.critical. External acts wait for Jess's confirm."
+            , forbidden_tasks =
+              [ "merge"
+              , "merge-gating-review"
+              , "commitment-of-record"
+              , "external-send-without-confirm"
+              ]
+            }
+          , { id = "marketing"
+            , model_classes = [ "kimi", "opus" ]
+            , purpose =
+                "Marketing for Cade: copy, posts, campaign drafts and outreach drafts."
+            , doctrine =
+                "Kimi K3.1 Pro by default on public custody, with Opus 5.5 as the alternate. Drafts only: outreach and posts ship through the daily batch confirm, and other external sends wait for Jess's confirm."
+            , forbidden_tasks =
+              [ "merge"
+              , "merge-gating-review"
+              , "brand-claim-of-record"
+              , "external-send-without-confirm"
+              ]
+            }
+          , { id = "ceo-ops"
+            , model_classes = [ "opus", "kimi" ]
+            , purpose =
+                "CEO operations for Cade: obligations, digests, scheduling preparation and assembling the daily batch."
+            , doctrine =
+                "Opus 5.5 by default. Kimi K3.1 Pro is a permitted alternate on ops custody. It assembles the daily batch and never sends it. Spending, external sends and host acts wait for Jess's confirm."
+            , forbidden_tasks =
+              [ "merge"
+              , "merge-gating-review"
+              , "host-act"
+              , "spend"
+              , "external-send-without-confirm"
+              ]
+            }
+          , { id = "evidentiary-review"
+            , model_classes = [ "opus", "kimi" ]
+            , purpose =
+                "Advisory cross-provider review of consequential Cade output. The reviewer runs on the provider other than the author's."
+            , doctrine =
+                "Review is evidence, not authority. It never blocks, never gates a merge and never stands in for Jess's approval or a batch confirm. A same-provider review is recorded as same-provider."
+            , forbidden_tasks =
+              [ "merge-gating-review"
+              , "adversarial-refutation-of-record"
+              , "word-leg-ratification"
+              , "final-synthesis"
+              ]
             }
           ]
       , lanes =
@@ -265,6 +416,129 @@ in    { `$comment` =
                 ]
             }
           ]
+      , cade =
+          { orchestrator =
+              "Cade is an orchestrator, not a seat and not the operator. It decomposes business, marketing and CEO-ops work into cade.* lanes, picks each lane's seat from its default and permitted alternates within the lane's custody class, spawns children to run them and collects a receipt per child. Cade's code work follows CORE-5, and J81 governs the mythos.* lanes."
+          , cross_provider_review =
+              "Advisory (SPR-145). Consequential Cade output may get a review on cade.review from the provider other than its author's. Cross-provider review is advisory evidence. It never blocks, never gates a merge and never stands in for Jess's approval or a batch confirm. A same-provider review is recorded as same-provider."
+          , children =
+            { level = "auto"
+            , custody = "follows-parent-home"
+            , seat_resolution = "lane-seats-within-parent-custody"
+            , on_no_seat = "wait"
+            , provider_fallback = "none"
+            , bindings =
+              [ "batch-confirm-for-external-acts"
+              , "health-never-hosted"
+              , "client-exports-never-kimi"
+              , "ownership-and-live-session-checks"
+              , "hooks-advisory"
+              ]
+            , notes =
+                "Cade's children are auto-level workers, like a fresh harness with bypass permissions and subagents (SPR-144). They are not read-only. Standing rules still bind them: external acts go through the daily batch confirm (BIZ-5) or Jess's confirm (CORE-5), health data is never hosted (SP-4), client raw exports stay in the confidential home or on Opus and never reach Kimi (SPR-102), ownership and live-session checks precede any signal (R-N11) and hook rulings stay advisory (R-N12). A child's custody class follows its parent home, so confidential-home children never route to Kimi. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. A child never reroutes to another provider when its seat is unavailable: it waits."
+            }
+          , custody_classes =
+            [ { id = "confidential"
+              , seats = [ "opus" ]
+              , notes =
+                  "Confidential-home work, including client raw exports and confidential papers. Opus 5.5 or on-prem only. Never Kimi."
+              }
+            , { id = "health"
+              , seats = [] : List Text
+              , notes =
+                  "Health data is never hosted (SP-4). It stays on-prem, no seat in this policy serves it and no cade.* lane carries it."
+              }
+            , { id = "ops"
+              , seats = [ "opus", "kimi" ]
+              , notes =
+                  "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro."
+              }
+            , { id = "public"
+              , seats = [ "opus", "kimi" ]
+              , notes =
+                  "Public-home work over public or synthetic material. Opus 5.5 or Kimi K3.1 Pro."
+              }
+            ]
+          , lanes =
+            [ { route = "cade.research"
+              , persona = "cade-research"
+              , custody = "public"
+              , default_seat = "kimi"
+              , alternate_seats = [ "opus" ]
+              , gate = "None. Research returns evidence to the orchestrator."
+              , purpose =
+                  "Public market, competitor and lead research. Confidential papers and client material stay off this lane."
+              }
+            , { route = "cade.draft"
+              , persona = "cade-drafting"
+              , custody = "public"
+              , default_seat = "kimi"
+              , alternate_seats = [ "opus" ]
+              , gate =
+                  "Drafts only. Anything sent goes through the daily batch confirm or Jess's confirm."
+              , purpose =
+                  "Proposals, briefs and other business drafts that a later lane or Jess finishes."
+              }
+            , { route = "cade.business"
+              , persona = "business"
+              , custody = "ops"
+              , default_seat = "opus"
+              , alternate_seats = [ "kimi" ]
+              , gate =
+                  "External acts wait for Jess's confirm (CORE-5). Pricing and commitments move to cade.critical."
+              , purpose =
+                  "Offers, partnerships, pipeline analysis and operating plans short of a commitment."
+              }
+            , { route = "cade.marketing"
+              , persona = "marketing"
+              , custody = "public"
+              , default_seat = "kimi"
+              , alternate_seats = [ "opus" ]
+              , gate =
+                  "Outreach and posts ship only through the daily batch confirm (BIZ-5). Other external sends wait for Jess's confirm (CORE-5)."
+              , purpose = "Copy, posts, campaign drafts and outreach drafts."
+              }
+            , { route = "cade.ceo-ops"
+              , persona = "ceo-ops"
+              , custody = "ops"
+              , default_seat = "opus"
+              , alternate_seats = [ "kimi" ]
+              , gate =
+                  "Assembles the daily batch and never sends it. Spending, external sends and host acts wait for Jess's confirm (CORE-5)."
+              , purpose =
+                  "Obligations, digests, scheduling preparation and the daily batch."
+              }
+            , { route = "cade.review"
+              , persona = "evidentiary-review"
+              , custody = "ops"
+              , default_seat = "opus"
+              , alternate_seats = [ "kimi" ]
+              , gate =
+                  "Advisory only (SPR-145). It never blocks and never counts as Jess's approval."
+              , purpose =
+                  "Cross-provider review of consequential Cade output, run on the provider other than the author's. Confidential output is reviewed only on Opus inside its own lane."
+              }
+            , { route = "cade.critical"
+              , persona = "critical"
+              , custody = "ops"
+              , default_seat = "opus"
+              , alternate_seats = [] : List Text
+              , gate = "Jess confirms each act (CORE-5)."
+              , purpose =
+                  "Pricing, commitments, contracts and brand claims. Opus 5.5 or the operator; never Kimi and never fable."
+              }
+            , { route = "cade.client"
+              , persona = "business"
+              , custody = "confidential"
+              , default_seat = "opus"
+              , alternate_seats = [] : List Text
+              , gate =
+                  "Stays in the confidential home or on Opus (SPR-102). External acts wait for Jess's confirm (CORE-5)."
+              , purpose =
+                  "Client raw exports and analysis over them. Never Kimi and never a public home."
+              }
+            ]
+          }
       , enforcement =
           [ { id = "no-adversarial-on-fable"
             , severity = "error"
@@ -290,6 +564,31 @@ in    { `$comment` =
             , severity = "error"
             , rule =
                 "When Opus quota is exhausted, Sonnet may continue mythos.implement.merge and mythos.gate.security under the opus-quota-exhausted fallback. Merges from those lanes wait for an Opus review. The downgraded lane never runs a host act or a credential change. The downgrade is recorded in the receipt. The fallback never reaches mythos.gate.review, mythos.act.host or the adversarial persona: that work waits for Opus or goes to the operator. It never reaches fable or haiku. This narrows J81(e) on purpose to keep J81(a)."
+            }
+          , { id = "provider-allow-list"
+            , severity = "error"
+            , rule =
+                "Every seat names a provider listed in providers. A seat's model_id must be on its provider's allow-list. Anthropic seats stay on the 5.5 family and fable stays provider-managed. A seat that names an endpoint runs only on an admitted endpoint whose model_ids hold its model_id. The kimi seat runs k3.1-pro on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. A provider, endpoint or model id outside the allow-list fails closed."
+            }
+          , { id = "kimi-never-gates"
+            , severity = "error"
+            , rule =
+                "The kimi seat never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. The critical and adversarial personas never list kimi. Kimi authors only on cade.* lanes that name it as a default or alternate seat. No mythos.* lane resolves to a persona that lists kimi."
+            }
+          , { id = "cade-custody-follows-parent"
+            , severity = "error"
+            , rule =
+                "A child's custody class follows its parent home. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. Confidential work runs on Opus or on-prem only and never routes to Kimi. Public and ops work runs on Opus or Kimi. Health data is never hosted. Every seat a cade.* lane names sits in its custody class and in its persona's model classes. Fable never serves a cade.* lane."
+            }
+          , { id = "cade-children-auto-level"
+            , severity = "error"
+            , rule =
+                "Cade's children are auto-level workers, not read-only. Standing rules still bind them: external acts go through the daily batch confirm or Jess's confirm, health data is never hosted, client raw exports never reach Kimi, ownership and live-session checks precede any signal and hook rulings stay advisory. A child never reroutes to another provider when its seat is unavailable: it waits."
+            }
+          , { id = "cross-provider-review-advisory"
+            , severity = "error"
+            , rule =
+                "Cross-provider review is advisory evidence. It never blocks, never gates a merge and never stands in for Jess's approval or a batch confirm."
             }
           , { id = "cheap-lane-escalation"
             , severity = "warn"
@@ -333,6 +632,7 @@ in    { `$comment` =
               , "lab hygiene (fable/opus)"
               , "opus-ultracode"
               , "read-only workflow designer"
+              , "cade orchestration"
               ]
           }
       }
