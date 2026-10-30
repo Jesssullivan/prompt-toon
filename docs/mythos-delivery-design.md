@@ -579,7 +579,7 @@ the binary, `auto` falls open to Python when the binary is absent.
 ## 9. C4 online IO gateway (accepted 2026-07-11)
 
 **Current baseline:** v0.2.0 is installed and advisory, and its binary predates
-`ptoon serve`. Current v0.4.0 source contains the C4a resident transform service,
+`ptoon serve`. Current v0.4.1 source contains the C4a resident transform service,
 the C4b Anthropic Messages gateway, the C4c OpenAI Responses gateway/profile,
 the disabled C4d managed-consumption contract, and the C4e offline dogfood
 ledger, including both unbilled real-CLI harness probes. It is not yet tagged,
