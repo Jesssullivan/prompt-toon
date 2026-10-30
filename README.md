@@ -21,7 +21,7 @@ byte-identical to the Python oracle. Python remains the oracle and the default
 engine until the C3 flip (TIN-2710).
 
 The installed v0.2.0 fleet surface remains advisory and predates `ptoon serve`
-and the provider gateway. Current v0.4.0 source contains the C4a resident
+and the provider gateway. Current v0.4.1 source contains the C4a resident
 transform boundary plus C4b Anthropic and C4c OpenAI Responses shadow
 gateways plus the C4d managed-consumption source contract. The only GitHub
 release is v0.2.0, and no fleet service profile exists yet. C4e adds
@@ -93,7 +93,7 @@ attest arbitrary ledgers or model-visible quality.
 
 ## CLI
 
-`prompt-toon --help` lists these subcommands (v0.4.0 source). Run
+`prompt-toon --help` lists these subcommands (v0.4.1 source). Run
 `prompt-toon <command> --help` for the flags of each one.
 
 | Command | What it does |
@@ -255,13 +255,13 @@ or 9.2.0 builds both data targets. The Chapel toolchains are registered with
 `dev_dependency = True`, so a consumer does not inherit them. The registered
 path:
 
-1. The source is at 0.4.0 in `prompt_toon/__init__.py` and `MODULE.bazel`,
+1. The source is at 0.4.1 in `prompt_toon/__init__.py` and `MODULE.bazel`,
    and `packaging/manifest.json` records it.
-2. The signed `v0.4.0` tag marks the version merge commit.
-3. Add `modules/prompt_toon/0.4.0` to `xoxd-ai/bazel-registry` with the tag
+2. The signed `v0.4.1` tag marks the version merge commit.
+3. Add `modules/prompt_toon/0.4.1` to `xoxd-ai/bazel-registry` with the tag
    archive SRI and a prompt-toon smoke scenario.
 4. huskycat adds
-   `bazel_dep(name = "prompt_toon", version = "0.4.0", dev_dependency = True)`
+   `bazel_dep(name = "prompt_toon", version = "0.4.1", dev_dependency = True)`
    with a `single_version_override` that names the registry commit.
 5. lab moves its prompt-toon pin with `just bump-prompt-toon`.
 
@@ -349,6 +349,23 @@ neither version can get a stamped release under its own number.
 The signed tag message carries the release summary. This list keeps the same
 notes in the tree.
 
+- **0.4.1** (source prepared, not tagged). The first version that can get a
+  stamped GitHub release with the 0.4.0 policy, because `just release`
+  refuses the existing `v0.4.0` tag. Changes since 0.4.0:
+  - The D5 ops custody class is in the release record: every Kimi seat, the
+    `pi-k3` harness seat included, gets the ops class (ruling SPR-182). The
+    policy itself is unchanged from 0.4.0.
+  - The empty `.huskycat-public` marker is in the tree. With it, the
+    huskycat commit-msg hook writes a salted `h:` label in the
+    Huskycat-Receipt trailer instead of a host name (J107 a).
+  - History rewrite, 2026-10-29: commit messages that named internal hosts
+    were rewritten, and their descendants were re-signed with the same
+    trees, authors and dates. Commit ids on `main` and the other branches
+    changed. Two branch names changed. The `v0.2.0` and `v0.4.0` tags were
+    re-pointed to the rewritten commits and re-signed with the same tagger,
+    date and message. The `v0.2.0` GitHub release now resolves to the
+    rewritten commit, so its source tarball hash changed. `v0.3.1` was left
+    as it was and keeps its bazel-registry hash.
 - **0.4.0** (signed tag, no GitHub release). New seats and lanes in the
   delegation policy, schema version 4 (#62, rulings SPR-142 to SPR-148):
   - Kimi K3.1 Pro is the `kimi` seat. It runs `k3.1-pro` on the Kimi Code
