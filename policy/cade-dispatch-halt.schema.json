@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch-halt.schema.json",
+  "title": "cade.dispatch.halt/v1 halt",
+  "description": "Stop one job or every recorded job (TIN-7125 contract-v1 section 4.5). Accepted only from an allowed sender. It stops only sessions recorded with started_by=cade-job and the exact name job-<id>.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "job_id",
+    "reason",
+    "requested_by",
+    "created_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch.halt/v1"
+    },
+    "kind": {
+      "const": "halt"
+    },
+    "job_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/jobId"
+        },
+        {
+          "const": "all"
+        }
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600,
+      "pattern": "\\S",
+      "allOf": [
+        {
+          "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f]*$"
+        }
+      ]
+    },
+    "requested_by": {
+      "$ref": "#/$defs/requestedBy"
+    },
+    "created_at": {
+      "$ref": "#/$defs/utc"
+    }
+  },
+  "$defs": {
+    "jobId": {
+      "description": "A job id. It names the tmux session job-<id>. all is reserved for halt. A child id is c<depth>- plus the first 20 hex digits of sha256(parent_job_id + LF + n + LF + goal), n counting the parent's dispatch-requests from 1. No newline: some regex engines let $ match before a final newline.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$",
+      "not": {
+        "anyOf": [
+          {
+            "const": "all"
+          },
+          {
+            "pattern": "\\n"
+          }
+        ]
+      }
+    },
+    "requestedBy": {
+      "description": "For example jess@discord or job:<parent_job_id>.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9:._@-]{0,127}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "utc": {
+      "description": "RFC 3339 in UTC only. Writers emit Z. Readers accept 0 to 6 fraction digits.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$",
+      "not": {
+        "pattern": "\\n"
+      }
+    }
+  }
+}

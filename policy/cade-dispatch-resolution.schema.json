@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch-resolution.schema.json",
+  "title": "cade.dispatch.resolution/v1 root resolution",
+  "description": "Cade's resolution of an envelope (TIN-7125 contract-v1 section 4.4). The receiver re-runs the resolver and refuses on any disagreement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "root_class",
+    "root_model",
+    "reroute",
+    "carve_out_hits",
+    "custody",
+    "source_label",
+    "child_policy",
+    "policy_rev",
+    "dedupe_key",
+    "resolved_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch.resolution/v1"
+    },
+    "root_class": {
+      "enum": [
+        "fable",
+        "opus"
+      ]
+    },
+    "root_model": {
+      "description": "claude-opus-5-5 for Opus. For Fable, the id read from the account. A Fable id never lands in source, policy or fixtures.",
+      "$ref": "#/$defs/modelId"
+    },
+    "reroute": {
+      "description": "Set only when a Fable lane moved to Opus. Contract section 6.1 gives the precedence: own tag hit, inherited hit, goal hit, then a goal with a non-ASCII letter after NFKC.",
+      "enum": [
+        null,
+        "carve-out",
+        "carve-out-inherited",
+        "carve-out-inferred",
+        "carve-out-uncertain"
+      ]
+    },
+    "carve_out_hits": {
+      "description": "Sorted and unique.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/carveOutTag"
+      }
+    },
+    "custody": {
+      "description": "Equals envelope.custody.",
+      "$ref": "#/$defs/custody"
+    },
+    "source_label": {
+      "description": "The source item's label, verbatim, for the card. At most 64 UTF-8 bytes, checked as bytes: maxLength counts code points and is only a bound. The receiver uses it for no custody check.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "child_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orchestrator",
+        "fable_runs_units",
+        "fable_forbidden",
+        "units",
+        "carve_out_tags",
+        "custody_rule",
+        "effects_rule",
+        "child_jobs",
+        "on_no_seat",
+        "provider_fallback",
+        "accounting"
+      ],
+      "properties": {
+        "orchestrator": {
+          "enum": [
+            "fable",
+            "opus"
+          ]
+        },
+        "fable_runs_units": {
+          "const": false
+        },
+        "fable_forbidden": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "adversarial-analysis",
+              "purple-team",
+              "red-team",
+              "deep-iteration-hammering",
+              "bulk-execution"
+            ]
+          }
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "research",
+            "bulk",
+            "code",
+            "gate",
+            "carve-out",
+            "unknown"
+          ],
+          "properties": {
+            "research": {
+              "const": [
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5"
+              ]
+            },
+            "bulk": {
+              "const": [
+                "claude-haiku-5-5",
+                "claude-sonnet-5-5"
+              ]
+            },
+            "code": {
+              "const": [
+                "claude-opus-5-5"
+              ]
+            },
+            "gate": {
+              "const": [
+                "claude-opus-5-5"
+              ]
+            },
+            "carve-out": {
+              "const": [
+                "claude-opus-5-5"
+              ]
+            },
+            "unknown": {
+              "const": [
+                "claude-opus-5-5"
+              ]
+            }
+          }
+        },
+        "carve_out_tags": {
+          "description": "The same list as carve_out_hits.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/carveOutTag"
+          }
+        },
+        "custody_rule": {
+          "const": "narrow-only"
+        },
+        "effects_rule": {
+          "const": "narrow-only"
+        },
+        "child_jobs": {
+          "const": "dispatch-request"
+        },
+        "on_no_seat": {
+          "const": "wait"
+        },
+        "provider_fallback": {
+          "const": "none"
+        },
+        "accounting": {
+          "const": "report-only"
+        }
+      }
+    },
+    "policy_rev": {
+      "$ref": "#/$defs/policyRev"
+    },
+    "dedupe_key": {
+      "description": "The lowercase hex sha256 of the UTF-8 bytes of root_id + LF + goal, the envelope's values exactly as sent with no normalization. The receiver recomputes it and refuses a mismatch with resolution-invalid.",
+      "$ref": "#/$defs/sha256"
+    },
+    "resolved_at": {
+      "$ref": "#/$defs/utc"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "reroute"
+        ],
+        "properties": {
+          "reroute": {
+            "enum": [
+              "carve-out",
+              "carve-out-inherited",
+              "carve-out-inferred",
+              "carve-out-uncertain"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "root_class": {
+            "const": "opus"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "root_class"
+        ],
+        "properties": {
+          "root_class": {
+            "const": "fable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "child_policy": {
+            "properties": {
+              "orchestrator": {
+                "const": "fable"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "root_class"
+        ],
+        "properties": {
+          "root_class": {
+            "const": "opus"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "child_policy": {
+            "properties": {
+              "orchestrator": {
+                "const": "opus"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "carveOutTag": {
+      "enum": [
+        "adversarial",
+        "red-team",
+        "purple-team",
+        "deep-iteration"
+      ]
+    },
+    "custody": {
+      "description": "Custody classes from widest to narrowest. No dispatch lane admits confidential or health in v1.",
+      "enum": [
+        "public",
+        "ops",
+        "confidential",
+        "health"
+      ]
+    },
+    "modelId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.:-]{0,63}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "policyRev": {
+      "description": "The routing that admitted the job, stamped by Cade's resolution and echoed unchanged: prompt-toon@<tag or commit>+<first 12 hex of sha256(policy/delegation.json)>/cade-dispatch-v1@<first 16 hex of sha256(canonical TABLE)>.",
+      "type": "string",
+      "pattern": "^prompt-toon@(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f]{7,40})\\+[0-9a-f]{12}/cade-dispatch-v1@[0-9a-f]{16}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "utc": {
+      "description": "RFC 3339 in UTC only. Writers emit Z. Readers accept 0 to 6 fraction digits.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$",
+      "not": {
+        "pattern": "\\n"
+      }
+    }
+  }
+}

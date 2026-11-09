@@ -95,6 +95,8 @@ sh_test(
     ] + glob([
         "prompt_toon/**/*.py",
         "tests/**/*.py",
+        # TIN-7125: Cade Dispatch v1 conformance vectors.
+        "tests/fixtures/**/*.json",
         "docs/**/*.md",
     ]),
 )

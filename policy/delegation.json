@@ -10,7 +10,8 @@
       "lab hygiene (fable/opus)",
       "opus-ultracode",
       "read-only workflow designer",
-      "cade orchestration"
+      "cade orchestration",
+      "cade dispatch job"
     ]
   },
   "budget_fallbacks": [
@@ -34,6 +35,26 @@
     }
   ],
   "cade": {
+    "broker": {
+      "gates": [],
+      "may": [
+        "route",
+        "author-envelope"
+      ],
+      "names_model": false,
+      "new_policy": true,
+      "notes": "New policy in TIN-7125: the v0.4.0 kimi-never-gates rule had no clause about naming a model. Kimi k3.1-pro on Cade's broker seat routes a request to a cade.* lane and authors the cade.dispatch/v1 envelope. It gates nothing. It never names a model: the envelope has no model field, and the dispatch resolver picks the root from the lane and tags. Cade's own code stamps job_id, parent_job_id, depth, root_id, custody, requested_by and created_at. Custody comes from the source item's label, never from Kimi. Kimi may broker unattended: Jess ruled \"all accounts are checked and suitable for Cade.\" (TIN-7125 0a1924b3).",
+      "seat": "kimi",
+      "unattended": "admitted",
+      "writes": [
+        "lane",
+        "tags",
+        "goal",
+        "inputs",
+        "allowed_effects",
+        "budget_envelope"
+      ]
+    },
     "children": {
       "bindings": [
         "batch-confirm-for-external-acts",
@@ -67,10 +88,11 @@
       },
       {
         "harness_seats": [
-          "pi-k3"
+          "pi-k3",
+          "claude-code@cade"
         ],
         "id": "ops",
-        "notes": "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro. Every Kimi seat gets this class, the pi-k3 harness seat included (SPR-182).",
+        "notes": "Non-confidential operating work. Opus 5.5 or Kimi K3.1 Pro. Every Kimi seat gets this class, the pi-k3 harness seat included (SPR-182). The claude-code@cade job seat also sees ops data.",
         "seats": [
           "opus",
           "kimi"
@@ -78,16 +100,568 @@
       },
       {
         "harness_seats": [
-          "pi-k3"
+          "pi-k3",
+          "claude-code@cade"
         ],
         "id": "public",
-        "notes": "Public-home work over public or synthetic material. Opus 5.5 or Kimi K3.1 Pro.",
+        "notes": "Public-home work over public or synthetic material. Opus 5.5 or Kimi K3.1 Pro. The claude-code@cade job seat also sees public data.",
         "seats": [
           "opus",
           "kimi"
         ]
       }
     ],
+    "dispatch": {
+      "accounting": {
+        "audit": [
+          "observed-root-matches-resolved",
+          "carve-out-units-on-opus",
+          "fable-runs-no-unit",
+          "children-and-depth-reported"
+        ],
+        "budget_envelope": "report-only",
+        "containment": "none",
+        "notes": "Every receipt records lineage, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. The budget envelope is report-only: the card posts status lines at 50, 80 and 100 percent, and nothing stops. Nothing in dispatch caps subagent count, depth or cost, because a cap is containment and needs a ruled interview. Extra jobs queue first come, first served. An audit finding is a warning on the card, never a denial (R-N12).",
+        "queue": "fifo"
+      },
+      "carve_out_accepted_gap": {
+        "added_matching": "none",
+        "answer": "Current rule, accept the gap",
+        "classes": [
+          "symbol-or-format-encoding",
+          "leetspeak",
+          "synonym"
+        ],
+        "ruling": "TIN-7125 f38799d2"
+      },
+      "carve_out_goal_match": "normalized-substring",
+      "carve_out_match": "normalized-substring",
+      "carve_out_non_ascii": {
+        "goal": "carve-out-uncertain",
+        "tag": "request-invalid"
+      },
+      "carve_out_normalize": "nfkc",
+      "carve_out_seat": "opus",
+      "carve_out_stems": [
+        {
+          "canonical": "adversarial",
+          "stem": "adversar"
+        },
+        {
+          "canonical": "red-team",
+          "stem": "red-team"
+        },
+        {
+          "canonical": "red-team",
+          "stem": "redteam"
+        },
+        {
+          "canonical": "red-team",
+          "stem": "team-red"
+        },
+        {
+          "canonical": "purple-team",
+          "stem": "purple-team"
+        },
+        {
+          "canonical": "purple-team",
+          "stem": "purpleteam"
+        },
+        {
+          "canonical": "deep-iteration",
+          "stem": "deep-iteration"
+        },
+        {
+          "canonical": "deep-iteration",
+          "stem": "deep-iterat"
+        }
+      ],
+      "carve_out_tags": [
+        "adversarial",
+        "red-team",
+        "purple-team",
+        "deep-iteration"
+      ],
+      "child_dispatch": "dispatch-request-through-cade",
+      "credentials": [
+        {
+          "agent_mints": false,
+          "holder": "cade@xoxd.ai",
+          "id": "cade-claude",
+          "minted_by": "jess-attended-login",
+          "notes": "Jess signs in to cade@xoxd.ai, attended, under CLAUDE_CONFIG_DIR=$HOME/.claude-cade on sting. It is a third cade@xoxd.ai sign-in, beside the two Hermes homes.",
+          "provider": "anthropic"
+        },
+        {
+          "agent_mints": false,
+          "holder": "cade",
+          "id": "cade-linear",
+          "minted_by": "jess-in-provider-ui",
+          "notes": "Cade's own Linear identity. Jess creates it in Linear's UI, and its custody row is written with the mint. Jobs comment as Cade, never as Jess.",
+          "provider": "linear"
+        },
+        {
+          "agent_mints": false,
+          "holder": "cade",
+          "id": "cade-github",
+          "minted_by": "jess-in-provider-ui",
+          "notes": "A Cade GitHub App installation or token. Jess creates it in GitHub's UI, and its custody row is written with the mint. Jobs push to forks and open PRs as Cade.",
+          "provider": "github"
+        }
+      ],
+      "custody_labels": {
+        "classes": [
+          {
+            "custody": "public",
+            "labels": [
+              "public",
+              "hosted-ok"
+            ],
+            "v1_result": "admitted-where-lane-admits"
+          },
+          {
+            "custody": "ops",
+            "labels": [
+              "ops",
+              "private"
+            ],
+            "v1_result": "admitted-where-lane-admits"
+          },
+          {
+            "custody": "confidential",
+            "labels": [
+              "confidential",
+              "client",
+              "client-raw"
+            ],
+            "v1_result": "custody-confidential"
+          },
+          {
+            "custody": "health",
+            "labels": [
+              "health"
+            ],
+            "v1_result": "custody-health"
+          }
+        ],
+        "normalize": "trim-lowercase-underscore-to-hyphen",
+        "not_admitted": "custody-not-admitted",
+        "trim": "ascii-whitespace",
+        "unknown": "custody-label-unknown",
+        "widens": "custody-widens"
+      },
+      "custody_order": [
+        "public",
+        "ops",
+        "confidential",
+        "health"
+      ],
+      "custody_rule": "narrow-only",
+      "custody_source": "source-item-label",
+      "develop_uncertain_tags": "opus",
+      "effects": [
+        {
+          "envelope": true,
+          "id": "none",
+          "identity": "none",
+          "needs_go": false,
+          "notes": "The job writes only its result file and receipt under its own state dir."
+        },
+        {
+          "envelope": true,
+          "id": "result-doc",
+          "identity": "job-seat",
+          "needs_go": false,
+          "notes": "The result doc is also committed, signed, to the git-tracked cade-work notes path. Nothing is pushed. Its {path, sha256} returns over swb."
+        },
+        {
+          "envelope": true,
+          "id": "linear-comment",
+          "identity": "cade-linear",
+          "needs_go": false,
+          "notes": "A Linear comment under Cade's own Linear identity."
+        },
+        {
+          "envelope": true,
+          "id": "linear-issue",
+          "identity": "cade-linear",
+          "needs_go": false,
+          "notes": "A new Linear issue under Cade's own Linear identity."
+        },
+        {
+          "envelope": true,
+          "id": "github-branch",
+          "identity": "cade-github",
+          "needs_go": false,
+          "notes": "A branch pushed to a fork under Cade's own GitHub identity, with no pull request."
+        },
+        {
+          "envelope": true,
+          "id": "github-pr",
+          "identity": "cade-github",
+          "needs_go": false,
+          "notes": "A branch pushed to a fork and a pull request opened under Cade's own GitHub identity. It includes github-branch. Cade never reviews her own PR and never merges it."
+        },
+        {
+          "envelope": false,
+          "id": "spend",
+          "identity": "jess-confirm",
+          "needs_go": true,
+          "notes": "Any spend waits for Jess's confirm (CORE-5)."
+        },
+        {
+          "envelope": false,
+          "id": "external-send",
+          "identity": "jess-confirm",
+          "needs_go": true,
+          "notes": "A send outside the estate waits for the daily batch confirm (BIZ-5) or Jess's confirm (CORE-5)."
+        },
+        {
+          "envelope": false,
+          "id": "host-act",
+          "identity": "jess-confirm",
+          "needs_go": true,
+          "notes": "Each host act waits for its own GO from Jess (R-C754)."
+        },
+        {
+          "envelope": false,
+          "id": "merge",
+          "identity": "jess-confirm",
+          "needs_go": true,
+          "notes": "A merge of Cade's PR waits for an independent Opus review on mythos.gate.review and a GO."
+        },
+        {
+          "envelope": false,
+          "id": "credential-change",
+          "identity": "jess-confirm",
+          "needs_go": true,
+          "notes": "Minting or rotating a credential is Jess's act. A job never does it."
+        }
+      ],
+      "envelope_fields": [
+        "job_id",
+        "parent_job_id",
+        "depth",
+        "root_id",
+        "lane",
+        "tags",
+        "custody",
+        "goal",
+        "inputs",
+        "allowed_effects",
+        "budget_envelope",
+        "requested_by",
+        "created_at"
+      ],
+      "envelope_schema": "cade.dispatch/v1",
+      "envelope_schema_file": "policy/cade-dispatch.schema.json",
+      "fable_model_id": {
+        "account": "cade@xoxd.ai",
+        "admitted_when": "read-from-account-after-login",
+        "config_key": "fable_model_id",
+        "id_pattern": "^claude-fable-[0-9a-z][0-9a-z.-]*$",
+        "notes": "Jess said \"fable 5.2\" and that id is not verified. After Jess's attended login under the job seat's config dir, the id is read from the account's model list, written to the job seat's dispatch config as fable_model_id and recorded on TIN-7125. Until then a Fable-root job is refused with reply kind failed and reason fable-id-unrecorded. It never runs on Opus instead. The id never lands in this policy, the provider allow-list or a test fixture. A read id must match id_pattern, so an Opus or Sonnet id cannot stand in for Fable.",
+        "on_unread": "refuse",
+        "on_unread_reason": "fable-id-unrecorded",
+        "source": "account"
+      },
+      "halt_schema": "cade.dispatch.halt/v1",
+      "halt_schema_file": "policy/cade-dispatch-halt.schema.json",
+      "harness_seat": "claude-code@cade",
+      "job_seat": {
+        "account": "cade@xoxd.ai",
+        "config_dir": "$HOME/.claude-cade",
+        "host": "sting",
+        "key_reach": "accepted",
+        "login_isolation": {
+          "compare": "realpath-and-inode",
+          "inherited_env": "dropped",
+          "paths": [
+            {
+              "path": "~/.claude",
+              "refused_when": "Its real path is realpath(~/.claude-cade) or inside it."
+            },
+            {
+              "path": "~/.claude-cade",
+              "refused_when": "It is missing, it is a symlink, or its real path is realpath(~/.claude) or inside it."
+            },
+            {
+              "path": "~/.claude-cade/.claude.json",
+              "refused_when": "Its real path is realpath(~/.claude.json) or inside realpath(~/.claude), or it is the same inode as ~/.claude.json."
+            },
+            {
+              "path": "~/.claude-cade/.credentials.json",
+              "refused_when": "Its real path is realpath(~/.claude.json) or inside realpath(~/.claude), or it is the same inode as ~/.claude.json or ~/.claude/.credentials.json."
+            }
+          ],
+          "refuse_reason": "login-isolation",
+          "refused_env": [
+            "ANTHROPIC_*",
+            "CLAUDE_CODE_OAUTH_TOKEN"
+          ]
+        },
+        "notes": "Jess ruled \"Under your own user on sting\" (TIN-7125 0a1924b3). Jobs run as jess on sting with CLAUDE_CONFIG_DIR=$HOME/.claude-cade, signed in to cade@xoxd.ai. There is no separate Unix user for jobs. Jess's own ~/.claude login is never used for a job. Jobs can reach Jess's keys, become file and gh login, and Jess accepted that. A job acts under Cade's own credentials, never under Jess's.",
+        "operator_login": "never",
+        "unix_user": "jess"
+      },
+      "lanes": [
+        {
+          "custody": [
+            "public"
+          ],
+          "gate": "None. The result doc returns to Cade as {path, sha256}.",
+          "parent_persona": "fable-orchestrator",
+          "purpose": "Public research jobs: market, competitor, lead and literature research that needs a fan-out wider than one Cade turn.",
+          "root_seat": "fable",
+          "route": "cade.delegate.research"
+        },
+        {
+          "custody": [
+            "public"
+          ],
+          "gate": "Drafts only. Anything sent goes through the daily batch confirm or Jess's confirm.",
+          "parent_persona": "fable-orchestrator",
+          "purpose": "Drafting jobs: proposals, briefs and long documents that a later lane or Jess finishes.",
+          "root_seat": "fable",
+          "route": "cade.delegate.draft"
+        },
+        {
+          "custody": [
+            "public",
+            "ops"
+          ],
+          "gate": "External acts wait for Jess's confirm (CORE-5). Pricing and commitments move to cade.critical.",
+          "parent_persona": "fable-orchestrator",
+          "purpose": "Business jobs: offers, partnership and pipeline analysis and operating plans short of a commitment.",
+          "root_seat": "fable",
+          "route": "cade.delegate.business"
+        },
+        {
+          "custody": [
+            "public"
+          ],
+          "gate": "Outreach and posts ship only through the daily batch confirm (BIZ-5). Other external sends wait for Jess's confirm (CORE-5).",
+          "parent_persona": "fable-orchestrator",
+          "purpose": "Marketing jobs: campaigns, copy sets and outreach drafts.",
+          "root_seat": "fable",
+          "route": "cade.delegate.marketing"
+        },
+        {
+          "custody": [
+            "public",
+            "ops"
+          ],
+          "gate": "Pull requests open under Cade's own GitHub identity, and Cade never reviews her own PR. The merge waits for an independent Opus review on mythos.gate.review. Each host act waits for its own GO from Jess (R-C754).",
+          "parent_persona": "critical",
+          "purpose": "Development jobs: code, tests and pull requests. An Opus root plans them, and Opus runs every code, gate and carve-out unit.",
+          "root_seat": "opus",
+          "route": "cade.delegate.develop"
+        }
+      ],
+      "notes": "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. Tags and goals match the carve-out stems by normalized substring: NFKC, then A-Z lowercased, then every character outside a-z and 0-9 dropped. A raw tag with a non-ASCII letter after NFKC, or one that slugs to empty, is refused, and a goal with one is uncertain and reroutes a Fable lane to Opus. Jess ruled \"Current rule, accept the gap\" (TIN-7125 f38799d2): symbol and format encodings of the stems, leetspeak and plain synonyms still give a Fable root, no matching is added for them, and inside such a job the carve-out holds only through the pinned Opus agents and the receipt audit. The receiver recomputes dedupe_key as the sha256 of root_id, LF and goal, and trims observed_models from a reply over 16384 bytes, keeping root and every Fable-observed unit. A halt ack over 16384 bytes is split into several acks that carry the stopped job ids in stop order. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1.",
+      "reasons": [
+        {
+          "id": "request-invalid",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "envelope-invalid",
+          "raised_by": "both"
+        },
+        {
+          "id": "resolution-missing",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "resolution-invalid",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "resolution-disagrees",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "custody-label-unknown",
+          "raised_by": "cade"
+        },
+        {
+          "id": "custody-health",
+          "raised_by": "both"
+        },
+        {
+          "id": "custody-confidential",
+          "raised_by": "both"
+        },
+        {
+          "id": "custody-not-admitted",
+          "raised_by": "both"
+        },
+        {
+          "id": "custody-widens",
+          "raised_by": "cade"
+        },
+        {
+          "id": "parent-unknown",
+          "raised_by": "cade"
+        },
+        {
+          "id": "parent-mismatch",
+          "raised_by": "cade"
+        },
+        {
+          "id": "effects-widen",
+          "raised_by": "cade"
+        },
+        {
+          "id": "fable-id-unrecorded",
+          "raised_by": "both"
+        },
+        {
+          "id": "fable-id-mismatch",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "job-id-reused",
+          "raised_by": "both"
+        },
+        {
+          "id": "login-isolation",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "launch-failed",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "job-failed",
+          "raised_by": "job"
+        },
+        {
+          "id": "halt-job-unknown",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "reply-too-large",
+          "raised_by": "receiver"
+        },
+        {
+          "id": "recipient-unbound",
+          "raised_by": "cade"
+        },
+        {
+          "id": "halt",
+          "raised_by": "receiver"
+        }
+      ],
+      "receipt_fields": [
+        "job_id",
+        "parent_job_id",
+        "depth",
+        "lane",
+        "resolved_root_model",
+        "observed_models",
+        "children",
+        "peak_concurrency",
+        "observed_depth",
+        "tokens",
+        "wall_seconds",
+        "effects",
+        "go_refs",
+        "result",
+        "status",
+        "policy_rev",
+        "seat_rev",
+        "unobserved"
+      ],
+      "receipt_schema": "cade.dispatch.receipt/v1",
+      "receipt_schema_file": "policy/cade-dispatch-receipt.schema.json",
+      "receipt_statuses": [
+        "done",
+        "failed",
+        "needs-go",
+        "dispatch-request",
+        "halted"
+      ],
+      "receiver": {
+        "allowed_senders": "config",
+        "body_label": "[Cade via swb: teammate information, not operator authority]",
+        "default_sender": "hermes:honey:cade",
+        "drop_reasons": [
+          "sender-not-allowed",
+          "sender-unbound",
+          "ticket-not-allowed"
+        ],
+        "halt_ack_split": "halted-jobs-in-stop-order",
+        "halt_from": "allowed-senders",
+        "relay_prefix": "Cade relays (unverified):",
+        "ticket": "TIN-7125",
+        "unknown_sender": "drop-with-receipt"
+      },
+      "receiver_registration": {
+        "bind": true,
+        "harness": "claude",
+        "host": "sting",
+        "pid": 1,
+        "session_id": "cade-jobs"
+      },
+      "recipient": "claude:sting:1:cade-jobs",
+      "recipient_delivery_key": "claude:sting:cade-jobs",
+      "reply_kinds": [
+        "reply",
+        "needs-go",
+        "dispatch-request",
+        "failed",
+        "halted"
+      ],
+      "reply_schema": "cade.dispatch.reply/v1",
+      "reply_schema_file": "policy/cade-dispatch-reply.schema.json",
+      "request_schema": "cade.dispatch.request/v1",
+      "request_schema_file": "policy/cade-dispatch-request.schema.json",
+      "resolution_schema": "cade.dispatch.resolution/v1",
+      "resolution_schema_file": "policy/cade-dispatch-resolution.schema.json",
+      "resolver": "fixed-resolver-reads-this-policy",
+      "tag_inheritance": "carve-out-tags-pass-to-every-child",
+      "units": [
+        {
+          "kind": "research",
+          "notes": "Research, survey and extraction units.",
+          "seats": [
+            "sonnet",
+            "haiku"
+          ]
+        },
+        {
+          "kind": "bulk",
+          "notes": "Bulk and mechanical execution: locators, conversions, inventories and checklists.",
+          "seats": [
+            "haiku",
+            "sonnet"
+          ]
+        },
+        {
+          "kind": "code",
+          "notes": "Code that may merge, tests and security-sensitive changes.",
+          "seats": [
+            "opus"
+          ]
+        },
+        {
+          "kind": "gate",
+          "notes": "Gates and reviews inside the job. None of them gates a merge.",
+          "seats": [
+            "opus"
+          ]
+        },
+        {
+          "kind": "carve-out",
+          "notes": "Every adversarial, red-team, purple-team or deep-iteration unit, at any depth.",
+          "seats": [
+            "opus"
+          ]
+        }
+      ],
+      "unknown_unit": "opus"
+    },
     "lanes": [
       {
         "alternate_seats": [
@@ -214,7 +788,7 @@
     },
     {
       "id": "cade-custody-follows-parent",
-      "rule": "A child's custody class follows its parent home. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. Confidential work runs on Opus or on-prem only and never routes to Kimi. Public and ops work runs on Opus or Kimi. Health data is never hosted. Every seat a cade.* lane names sits in its custody class and in its persona's model classes. Fable never serves a cade.* lane.",
+      "rule": "A child's custody class follows its parent home. A child's effective seats are its lane's default and alternate seats that also sit in its parent home's custody class. When none remain, the child waits. Confidential work runs on Opus or on-prem only and never routes to Kimi. Public and ops work runs on Opus or Kimi. Health data is never hosted. Every seat a cade.* lane names sits in its custody class and in its persona's model classes. Fable serves only cade.delegate.*, as orchestrator: no route in cade.lanes names it.",
       "severity": "error"
     },
     {
@@ -228,8 +802,48 @@
       "severity": "error"
     },
     {
+      "id": "fable-leads-others-work",
+      "rule": "Fable leads, others work (TIN-7125 0a1924b3). A Fable root plans, picks each unit's model and synthesizes. It never runs a unit itself. Workers are Sonnet or Haiku for research and bulk work, and Opus for code, gates and every carve-out unit at any depth. Bulk execution stays forbidden to fable.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-dispatch-root-resolution",
+      "rule": "A fixed resolver, not the broker, picks a dispatched job's root seat from its lane and tags. cade.delegate.research, cade.delegate.draft, cade.delegate.business and cade.delegate.marketing get a Fable root as orchestrator. cade.delegate.develop gets an Opus root. Any carve-out tag on any lane reroutes the root to Opus. A tag or a goal whose NFKC-normalized form contains a carve-out stem reroutes the root to Opus too. A goal with a non-ASCII letter after NFKC makes the carve-out status uncertain, and an uncertain goal on a Fable lane reroutes the root to Opus. Uncertain or missing tags on cade.delegate.develop resolve to Opus. A lane that does not admit the job's custody gets no root, and the job does not run.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-dispatch-carve-out-inheritance",
+      "rule": "Carve-out tags pass to every child, at any depth. A unit or child job that carries a carve-out tag runs on Opus. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-dispatch-custody-narrows",
+      "rule": "Custody comes from the source item's label, never from the broker. A job's custody keeps or narrows its label's class. A child's custody stays the same as its parent's or narrows, in the order public, ops, confidential, health. It never widens.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-broker-routes-only",
+      "rule": "New policy (TIN-7125). Kimi on the broker seat may route a request to a cade.* lane and author cade.dispatch/v1 envelopes. It gates nothing and never names a model: the envelope has no model field and the resolver picks the root. The broker never sets custody. Kimi may broker unattended (TIN-7125 0a1924b3).",
+      "severity": "error"
+    },
+    {
+      "id": "fable-id-from-account",
+      "rule": "The Fable model id is a config value read from the cade@xoxd.ai account after Jess's attended login. This policy never carries it. A Fable-root job is refused with fable-id-unrecorded until the id is read, and it never runs on Opus instead. A receipt whose observed root model differs from its resolved root model is an audit finding.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-never-reviews-own-pr",
+      "rule": "A Cade job never reviews a pull request that Cade opened. The merge gate for a Cade PR is an independent Opus review on mythos.gate.review.",
+      "severity": "error"
+    },
+    {
+      "id": "cade-dispatch-accounting-not-caps",
+      "rule": "Every receipt records lineage, observed models, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. The budget envelope is report-only. Nothing in dispatch caps subagent count, depth or cost: a cap is containment and needs a ruled interview.",
+      "severity": "error"
+    },
+    {
       "id": "cheap-lane-escalation",
-      "rule": "A research or mechanical lane routed to fable warns; escalation requires explicit operator justification.",
+      "rule": "A research or mechanical lane routed to fable warns; escalation requires explicit operator justification. The cade.delegate.* roots carry that justification (TIN-7125 0a1924b3): Fable orchestrates those jobs and never runs their units.",
       "severity": "warn"
     },
     {
@@ -244,12 +858,12 @@
     },
     {
       "id": "harness-delegation-envelope",
-      "rule": "A harness seat may only receive tasks listed in its own delegable_tasks. It never owns the operator WORD/ratification leg and never owns the adversarial-refutation-of-record; harness output is evidence for the fable synthesis seat or the Opus merge gate. It is never the ruling and never gates a merge. A lane routed to a harness seat therefore carries evidentiary work only.",
+      "rule": "A harness seat may only receive tasks listed in its own delegable_tasks. It never owns the operator WORD/ratification leg and never owns the adversarial-refutation-of-record; harness output is evidence for the fable synthesis seat or the Opus merge gate. The gated-worker seat's output is work product whose external acts wait for a GO. It is never the ruling and never gates a merge. A lane routed to a harness seat therefore carries evidentiary work only.",
       "severity": "error"
     },
     {
       "id": "harness-dispatch-bounded-only",
-      "rule": "Harness dispatch goes through the lab-managed bounded launchers named in the seat's dispatch_surface (the pi-* wrappers). Never execute a raw agent binary as a dispatch or probe surface.",
+      "rule": "Harness dispatch goes through the lab-managed bounded launchers named in the seat's dispatch_surface (the pi-* wrappers). A seat whose surface is a transport, such as an swb recipient, names the fixed launcher behind it in launcher, and the receiver calls only that launcher. Never execute a raw agent binary as a dispatch or probe surface.",
       "severity": "error"
     },
     {
@@ -298,6 +912,31 @@
       "model_lane": "kimi-coding/k3",
       "posture": "evidentiary-only",
       "purpose": "This IS the Kimi reviewer lane: Kimi rides the pi harness because the native kimi CLI has no dispatch envelope. Same bounded technical-review envelope and same evidentiary-only posture as the pi seat."
+    },
+    {
+      "delegable_tasks": [
+        "cade-research",
+        "cade-drafting",
+        "cade-business",
+        "cade-marketing",
+        "cade-development"
+      ],
+      "dispatch_surface": "swb:claude:sting:1:cade-jobs",
+      "forbidden_tasks": [
+        "word-leg-ratification",
+        "adversarial-refutation-of-record",
+        "merge-gating-review",
+        "review-own-pr",
+        "merge",
+        "credential-minting",
+        "secret-mutation"
+      ],
+      "harness": "claude-code",
+      "id": "claude-code@cade",
+      "launcher": "cade-job: the lab-managed fixed launcher the swb receiver calls (never a raw binary)",
+      "model_lane": "anthropic/cade@xoxd.ai: the root seat comes from the cade.dispatch resolver and each unit's seat from cade.dispatch.units",
+      "posture": "gated-worker",
+      "purpose": "Cade's job seat (TIN-7125). Cade sends a whole cade.delegate.* job here as a cade.dispatch/v1 envelope. A Claude Code session signed in to cade@xoxd.ai runs it under its own config dir, fans out subagents per unit and returns a cade.dispatch.receipt/v1 receipt."
     }
   ],
   "lanes": [
@@ -405,6 +1044,24 @@
         "fable"
       ],
       "purpose": "Synthesis, architecture, and engineering judgment; the second engineer in the room."
+    },
+    {
+      "doctrine": "Fable leads, others work (TIN-7125 0a1924b3). Fable plans, fans out and synthesizes. It never runs a unit itself. Workers are Sonnet or Haiku for research and bulk work, and Opus for code, gates and every adversarial, red-team, purple-team or deep-iteration unit at any depth. Bulk execution stays forbidden to fable. No mythos.* lane uses this persona.",
+      "forbidden_tasks": [
+        "adversarial-analysis",
+        "purple-team",
+        "red-team",
+        "deep-iteration-hammering",
+        "bulk-execution",
+        "merge",
+        "merge-gating-review",
+        "host-act"
+      ],
+      "id": "fable-orchestrator",
+      "model_classes": [
+        "fable"
+      ],
+      "purpose": "Root of a Cade delegated job: plan the job, pick each unit's model and synthesize the result. Only cade.delegate.* lanes use this persona."
     },
     {
       "doctrine": "Rely on Opus 5.5 or the operator personally. A merge-gating review runs on Opus. When Opus quota is exhausted the opus-quota-exhausted fallback lets Sonnet continue mythos.implement.merge and mythos.gate.security only. Their merges wait for an Opus review. The downgraded lane never runs a host act or a credential change. The downgrade is recorded in the receipt. mythos.gate.review and mythos.act.host never fall back: they wait for Opus or go to the operator. Never fable or haiku.",
@@ -618,7 +1275,7 @@
     {
       "id": "fable-tokens",
       "kind": "model",
-      "notes": "Fable-class model tokens: expensive, not always available, can be slow, compute costly, token-limited. Spend on the synthesis seat only."
+      "notes": "Fable-class model tokens: expensive, not always available, can be slow, compute costly, token-limited. Spend on the synthesis seat and on the orchestrator root of cade.delegate.* jobs only."
     },
     {
       "id": "opus-quota",
@@ -626,12 +1283,13 @@
       "notes": "Opus 5.5 subagent quota. Spend it on mission-critical lanes first. When it runs out the opus-quota-exhausted budget fallback applies (J81(e))."
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "seats": [
     {
       "cost_tier": "scarce",
       "default_personas": [
-        "fable"
+        "fable",
+        "fable-orchestrator"
       ],
       "forbidden_personas": [
         "adversarial",
@@ -639,7 +1297,8 @@
       ],
       "id": "fable",
       "model_class": "fable",
-      "notes": "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment and advisory review alongside the operator. Never the adversarial or critical seat. Its review never gates a merge.",
+      "model_id_source": "account-config",
+      "notes": "Fable-class synthesis seat: umbrella orchestration, architecture, engineering judgment and advisory review alongside the operator. Never the adversarial or critical seat. Its review never gates a merge. It also roots cade.delegate.* jobs as orchestrator on the fable-orchestrator persona (TIN-7125). For those jobs its model id is a config value read from the cade@xoxd.ai account after login, never a value in this policy.",
       "provider": "anthropic"
     },
     {
@@ -656,6 +1315,7 @@
       "id": "opus",
       "model_class": "opus",
       "model_id": "claude-opus-5-5",
+      "model_id_source": "pinned",
       "notes": "Opus 5.5 is the primary execution and verification seat (J81). It is the default for mission-critical lanes: implementation that merges, merge-gating and adversarial review, refutation-of-record, security-sensitive work plus cluster and host acts. It is also the deepest-research seat and the default escalation target whenever fable tokens must be protected.",
       "provider": "anthropic"
     },
@@ -671,6 +1331,7 @@
       "id": "sonnet",
       "model_class": "sonnet",
       "model_id": "claude-sonnet-5-5",
+      "model_id_source": "pinned",
       "notes": "Sonnet 5.5 is used freely for research sweeps, drafting, broad recon, non-merging prototypes and first-pass review. It is not the default for mission-critical lanes. It may continue mythos.implement.merge or mythos.gate.security only under the opus-quota-exhausted budget fallback. It never gates a merge.",
       "provider": "anthropic"
     },
@@ -687,6 +1348,7 @@
       "id": "haiku",
       "model_class": "haiku",
       "model_id": "claude-haiku-5-5",
+      "model_id_source": "pinned",
       "notes": "Haiku 5.5 is the cheapest seat and is used freely for mechanical lanes: locators, inventories, shallow greps, format conversions, polling, log summaries and checklist execution.",
       "provider": "anthropic"
     },
@@ -703,13 +1365,15 @@
       "endpoint": "kimi-coding",
       "forbidden_personas": [
         "fable",
+        "fable-orchestrator",
         "critical",
         "adversarial"
       ],
       "id": "kimi",
       "model_class": "kimi",
       "model_id": "k3.1-pro",
-      "notes": "Kimi K3.1 Pro (k3.1-pro) on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. It serves research, drafting, business, marketing, CEO-ops and evidentiary review on the cade.* lanes that name it, through personas that only cade.* lanes use. No mythos.* lane resolves to a persona that lists kimi. It never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. It never serves confidential or health custody.",
+      "model_id_source": "pinned",
+      "notes": "Kimi K3.1 Pro (k3.1-pro) on the kimi-coding endpoint through the Kimi Code subscription. The Platform endpoint and any Platform key are forbidden. It serves research, drafting, business, marketing, CEO-ops and evidentiary review on the cade.* lanes that name it, through personas that only cade.* lanes use. No mythos.* lane resolves to a persona that lists kimi. It never gates a merge. It never owns the refutation-of-record, never carries the operator WORD leg and never runs a critical host act. It never serves confidential or health custody. As the Cade broker it routes requests to cade.* lanes and authors cade.dispatch/v1 envelopes. It gates nothing and never names a model (cade.broker).",
       "provider": "kimi"
     }
   ]

@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch-receipt.schema.json",
+  "title": "cade.dispatch.receipt/v1 job receipt",
+  "description": "The receipt a started Cade job returns (TIN-7125). It is accounting, not a cap. Every unobserved value is null or left out and names its reason in unobserved.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "job_id",
+    "parent_job_id",
+    "depth",
+    "lane",
+    "resolved_root_model",
+    "observed_models",
+    "children",
+    "peak_concurrency",
+    "observed_depth",
+    "tokens",
+    "wall_seconds",
+    "effects",
+    "go_refs",
+    "result",
+    "status",
+    "policy_rev",
+    "seat_rev",
+    "unobserved"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch.receipt/v1"
+    },
+    "job_id": {
+      "$ref": "#/$defs/jobId"
+    },
+    "parent_job_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/jobId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "$ref": "#/$defs/lane"
+    },
+    "resolved_root_model": {
+      "description": "resolution.root_model, the model passed to claude --model. Never null.",
+      "$ref": "#/$defs/modelId"
+    },
+    "observed_models": {
+      "description": "Only models read from the session's own events: the stream-json init event for root and each child's transcript. A model from an agent file is declared, not observed, and is not listed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unit",
+          "model"
+        ],
+        "properties": {
+          "unit": {
+            "$ref": "#/$defs/unit"
+          },
+          "model": {
+            "$ref": "#/$defs/modelId"
+          }
+        }
+      }
+    },
+    "children": {
+      "description": "Subagents started plus child jobs requested. Never null. With hook-rows-missing it is a lower bound.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "peak_concurrency": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observed_depth": {
+      "description": "The deepest subagent depth a hook reported. 0 when no subagent started. null when subagents started and no hook reported a depth.",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tokens": {
+      "anyOf": [
+        {
+          "description": "Stream usage: input_tokens, output_tokens, cache_read_input_tokens and cache_creation_input_tokens map to input, output, cache_read and cache_write. total is the sum of the four.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input",
+            "output",
+            "cache_read",
+            "cache_write",
+            "total"
+          ],
+          "properties": {
+            "input": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "wall_seconds": {
+      "description": "Measured by the launcher.",
+      "type": "number",
+      "minimum": 0
+    },
+    "effects": {
+      "description": "Effects the job had. An empty list means no effect.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "effect",
+          "ref"
+        ],
+        "properties": {
+          "effect": {
+            "$ref": "#/$defs/receiptEffect"
+          },
+          "ref": {
+            "$ref": "#/$defs/ref"
+          }
+        }
+      }
+    },
+    "go_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ref"
+      }
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/absPath"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "done",
+        "failed",
+        "needs-go",
+        "dispatch-request",
+        "halted"
+      ]
+    },
+    "policy_rev": {
+      "description": "Copied from resolution.policy_rev unchanged.",
+      "$ref": "#/$defs/policyRev"
+    },
+    "seat_rev": {
+      "$ref": "#/$defs/seatRev"
+    },
+    "unobserved": {
+      "description": "Why a value is null or incomplete. Keys are observed_models, observed_depth, tokens and children.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observed_models": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "observed_depth": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "tokens": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "children": {
+          "$ref": "#/$defs/unobservedReason"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "done"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "depth"
+        ],
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "parent_job_id"
+        ],
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "observed_depth"
+        ],
+        "properties": {
+          "observed_depth": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "unobserved": {
+            "required": [
+              "observed_depth"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "tokens"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "unobserved": {
+            "required": [
+              "tokens"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "absPath": {
+      "description": "An absolute path with no .. and no control characters.",
+      "type": "string",
+      "maxLength": 4096,
+      "pattern": "^/[^\\u0000-\\u001f\\u007f]*$",
+      "not": {
+        "pattern": "\\.\\."
+      }
+    },
+    "jobId": {
+      "description": "A job id. It names the tmux session job-<id>. all is reserved for halt. A child id is c<depth>- plus the first 20 hex digits of sha256(parent_job_id + LF + n + LF + goal), n counting the parent's dispatch-requests from 1. No newline: some regex engines let $ match before a final newline.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$",
+      "not": {
+        "anyOf": [
+          {
+            "const": "all"
+          },
+          {
+            "pattern": "\\n"
+          }
+        ]
+      }
+    },
+    "lane": {
+      "description": "A cade.delegate.* lane in policy/delegation.json .cade.dispatch.lanes.",
+      "enum": [
+        "cade.delegate.research",
+        "cade.delegate.draft",
+        "cade.delegate.business",
+        "cade.delegate.marketing",
+        "cade.delegate.develop"
+      ]
+    },
+    "modelId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.:-]{0,63}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "policyRev": {
+      "description": "The routing that admitted the job, stamped by Cade's resolution and echoed unchanged: prompt-toon@<tag or commit>+<first 12 hex of sha256(policy/delegation.json)>/cade-dispatch-v1@<first 16 hex of sha256(canonical TABLE)>.",
+      "type": "string",
+      "pattern": "^prompt-toon@(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f]{7,40})\\+[0-9a-f]{12}/cade-dispatch-v1@[0-9a-f]{16}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "receiptEffect": {
+      "description": "An effect a receipt records. none is never recorded: an empty list means no effect.",
+      "enum": [
+        "result-doc",
+        "linear-comment",
+        "linear-issue",
+        "github-branch",
+        "github-pr",
+        "spend",
+        "external-send",
+        "host-act",
+        "merge",
+        "credential-change"
+      ]
+    },
+    "ref": {
+      "description": "A reference with no spaces or control characters.",
+      "type": "string",
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f]{1,500}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "seatRev": {
+      "description": "The job seat that ran the job: the sha256 of lab vars/cade_dispatch.json and lab's own prompt-toon pin.",
+      "type": "string",
+      "pattern": "^cade-dispatch-seat@[0-9a-f]{16}/prompt-toon@(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f]{7,40})\\+[0-9a-f]{12}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "unit": {
+      "description": "A unit name. The root unit is root.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "unobservedReason": {
+      "enum": [
+        "stream-missing",
+        "stream-no-usage",
+        "root-model-unobserved",
+        "unit-model-unobserved",
+        "hook-no-depth",
+        "hook-rows-missing"
+      ]
+    }
+  }
+}

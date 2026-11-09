@@ -1,0 +1,642 @@
+{
+  "schema": "prompt-toon.cade-dispatch.resolution-vectors/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 4",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 10, the first table and the round 3 resolution table, and sections 4.4 and 6.1. raw_tags is Kimi's list. lab_stamped is the parent's carve-out tags that lab wrote into a child's own tags. tags is the slugged raw tags plus lab_stamped, which is what the resolver sees before cade appends canonical tags. parent_tags is the parent ledger row's tags, or null for a root job. hits is carve_out_hits. reroute is computed on tags, before cade appends the canonical tag for each hit. A fable root resolves to the recorded Fable id, which the test injects. refused_tags are raw tags cade refuses with request-invalid before it sends anything. dedupe pins the dedupe_key formula on exact values. accepted_gap rows are the round 4 known, accepted gap (section 6.1, R4-a, TIN-7125 f38799d2 \"Current rule, accept the gap\"): symbol and format encodings of the stems, leetspeak and plain synonyms. Each still resolves to Fable on a Fable lane with no hit and reroute null, and every implementer must resolve it the same way. No resolver adds matching for them.",
+  "vectors": [
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Survey pricing pages",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null
+    },
+    {
+      "raw_tags": [
+        "red-team-review"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "red-team-review"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "adversarial-check"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "adversarial-check"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.draft",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "purple-team-exercise"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "purple-team-exercise"
+      ],
+      "parent_tags": null,
+      "goal": "Plan a drill",
+      "lane": "cade.delegate.business",
+      "hits": [
+        "purple-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "deep-iteration-loop"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "deep-iteration-loop"
+      ],
+      "parent_tags": null,
+      "goal": "Tune the copy",
+      "lane": "cade.delegate.marketing",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "Red_Team"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "red-team"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "redteam"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "redteam"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Red-team the auth module",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Run a deep iteration pass on the deck",
+      "lane": "cade.delegate.draft",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": [
+        "adversarial"
+      ],
+      "goal": "Summarize findings",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inherited"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Add a test",
+      "lane": "cade.delegate.develop",
+      "hits": [],
+      "root_class": "opus",
+      "reroute": null
+    },
+    {
+      "raw_tags": [
+        "refutation"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "refutation"
+      ],
+      "parent_tags": null,
+      "goal": "Check the claim",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null
+    },
+    {
+      "raw_tags": [
+        "api-red-team"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "api-red-team"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "API Red Team"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "api-red-team"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "web-adversarial"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "web-adversarial"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "adversary-emulation"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "adversary-emulation"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "x-deep-iteration"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "x-deep-iteration"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "team-red"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "team-red"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Ｒｅｄ－ｔｅａｍ the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Rеd team the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "opus",
+      "reroute": "carve-out-uncertain"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Survey café pricing pages",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "opus",
+      "reroute": "carve-out-uncertain"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Rеd team the parser",
+      "lane": "cade.delegate.develop",
+      "hits": [],
+      "root_class": "opus",
+      "reroute": null
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Deep-iterate on the copy until it breaks",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "lab_stamped": [
+        "adversarial"
+      ],
+      "tags": [
+        "adversarial"
+      ],
+      "parent_tags": [
+        "adversarial"
+      ],
+      "goal": "Red-team the summary",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "adversarial",
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inherited"
+    },
+    {
+      "raw_tags": [
+        "red-team-review"
+      ],
+      "lab_stamped": [
+        "red-team"
+      ],
+      "tags": [
+        "red-team-review",
+        "red-team"
+      ],
+      "parent_tags": [
+        "red-team"
+      ],
+      "goal": "Summarize",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inherited"
+    },
+    {
+      "raw_tags": [
+        "deep-iter"
+      ],
+      "lab_stamped": [],
+      "tags": [
+        "deep-iter"
+      ],
+      "parent_tags": null,
+      "goal": "Check the claim",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null
+    }
+  ],
+  "refused_tags": [
+    {
+      "raw_tags": [
+        "ʀᴇᴅ-ᴛᴇᴀᴍ"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "reason": "request-invalid",
+      "why": "small caps: a non-ASCII letter after NFKC"
+    },
+    {
+      "raw_tags": [
+        "!!!"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "reason": "request-invalid",
+      "why": "slugs to empty"
+    },
+    {
+      "raw_tags": [
+        "___"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "reason": "request-invalid",
+      "why": "slugs to empty"
+    },
+    {
+      "raw_tags": [
+        ""
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "reason": "request-invalid",
+      "why": "slugs to empty"
+    },
+    {
+      "raw_tags": [
+        "réd-team"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "reason": "request-invalid",
+      "why": "a non-ASCII letter after NFKC"
+    }
+  ],
+  "dedupe": [
+    {
+      "root_id": "job-20261109-pricing-1",
+      "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+      "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388"
+    }
+  ],
+  "accepted_gap": [
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🅡🅔🅓 🅣🅔🅐🅜 the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative circled letters, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🆁🅴🅳 🆃🅴🅰🅼 the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative squared letters, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🇷🇪🇩 team the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "regional indicators, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "⠗⠑⠙⠤⠞⠑⠁⠍ the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "Braille, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Check the parser 󠁲󠁥󠁤󠀠󠁴󠁥󠁡󠁭󠀠󠁩󠁴",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "invisible tag characters U+E0020 to U+E007F, Cf"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🅡🅔🅓-team the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative circled letters mixed with ASCII, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [
+        "pricing-🅡🅔🅓🅣🅔🅐🅜"
+      ],
+      "tags": [
+        "pricing"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "So in a raw tag falls in a run that becomes a hyphen"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [
+        "x󠁲󠁥󠁤󠁴󠁥󠁡󠁭"
+      ],
+      "tags": [
+        "x"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "Cf tag characters in a raw tag"
+    },
+    {
+      "class": "leetspeak",
+      "raw_tags": [
+        "red-t3am"
+      ],
+      "tags": [
+        "red-t3am"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "digits are kept and never folded"
+    },
+    {
+      "class": "leetspeak",
+      "raw_tags": [
+        "r3d-team"
+      ],
+      "tags": [
+        "r3d-team"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "digits are kept and never folded"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [
+        "pentest"
+      ],
+      "tags": [
+        "pentest"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Hammer the parser with hostile inputs",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Break the auth flow like an attacker would",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [
+        "deep-iter"
+      ],
+      "tags": [
+        "deep-iter"
+      ],
+      "goal": "Check the claim",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    }
+  ]
+}

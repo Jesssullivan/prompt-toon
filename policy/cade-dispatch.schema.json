@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch.schema.json",
+  "title": "cade.dispatch/v1 job envelope",
+  "description": "A job Cade sends over swb to claude:sting:1:cade-jobs (TIN-7125). Kimi writes lane, tags, goal, inputs, allowed_effects and budget_envelope. Cade's own code stamps the rest, custody from the source item's label included. There is no model field: the resolver picks the root.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "job_id",
+    "parent_job_id",
+    "depth",
+    "root_id",
+    "lane",
+    "tags",
+    "custody",
+    "goal",
+    "inputs",
+    "allowed_effects",
+    "requested_by",
+    "created_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch/v1"
+    },
+    "job_id": {
+      "$ref": "#/$defs/jobId"
+    },
+    "parent_job_id": {
+      "description": "The parent job, or null exactly when depth is 0.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/jobId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "description": "0 for a root job, parent depth plus one for a child.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "root_id": {
+      "description": "The root job's id. A root job's root_id is its own job_id.",
+      "$ref": "#/$defs/jobId"
+    },
+    "lane": {
+      "$ref": "#/$defs/lane"
+    },
+    "tags": {
+      "description": "Slugged task tags. Cade appends the canonical carve-out tag for every carve-out hit and every inherited carve-out tag.",
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/tag"
+      }
+    },
+    "custody": {
+      "description": "From the source item's label, never from the broker.",
+      "$ref": "#/$defs/custody"
+    },
+    "goal": {
+      "description": "At most 6000 UTF-8 bytes, checked as bytes. maxLength counts code points, so it bounds the goal and never refuses a valid one; every implementer also counts the UTF-8 bytes and refuses more than 6000 with envelope-invalid. A non-ASCII letter is allowed and makes the carve-out status uncertain.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 6000,
+      "pattern": "\\S",
+      "allOf": [
+        {
+          "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f]*$"
+        }
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "sha256"
+        ],
+        "properties": {
+          "ref": {
+            "$ref": "#/$defs/ref"
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "allowed_effects": {
+      "description": "Effects the job may have without a GO. GO-only effects never appear: the job replies needs-go instead.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/envelopeEffect"
+      }
+    },
+    "budget_envelope": {
+      "description": "Optional and report-only. Nothing stops at the limit.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wall_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "requested_by": {
+      "$ref": "#/$defs/requestedBy"
+    },
+    "created_at": {
+      "$ref": "#/$defs/utc"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "depth"
+        ],
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "parent_job_id"
+        ],
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "allowed_effects"
+        ],
+        "properties": {
+          "allowed_effects": {
+            "contains": {
+              "const": "none"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "allowed_effects": {
+            "maxItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "custody": {
+      "description": "Custody classes from widest to narrowest. No dispatch lane admits confidential or health in v1.",
+      "enum": [
+        "public",
+        "ops",
+        "confidential",
+        "health"
+      ]
+    },
+    "envelopeEffect": {
+      "description": "An effect an envelope may list. none stands alone.",
+      "enum": [
+        "none",
+        "result-doc",
+        "linear-comment",
+        "linear-issue",
+        "github-branch",
+        "github-pr"
+      ]
+    },
+    "jobId": {
+      "description": "A job id. It names the tmux session job-<id>. all is reserved for halt. A child id is c<depth>- plus the first 20 hex digits of sha256(parent_job_id + LF + n + LF + goal), n counting the parent's dispatch-requests from 1. No newline: some regex engines let $ match before a final newline.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$",
+      "not": {
+        "anyOf": [
+          {
+            "const": "all"
+          },
+          {
+            "pattern": "\\n"
+          }
+        ]
+      }
+    },
+    "lane": {
+      "description": "A cade.delegate.* lane in policy/delegation.json .cade.dispatch.lanes.",
+      "enum": [
+        "cade.delegate.research",
+        "cade.delegate.draft",
+        "cade.delegate.business",
+        "cade.delegate.marketing",
+        "cade.delegate.develop"
+      ]
+    },
+    "ref": {
+      "description": "A reference with no spaces or control characters.",
+      "type": "string",
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f]{1,500}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "requestedBy": {
+      "description": "For example jess@discord or job:<parent_job_id>.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9:._@-]{0,127}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "tag": {
+      "description": "A slugged task tag, ASCII only. Cade slugs each raw tag after NFKC and refuses one with a non-ASCII letter or an empty slug, so a non-ASCII tag on the wire fails this pattern.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "utc": {
+      "description": "RFC 3339 in UTC only. Writers emit Z. Readers accept 0 to 6 fraction digits.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$",
+      "not": {
+        "pattern": "\\n"
+      }
+    }
+  }
+}

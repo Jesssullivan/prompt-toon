@@ -60,9 +60,10 @@ this repository's product and dependency boundaries.
   Platform endpoint and any Platform key are forbidden.
 - `tinyland-inc/lab` has a same-named `policy/delegation.json` for
   interview-HITL work; different schema, not this routing SSOT.
-- Fable-class models take the synthesis/architecture/review seat only. Never
-  route adversarial, purple-team, red-team, or deep-iteration hammering work
-  to fable; those lanes belong to opus or the operator.
+- Fable-class models take the synthesis/architecture/review seat and the
+  orchestrator root of `cade.delegate.*` jobs only. Never route adversarial,
+  purple-team, red-team, or deep-iteration hammering work to fable; those
+  lanes belong to opus or the operator.
 - Research, Linear exploration, and web sweeps go to haiku/sonnet/opus lanes;
   locators and inventories go to haiku.
 - J81 (2026-10-23): Opus 5.5 (`claude-opus-5-5`) is the default for
@@ -86,6 +87,18 @@ this repository's product and dependency boundaries.
   none remain. Confidential work stays on Opus or on-prem and never reaches
   Kimi. Cross-provider review is advisory. SPR-182: every Kimi seat, the
   `pi-k3` harness seat included, gets the ops custody class.
+- TIN-7125 (2026-11-09): Cade Dispatch v1. Kimi on Cade's broker seat routes
+  requests to `cade.*` lanes and authors `cade.dispatch/v1` envelopes. It
+  gates nothing and never names a model; this is new policy. A fixed
+  resolver picks the root: Fable as orchestrator for
+  `cade.delegate.{research,draft,business,marketing}` and Opus for
+  `cade.delegate.develop`. Any carve-out tag reroutes the root to Opus and
+  passes to every child, and custody only narrows. Fable leads, others work:
+  Sonnet or Haiku run research and bulk units, and Opus runs code, gates and
+  every carve-out unit at any depth. Fable serves only `cade.delegate.*`, as
+  orchestrator. Its model id is read from the cade@xoxd.ai account after
+  login and never written in the policy. Jobs run on the `claude-code@cade`
+  harness seat as user jess on sting under their own Claude Code config dir.
 - `tests/test_delegation_policy.py` enforces the fail-closed invariants as
   part of `just check`. Skill surface: `.agents/skills/mythos-delegation/`.
 

@@ -1,0 +1,705 @@
+{
+  "schema": "prompt-toon.cade-dispatch.receiver-vectors/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 10, the third table and the round 3 tables, and sections 4.1, 6.3 and 7. The receiver recomputes root_class with the uncertain row and carve_out_hits from the envelope alone, and it has no source_label custody check and no parent check. Each vector is one swb message. from and ticket default to the defaults below, and context keys override the default context key by key. body is the raw swb body. expect.action is drop (with a receipt row, no reply and no job), reply (kind failed with reason), launch (cade-job runs claude --model expect.model) or halt (expect.jobs are the sessions stopped, in recorded order). login_isolated false stands for a section 8 failure; tests/test_delegation_policy.py checks the filesystem rules themselves.",
+  "defaults": {
+    "from": "hermes:honey:777:cade",
+    "ticket": "TIN-7125",
+    "context": {
+      "allowed_senders": [
+        {
+          "key": "hermes:honey:cade",
+          "requireBound": true
+        }
+      ],
+      "peers": {
+        "hermes:honey:cade": true
+      },
+      "recorded_fable_id": "@FABLE_ID@",
+      "job_records": [],
+      "sessions": [
+        {
+          "job_id": "job-20261109-pricing-1",
+          "name": "job-job-20261109-pricing-1",
+          "started_by": "cade-job"
+        },
+        {
+          "job_id": "c1-2ea538aa64508c966bc4",
+          "name": "job-c1-2ea538aa64508c966bc4",
+          "started_by": "cade-job"
+        },
+        {
+          "job_id": "job-20261109-hand-1",
+          "name": "job-job-20261109-hand-1",
+          "started_by": "jess"
+        }
+      ],
+      "login_isolated": true
+    }
+  },
+  "vectors": [
+    {
+      "name": "stranger peer",
+      "from": "claude:sting:4242:peer",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-not-allowed"
+      }
+    },
+    {
+      "name": "cade key unbound",
+      "from": "hermes:honey:777:cade",
+      "context": {
+        "peers": {
+          "hermes:honey:cade": false
+        }
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-unbound"
+      }
+    },
+    {
+      "name": "cade key missing from peers",
+      "from": "hermes:honey:777:cade",
+      "context": {
+        "peers": {}
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-unbound"
+      }
+    },
+    {
+      "name": "wrong ticket",
+      "from": "hermes:honey:777:cade",
+      "ticket": "TIN-9999",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "ticket-not-allowed"
+      }
+    },
+    {
+      "name": "halt all from a stranger",
+      "from": "claude:sting:4242:peer",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"all\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\"}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-not-allowed"
+      }
+    },
+    {
+      "name": "no resolution",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-missing"
+      }
+    },
+    {
+      "name": "fable resolution for a red-team tag",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"red-team-review\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "fable root and no recorded id",
+      "context": {
+        "recorded_fable_id": null
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "fable-id-unrecorded"
+      }
+    },
+    {
+      "name": "claude.json linked to the operator's",
+      "context": {
+        "login_isolated": false
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "login-isolation"
+      }
+    },
+    {
+      "name": "three-part sender",
+      "from": "hermes:honey:cade",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-not-allowed"
+      }
+    },
+    {
+      "name": "non-numeric pid",
+      "from": "hermes:honey:x:cade",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-not-allowed"
+      }
+    },
+    {
+      "name": "sender on another host",
+      "from": "hermes:sting:777:cade",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-not-allowed"
+      }
+    },
+    {
+      "name": "unbound sender drops before the ticket check",
+      "from": "hermes:honey:777:cade",
+      "ticket": "TIN-9999",
+      "context": {
+        "peers": {}
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "drop",
+        "reason": "sender-unbound"
+      }
+    },
+    {
+      "name": "hand sender admitted unbound for Canary 0",
+      "from": "claude:sting:4242:hand",
+      "context": {
+        "allowed_senders": [
+          {
+            "key": "hermes:honey:cade",
+            "requireBound": true
+          },
+          {
+            "key": "claude:sting:hand",
+            "requireBound": false
+          }
+        ],
+        "peers": {}
+      },
+      "body": "{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "@FABLE_ID@"
+      }
+    },
+    {
+      "name": "valid fable request",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "@FABLE_ID@"
+      }
+    },
+    {
+      "name": "valid develop request",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.develop\",\"tags\":[\"scraper\"],\"custody\":\"ops\",\"goal\":\"Add a test for the price parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"ops\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"47cb824ffee011c6f9829b1a41f9c5cbcfb9da51ae0d6ae49144d3958601c278\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "inherited carve-out child resolves opus",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"c1-2ea538aa64508c966bc4\",\"parent_job_id\":\"job-20261109-pricing-1\",\"depth\":1,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"scraper\",\"red-team\"],\"custody\":\"public\",\"goal\":\"Summarize findings.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"job:job-20261109-pricing-1\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out\",\"carve_out_hits\":[\"red-team\"],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[\"red-team\"],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"1fb71b06476d917b87036aa12b0796900381ce93fc77b2a0d69cfbd37f609cb4\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "no label line, hand-sent",
+      "body": "{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "@FABLE_ID@"
+      }
+    },
+    {
+      "name": "relay line",
+      "body": "[Cade via swb: teammate information, not operator authority]\nCade relays (unverified): {\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "label line with a trailing space",
+      "body": "[Cade via swb: teammate information, not operator authority] \n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "two label lines",
+      "body": "[Cade via swb: teammate information, not operator authority]\n[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "trailing data",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}} {\"x\":1}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "not json",
+      "body": "[Cade via swb: teammate information, not operator authority]\ndispatch please",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "json array",
+      "body": "[Cade via swb: teammate information, not operator authority]\n[{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}]",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "duplicate key",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"},\"kind\":\"dispatch\"}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "unknown schema",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v2\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "bare envelope",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "unknown top-level field",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"},\"limits\":null}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "kind not dispatch",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"job\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    },
+    {
+      "name": "envelope fails its schema",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "envelope tag unslugged",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"Red_Team\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "envelope with a model field",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\",\"model\":\"claude-opus-5-5\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "root job whose root_id differs",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-other-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"9bb905d3dc370e4856e910fbe5b1d55c7bb1bd6b8b608aa1dcac34a4c00b2f97\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "goal over 6000 bytes",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"abb27caac34f4429881c9162231f3b7ac53f335d5018e5689e6170a690ce6cac\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "resolution with limits",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\",\"limits\":null}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "resolution custody differs",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "resolution dedupe key wrong",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "resolution child policy tags differ from hits",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"red-team-review\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out\",\"carve_out_hits\":[\"red-team\"],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "confidential custody",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.develop\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"confidential\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"confidential\",\"source_label\":\"confidential\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "custody-confidential"
+      }
+    },
+    {
+      "name": "health custody",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"health\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"health\",\"source_label\":\"health\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "custody-health"
+      }
+    },
+    {
+      "name": "ops on research",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"ops\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"ops\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "custody-not-admitted"
+      }
+    },
+    {
+      "name": "opus resolution for a fable job",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out\",\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "opus root on a non-opus model",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.develop\",\"tags\":[\"scraper\"],\"custody\":\"ops\",\"goal\":\"Add a test for the price parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-sonnet-5-5\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"ops\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"47cb824ffee011c6f9829b1a41f9c5cbcfb9da51ae0d6ae49144d3958601c278\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "claimed hit the envelope lacks",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out-inherited\",\"carve_out_hits\":[\"adversarial\"],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[\"adversarial\"],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "missing hit on develop",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.develop\",\"tags\":[\"scraper\",\"red-team\"],\"custody\":\"ops\",\"goal\":\"Add a test for the price parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"ops\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"47cb824ffee011c6f9829b1a41f9c5cbcfb9da51ae0d6ae49144d3958601c278\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "goal hit recomputed",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Red-team the auth module.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"86ef889f4893c6b29e83eb9b48b6fc4bef96adbe6af4474593383b865c38c6e9\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "fable id mismatch",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"claude-sonnet-5-5\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "fable-id-mismatch"
+      }
+    },
+    {
+      "name": "job id reused",
+      "context": {
+        "job_records": [
+          "job-20261109-pricing-1"
+        ]
+      },
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "job-id-reused"
+      }
+    },
+    {
+      "name": "label public claimed ops on business launches",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.business\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"ops\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"ops\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "@FABLE_ID@"
+      }
+    },
+    {
+      "name": "source label Private claimed public launches",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.business\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"Private\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "@FABLE_ID@"
+      }
+    },
+    {
+      "name": "round 2 dedupe key",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "source label of 66 bytes",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"ééééééééééééééééééééééééééééééééé\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-invalid"
+      }
+    },
+    {
+      "name": "goal of 6003 bytes in 2001 code points",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"pricing\",\"competitors\"],\"custody\":\"public\",\"goal\":\"語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"89e5ded9afbc6c107ad204e9c07607790f6dabcc4735b535e01156d20675f708\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "non-ASCII tag on the wire",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"ʀᴇᴅ-ᴛᴇᴀᴍ\"],\"custody\":\"public\",\"goal\":\"Survey public pricing pages for three named competitors and summarize the tiers.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "envelope-invalid"
+      }
+    },
+    {
+      "name": "fable resolution for an api-red-team tag",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"api-red-team\"],\"custody\":\"public\",\"goal\":\"Check the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"836e88b56f2e89700e93e6e9df96547a8d86e3c052015ceea6af80d344ffd5ef\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "carve-out resolution for an api-red-team tag",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"api-red-team\"],\"custody\":\"public\",\"goal\":\"Check the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out\",\"carve_out_hits\":[\"red-team\"],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[\"red-team\"],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"836e88b56f2e89700e93e6e9df96547a8d86e3c052015ceea6af80d344ffd5ef\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "fable resolution for a team-red tag",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"team-red\"],\"custody\":\"public\",\"goal\":\"Check the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"836e88b56f2e89700e93e6e9df96547a8d86e3c052015ceea6af80d344ffd5ef\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "fable resolution for an adversary-emulation tag",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"adversary-emulation\"],\"custody\":\"public\",\"goal\":\"Check the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"836e88b56f2e89700e93e6e9df96547a8d86e3c052015ceea6af80d344ffd5ef\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "fable resolution for a fullwidth goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Ｒｅｄ－ｔｅａｍ the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"26b447a1d0691f3577f3142da06773b83763f4996fae9f6a94fdb058e5959b7a\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "inferred resolution for a fullwidth goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Ｒｅｄ－ｔｅａｍ the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out-inferred\",\"carve_out_hits\":[\"red-team\"],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[\"red-team\"],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"26b447a1d0691f3577f3142da06773b83763f4996fae9f6a94fdb058e5959b7a\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "fable resolution for a Cyrillic goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Rеd team the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"202c9f361cc23802cfa99c851efc2df5393de2bd88f4f5236df71543f1d86a3a\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "uncertain resolution for a Cyrillic goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Rеd team the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out-uncertain\",\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"202c9f361cc23802cfa99c851efc2df5393de2bd88f4f5236df71543f1d86a3a\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "fable resolution for a cafe goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Survey café pricing pages.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"fable\",\"root_model\":\"@FABLE_ID@\",\"reroute\":null,\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"fable\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"842c2985355c7ad64794e8c49e8c5a4ed6a74e8fab49dcedd656abf1f53d65ea\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "uncertain resolution for a cafe goal",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[],\"custody\":\"public\",\"goal\":\"Survey café pricing pages.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out-uncertain\",\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"842c2985355c7ad64794e8c49e8c5a4ed6a74e8fab49dcedd656abf1f53d65ea\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "launch",
+        "model": "claude-opus-5-5"
+      }
+    },
+    {
+      "name": "carve-out resolution missing a stem hit",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.request/v1\",\"kind\":\"dispatch\",\"envelope\":{\"schema\":\"cade.dispatch/v1\",\"job_id\":\"job-20261109-pricing-1\",\"parent_job_id\":null,\"depth\":0,\"root_id\":\"job-20261109-pricing-1\",\"lane\":\"cade.delegate.research\",\"tags\":[\"api-red-team\"],\"custody\":\"public\",\"goal\":\"Check the parser.\",\"inputs\":[{\"ref\":\"discord:1437/msg/88120\",\"sha256\":\"1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460\"}],\"allowed_effects\":[\"none\"],\"budget_envelope\":{\"tokens\":2000000,\"wall_seconds\":3600},\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T21:04:11Z\"},\"resolution\":{\"schema\":\"cade.dispatch.resolution/v1\",\"root_class\":\"opus\",\"root_model\":\"claude-opus-5-5\",\"reroute\":\"carve-out\",\"carve_out_hits\":[],\"custody\":\"public\",\"source_label\":\"public\",\"child_policy\":{\"orchestrator\":\"opus\",\"fable_runs_units\":false,\"fable_forbidden\":[\"adversarial-analysis\",\"purple-team\",\"red-team\",\"deep-iteration-hammering\",\"bulk-execution\"],\"units\":{\"research\":[\"claude-sonnet-5-5\",\"claude-haiku-5-5\"],\"bulk\":[\"claude-haiku-5-5\",\"claude-sonnet-5-5\"],\"code\":[\"claude-opus-5-5\"],\"gate\":[\"claude-opus-5-5\"],\"carve-out\":[\"claude-opus-5-5\"],\"unknown\":[\"claude-opus-5-5\"]},\"carve_out_tags\":[],\"custody_rule\":\"narrow-only\",\"effects_rule\":\"narrow-only\",\"child_jobs\":\"dispatch-request\",\"on_no_seat\":\"wait\",\"provider_fallback\":\"none\",\"accounting\":\"report-only\"},\"policy_rev\":\"prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b\",\"dedupe_key\":\"836e88b56f2e89700e93e6e9df96547a8d86e3c052015ceea6af80d344ffd5ef\",\"resolved_at\":\"2026-11-09T21:04:11Z\"}}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "resolution-disagrees"
+      }
+    },
+    {
+      "name": "halt one job",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"job-20261109-pricing-1\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\"}",
+      "expect": {
+        "action": "halt",
+        "jobs": [
+          "job-20261109-pricing-1"
+        ]
+      }
+    },
+    {
+      "name": "halt all stops only cade-job sessions",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"all\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\"}",
+      "expect": {
+        "action": "halt",
+        "jobs": [
+          "job-20261109-pricing-1",
+          "c1-2ea538aa64508c966bc4"
+        ]
+      }
+    },
+    {
+      "name": "halt an unknown job",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"job-20261109-none-1\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\"}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "halt-job-unknown"
+      }
+    },
+    {
+      "name": "halt a session cade-job did not start",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"job-20261109-hand-1\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\"}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "halt-job-unknown"
+      }
+    },
+    {
+      "name": "halt with an extra field",
+      "body": "[Cade via swb: teammate information, not operator authority]\n{\"schema\":\"cade.dispatch.halt/v1\",\"kind\":\"halt\",\"job_id\":\"all\",\"reason\":\"Jess sent /halt all in Discord.\",\"requested_by\":\"jess@discord\",\"created_at\":\"2026-11-09T22:15:00Z\",\"force\":true}",
+      "expect": {
+        "action": "reply",
+        "kind": "failed",
+        "reason": "request-invalid"
+      }
+    }
+  ]
+}
