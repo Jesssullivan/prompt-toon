@@ -15,7 +15,7 @@ Text only, so the JSON stays easy to compare.
 | Dhall source | Rendered artifact | Gate |
 |---|---|---|
 | `dhall/DelegationPolicy.dhall`, `dhall/delegation.dhall` | `delegation.json` | `tests/test_delegation_policy.py` |
-| Hand-written JSON Schema | `cade-dispatch.schema.json`, `cade-dispatch-receipt.schema.json` | `tests/test_delegation_policy.py` |
+| Hand-written JSON Schema | `cade-dispatch.schema.json`, `cade-dispatch-receipt.schema.json`, `cade-dispatch-request.schema.json`, `cade-dispatch-resolution.schema.json`, `cade-dispatch-reply.schema.json`, `cade-dispatch-halt.schema.json` | `tests/test_delegation_policy.py` |
 | `dhall/IoPolicy.dhall`, `dhall/io.dhall` | `io.json` | `tests/test_io_policy.py` |
 | `dhall/RedactionPolicy.dhall`, `dhall/redaction.dhall` | `redaction.json` | `tests/test_redaction_policy.py` |
 
@@ -24,10 +24,17 @@ Text only, so the JSON stays easy to compare.
   `haiku` and `kimi`), the provider allow-list and its endpoints, the Cade
   custody classes, the child seat resolution and the `cade.*` route shape. It closes every record and constrains severities
   to an enum.
-- `cade-dispatch.schema.json` and `cade-dispatch-receipt.schema.json` are
-  the `cade.dispatch/v1` job envelope and the `cade.dispatch.receipt/v1`
-  receipt (TIN-7125). `delegation.json` `.cade.dispatch` names their fields,
-  and the gate holds the three in step.
+- The six `cade-dispatch*.schema.json` files are the Cade Dispatch v1 wire
+  contract (TIN-7125, contract-v1): the `cade.dispatch/v1` envelope, the
+  `cade.dispatch.request/v1` request, the `cade.dispatch.resolution/v1`
+  resolution, the `cade.dispatch.halt/v1` halt, the `cade.dispatch.reply/v1`
+  reply and the `cade.dispatch.receipt/v1` receipt. Every object requires
+  `schema`. Each file stands alone, and every shared `$defs` entry is
+  identical across them. `delegation.json` `.cade.dispatch` names their
+  fields, the 4-part recipient `claude:sting:1:cade-jobs`, the reply kinds
+  and the reasons, and the gate holds them in step. Lab and cade validate
+  against pinned copies and run the vectors in
+  `tests/fixtures/cade-dispatch/`.
 - `io.json` holds the enforcement gate, thresholds, surfaces, trust tiers
   and failure modes. The gate stays locked, with every surface disabled,
   until TIN-2695 and TIN-2699 close and INV-1 to INV-6 hold.
@@ -92,7 +99,9 @@ Delegation:
   carve-out tags pass to every child. A child's custody keeps or narrows the
   parent's. Code, gate and carve-out units run on Opus only; fable and kimi
   never run a unit. The Fable id is read from the account and never appears
-  in the policy. Dispatch carries accounting and no cap.
+  in the policy. Until it is read, a Fable-root job is refused with
+  `fable-id-unrecorded` and never runs on Opus instead. Dispatch carries
+  accounting and no cap.
 - `opus-quota-exhausted` is the only budget fallback. It lets Sonnet
   continue `mythos.implement.merge` and `mythos.gate.security`. Merges wait
   for an Opus review. No host act or credential change runs on Sonnet. The

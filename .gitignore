@@ -22,3 +22,6 @@ dist/
 .serena/
 spikes/tin-2707/corpus/
 fixtures/
+# TIN-7125: the Cade Dispatch conformance vectors are tracked; lab and cade
+# read them from their pinned prompt-toon.
+!/tests/fixtures/

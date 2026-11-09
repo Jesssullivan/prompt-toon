@@ -1,0 +1,87 @@
+{
+  "schema": "prompt-toon.cade-dispatch.custody-vectors/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 10, second table, and section 3.3. source_label null means the item had no label. Cade trims the label, lowercases it and changes _ to -, then looks it up. A refused row has custody null; an admitted row has reason null.",
+  "vectors": [
+    {
+      "source_label": "Public",
+      "lane": "cade.delegate.research",
+      "admitted": true,
+      "custody": "public",
+      "reason": null
+    },
+    {
+      "source_label": "HOSTED_OK",
+      "lane": "cade.delegate.marketing",
+      "admitted": true,
+      "custody": "public",
+      "reason": null
+    },
+    {
+      "source_label": "ops",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-not-admitted"
+    },
+    {
+      "source_label": "Private",
+      "lane": "cade.delegate.business",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "ops",
+      "lane": "cade.delegate.develop",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "Confidential",
+      "lane": "cade.delegate.develop",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-confidential"
+    },
+    {
+      "source_label": "client_raw",
+      "lane": "cade.delegate.business",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-confidential"
+    },
+    {
+      "source_label": "Health",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-health"
+    },
+    {
+      "source_label": "medical",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": null,
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "  client  ",
+      "lane": "cade.delegate.develop",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-confidential"
+    }
+  ]
+}

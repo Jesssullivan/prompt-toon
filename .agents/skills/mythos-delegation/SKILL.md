@@ -211,9 +211,13 @@ envelope has no model field. Cade's own code stamps the ids, the depth and
 the custody. Custody comes from the source item's label, never from Kimi.
 This broker rule is new policy (TIN-7125). Kimi may broker unattended.
 
-The envelope travels over swb to `claude:sting:cade-jobs`. A receiver there
-calls only the fixed `cade-job` launcher, which opens a Claude Code session
-on the `claude-code@cade` harness seat. The session runs as user `jess` on
+Cade sends the swb label line and one `cade.dispatch.request/v1` object,
+the envelope plus Cade's resolution, to `claude:sting:1:cade-jobs`. A
+receiver bound to that id drops a message from an unknown or unbound sender
+or on another ticket, strips exactly the label line, re-runs the resolver
+and refuses on any disagreement. It calls only the fixed `cade-job`
+launcher, which opens a Claude Code session on the `claude-code@cade`
+harness seat. The session runs as user `jess` on
 sting with `CLAUDE_CONFIG_DIR=$HOME/.claude-cade`, signed in to cade@xoxd.ai.
 Jess's own `~/.claude` login is never used for a job.
 
@@ -239,14 +243,22 @@ A fixed resolver reads this policy and picks the root:
   does not run.
 
 A tag matches a carve-out tag after lowercasing and dropping every character
-outside a-z and 0-9. A tag that starts with a carve-out tag matches too. No
-dispatch lane admits confidential or health custody in v1.
+outside a-z and 0-9. A tag that starts with a carve-out tag matches too. A
+goal that contains a carve-out tag after the same normalizing reroutes the
+root to Opus as well. No dispatch lane admits confidential or health custody
+in v1.
 
 The Fable id is read from the account. Jess said "fable 5.2", and that id is
 not verified. After Jess's attended login the id is read from the account's
 model list and stored as the job seat's `fable_model_id` config value. The
-policy never names it. Until the id is read, a Fable-root job waits and
-replies `needs-go`.
+policy never names it. Until the id is read, a Fable-root job is refused
+with reply kind `failed` and reason `fable-id-unrecorded`. It never runs on
+Opus instead.
+
+Every reply is one `cade.dispatch.reply/v1` object of kind `reply`,
+`needs-go`, `dispatch-request`, `failed` or `halted`. The six wire schemas
+in `policy/cade-dispatch*.schema.json` and the conformance vectors in
+`tests/fixtures/cade-dispatch/` are the contract that lab and cade pin.
 
 A job never sends work to another seat directly. It replies
 `dispatch-request` with a child envelope, and Cade resolves and sends it.
@@ -277,7 +289,8 @@ to fable.
   PR. The merge gate is an independent Opus review on `mythos.gate.review`.
 - **Report children and depth.** The `cade.dispatch.receipt/v1` receipt
   records the model that answered each unit, children, peak concurrency,
-  observed depth, tokens, wall time, effects and GO refs. The budget
+  observed depth, tokens, wall time, effects and GO refs. A value the job
+  did not observe is null and names its reason in `unobserved`. The budget
   envelope is report-only. Nothing caps subagent count, depth or cost.
 - **Checkpoints go to Cade.** Each lane return in a fan-out is a checkpoint,
   as the fan-out doctrine below says. Inside a job, send it to Cade, who
@@ -391,7 +404,9 @@ repo's `just check`. It fails closed when:
   kimi becomes a worker;
 - the broker gains a gate, names a model or writes custody;
 - dispatch gains a cap on subagent count, depth or cost;
-- the envelope or receipt schema drifts from `.cade.dispatch`;
+- a wire schema drifts from `.cade.dispatch` or from another wire schema;
+- the reference resolver, custody check or receiver disagrees with a
+  conformance vector;
 - the Dispatch lanes table in this skill disagrees with
   `.cade.dispatch.lanes[]`;
 - a purpose string is missing, the JSON fails `policy/delegation.schema.json`

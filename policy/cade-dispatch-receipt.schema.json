@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch-receipt.schema.json",
   "title": "cade.dispatch.receipt/v1 job receipt",
-  "description": "The receipt a Cade job returns (TIN-7125). It records lineage, the root the resolver picked, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. It is accounting, not a cap. The schema id travels in the optional schema field or in the swb message.",
+  "description": "The receipt a started Cade job returns (TIN-7125). It is accounting, not a cap. Every unobserved value is null or left out and names its reason in unobserved.",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "schema",
     "job_id",
     "parent_job_id",
     "depth",
@@ -21,7 +22,9 @@
     "go_refs",
     "result",
     "status",
-    "policy_rev"
+    "policy_rev",
+    "seat_rev",
+    "unobserved"
   ],
   "properties": {
     "schema": {
@@ -48,18 +51,11 @@
       "$ref": "#/$defs/lane"
     },
     "resolved_root_model": {
-      "description": "The root model id the resolver picked, or null when the job got no root, for example while the Fable id is unread.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/nonEmptyString"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "description": "resolution.root_model, the model passed to claude --model. Never null.",
+      "$ref": "#/$defs/modelId"
     },
     "observed_models": {
-      "description": "The model that answered each unit, read from the session's own events, the root included as unit root.",
+      "description": "Only models read from the session's own events: the stream-json init event for root and each child's transcript. A model from an agent file is declared, not observed, and is not listed.",
       "type": "array",
       "items": {
         "type": "object",
@@ -70,16 +66,16 @@
         ],
         "properties": {
           "unit": {
-            "$ref": "#/$defs/nonEmptyString"
+            "$ref": "#/$defs/unit"
           },
           "model": {
-            "$ref": "#/$defs/nonEmptyString"
+            "$ref": "#/$defs/modelId"
           }
         }
       }
     },
     "children": {
-      "description": "Subagents and child jobs spawned.",
+      "description": "Subagents started plus child jobs requested. Never null. With hook-rows-missing it is a lower bound.",
       "type": "integer",
       "minimum": 0
     },
@@ -88,19 +84,30 @@
       "minimum": 0
     },
     "observed_depth": {
-      "description": "The deepest subagent depth seen.",
-      "type": "integer",
-      "minimum": 0
-    },
-    "tokens": {
+      "description": "The deepest subagent depth a hook reported. 0 when no subagent started. null when subagents started and no hook reported a depth.",
       "anyOf": [
         {
           "type": "integer",
           "minimum": 0
         },
         {
+          "type": "null"
+        }
+      ]
+    },
+    "tokens": {
+      "anyOf": [
+        {
+          "description": "Stream usage: input_tokens, output_tokens, cache_read_input_tokens and cache_creation_input_tokens map to input, output, cache_read and cache_write. total is the sum of the four.",
           "type": "object",
           "additionalProperties": false,
+          "required": [
+            "input",
+            "output",
+            "cache_read",
+            "cache_write",
+            "total"
+          ],
           "properties": {
             "input": {
               "type": "integer",
@@ -123,49 +130,46 @@
               "minimum": 0
             }
           }
+        },
+        {
+          "type": "null"
         }
       ]
     },
     "wall_seconds": {
+      "description": "Measured by the launcher.",
       "type": "number",
       "minimum": 0
     },
     "effects": {
+      "description": "Effects the job had. An empty list means no effect.",
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/effectId"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "effect",
+          "ref"
+        ],
+        "properties": {
+          "effect": {
+            "$ref": "#/$defs/receiptEffect"
           },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "effect",
-              "ref"
-            ],
-            "properties": {
-              "effect": {
-                "$ref": "#/$defs/effectId"
-              },
-              "ref": {
-                "$ref": "#/$defs/nonEmptyString"
-              }
-            }
+          "ref": {
+            "$ref": "#/$defs/ref"
           }
-        ]
+        }
       }
     },
     "go_refs": {
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "$ref": "#/$defs/nonEmptyString"
+        "$ref": "#/$defs/ref"
       }
     },
     "result": {
-      "description": "The result doc, or null when the job produced none.",
       "anyOf": [
         {
           "type": "object",
@@ -176,7 +180,7 @@
           ],
           "properties": {
             "path": {
-              "$ref": "#/$defs/nonEmptyString"
+              "$ref": "#/$defs/absPath"
             },
             "sha256": {
               "$ref": "#/$defs/sha256"
@@ -193,12 +197,35 @@
         "done",
         "failed",
         "needs-go",
-        "dispatch-request"
+        "dispatch-request",
+        "halted"
       ]
     },
     "policy_rev": {
-      "description": "The prompt-toon policy the resolver read, for example its version and the sha256 of policy/delegation.json.",
-      "$ref": "#/$defs/nonEmptyString"
+      "description": "Copied from resolution.policy_rev unchanged.",
+      "$ref": "#/$defs/policyRev"
+    },
+    "seat_rev": {
+      "$ref": "#/$defs/seatRev"
+    },
+    "unobserved": {
+      "description": "Why a value is null or incomplete. Keys are observed_models, observed_depth, tokens and children.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observed_models": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "observed_depth": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "tokens": {
+          "$ref": "#/$defs/unobservedReason"
+        },
+        "children": {
+          "$ref": "#/$defs/unobservedReason"
+        }
+      }
     }
   },
   "allOf": [
@@ -258,22 +285,74 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "required": [
+          "observed_depth"
+        ],
+        "properties": {
+          "observed_depth": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "unobserved": {
+            "required": [
+              "observed_depth"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "tokens"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "unobserved": {
+            "required": [
+              "tokens"
+            ]
+          }
+        }
+      }
     }
   ],
   "$defs": {
-    "nonEmptyString": {
+    "absPath": {
+      "description": "An absolute path with no .. and no control characters.",
       "type": "string",
-      "minLength": 1,
-      "pattern": "\\S"
+      "maxLength": 4096,
+      "pattern": "^/[^\\u0000-\\u001f\\u007f]*$",
+      "not": {
+        "pattern": "\\.\\."
+      }
     },
     "jobId": {
-      "description": "A job id. It also names the tmux session job-<id>, so it holds no colon, dot or space.",
+      "description": "A job id. It names the tmux session job-<id>. all is reserved for halt. A child id is c<depth>- plus the first 20 hex digits of sha256(parent_job_id + LF + n + LF + goal), n counting the parent's dispatch-requests from 1. No newline: some regex engines let $ match before a final newline.",
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
-    },
-    "sha256": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$",
+      "not": {
+        "anyOf": [
+          {
+            "const": "all"
+          },
+          {
+            "pattern": "\\n"
+          }
+        ]
+      }
     },
     "lane": {
       "description": "A cade.delegate.* lane in policy/delegation.json .cade.dispatch.lanes.",
@@ -285,18 +364,75 @@
         "cade.delegate.develop"
       ]
     },
-    "effectId": {
-      "description": "An effect in policy/delegation.json .cade.dispatch.effects.",
+    "modelId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.:-]{0,63}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "policyRev": {
+      "description": "The routing that admitted the job, stamped by Cade's resolution and echoed unchanged: prompt-toon@<tag or commit>+<first 12 hex of sha256(policy/delegation.json)>/cade-dispatch-v1@<first 16 hex of sha256(canonical TABLE)>.",
+      "type": "string",
+      "pattern": "^prompt-toon@(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f]{7,40})\\+[0-9a-f]{12}/cade-dispatch-v1@[0-9a-f]{16}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "receiptEffect": {
+      "description": "An effect a receipt records. none is never recorded: an empty list means no effect.",
       "enum": [
-        "none",
         "result-doc",
         "linear-comment",
+        "linear-issue",
+        "github-branch",
         "github-pr",
         "spend",
         "external-send",
         "host-act",
         "merge",
         "credential-change"
+      ]
+    },
+    "ref": {
+      "description": "A reference with no spaces or control characters.",
+      "type": "string",
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f]{1,500}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "seatRev": {
+      "description": "The job seat that ran the job: the sha256 of lab vars/cade_dispatch.json and lab's own prompt-toon pin.",
+      "type": "string",
+      "pattern": "^cade-dispatch-seat@[0-9a-f]{16}/prompt-toon@(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f]{7,40})\\+[0-9a-f]{12}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "unit": {
+      "description": "A unit name. The root unit is root.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+      "not": {
+        "pattern": "\\n"
+      }
+    },
+    "unobservedReason": {
+      "enum": [
+        "stream-missing",
+        "stream-no-usage",
+        "root-model-unobserved",
+        "unit-model-unobserved",
+        "hook-no-depth",
+        "hook-rows-missing"
       ]
     }
   }

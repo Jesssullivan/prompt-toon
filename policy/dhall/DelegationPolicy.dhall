@@ -239,7 +239,31 @@ let FableModelId =
       , admitted_when : Text
       , id_pattern : Text
       , on_unread : Text
+      , on_unread_reason : Text
       , notes : Text
+      }
+
+{-
+One login-isolation check: the path, and when cade-job refuses with
+login-isolation. Paths compare by real path, and files also by (st_dev,
+st_ino), which catches a hard link.
+-}
+let LoginIsolationPath =
+      { path : Text
+      , refused_when : Text
+      }
+
+{-
+Section 8 of the TIN-7125 wire contract: cade-job refuses with
+login-isolation unless the job's config dir and its two login files are its
+own.
+-}
+let LoginIsolation =
+      { compare : Text
+      , refuse_reason : Text
+      , paths : List LoginIsolationPath
+      , refused_env : List Text
+      , inherited_env : Text
       }
 
 {-
@@ -252,7 +276,68 @@ let JobSeat =
       , config_dir : Text
       , operator_login : Text
       , key_reach : Text
+      , login_isolation : LoginIsolation
       , notes : Text
+      }
+
+{-
+How the receiver registers on swb. pid is fixed at 1 so the 4-part address
+never changes, and bind holds the delivery key for the receiver alone.
+-}
+let ReceiverRegistration =
+      { harness : Text
+      , host : Text
+      , pid : Natural
+      , session_id : Text
+      , bind : Bool
+      }
+
+{-
+Receiver authority (wire contract section 7). allowed_senders is config:
+lab's tinyland.cadeJobs.receiver.allowedSenders option. A message from an
+unknown sender, an unbound key or another ticket is dropped with a receipt
+row and no reply.
+-}
+let DispatchReceiver =
+      { allowed_senders : Text
+      , default_sender : Text
+      , ticket : Text
+      , halt_from : Text
+      , unknown_sender : Text
+      , drop_reasons : List Text
+      , body_label : Text
+      , relay_prefix : Text
+      }
+
+{-
+A custody class and the source labels that map to it after normalizing.
+v1_result is admitted-where-lane-admits or the refusal reason.
+-}
+let CustodyLabelClass =
+      { custody : Text
+      , labels : List Text
+      , v1_result : Text
+      }
+
+{-
+Custody from the source item's label (wire contract section 3.3). Any label
+outside the table, and no label, refuses with unknown.
+-}
+let CustodyLabels =
+      { normalize : Text
+      , classes : List CustodyLabelClass
+      , unknown : Text
+      , not_admitted : Text
+      , widens : Text
+      }
+
+{-
+A reply or refusal reason and who raises it: receiver, cade, both or job.
+Only cade's own reasons never reach the wire.
+-}
+let DispatchReason =
+      { id : Text
+      , raised_by : Text
       }
 
 {-
@@ -306,17 +391,31 @@ let CadeDispatch =
       , receipt_schema : Text
       , receipt_schema_file : Text
       , receipt_fields : List Text
+      , request_schema : Text
+      , request_schema_file : Text
+      , resolution_schema : Text
+      , resolution_schema_file : Text
+      , reply_schema : Text
+      , reply_schema_file : Text
+      , halt_schema : Text
+      , halt_schema_file : Text
       , recipient : Text
+      , recipient_delivery_key : Text
+      , receiver_registration : ReceiverRegistration
+      , receiver : DispatchReceiver
       , reply_kinds : List Text
+      , reasons : List DispatchReason
       , receipt_statuses : List Text
       , harness_seat : Text
       , resolver : Text
       , carve_out_tags : List Text
       , carve_out_match : Text
+      , carve_out_goal_match : Text
       , carve_out_seat : Text
       , develop_uncertain_tags : Text
       , tag_inheritance : Text
       , custody_source : Text
+      , custody_labels : CustodyLabels
       , custody_order : List Text
       , custody_rule : Text
       , child_dispatch : Text
@@ -379,7 +478,14 @@ in  { Metadata
     , DispatchLane
     , DispatchUnit
     , FableModelId
+    , LoginIsolationPath
+    , LoginIsolation
     , JobSeat
+    , ReceiverRegistration
+    , DispatchReceiver
+    , CustodyLabelClass
+    , CustodyLabels
+    , DispatchReason
     , DispatchEffect
     , DispatchCredential
     , DispatchAccounting

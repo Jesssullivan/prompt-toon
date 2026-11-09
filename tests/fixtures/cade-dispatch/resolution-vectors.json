@@ -1,0 +1,178 @@
+{
+  "schema": "prompt-toon.cade-dispatch.resolution-vectors/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 10, first table, and section 6.1. raw_tags is Kimi's list; tags is it slugged. parent_tags is the parent ledger row's tags, or null for a root job. hits is carve_out_hits. A fable root resolves to the recorded Fable id, which the test injects.",
+  "vectors": [
+    {
+      "raw_tags": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Survey pricing pages",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null
+    },
+    {
+      "raw_tags": [
+        "red-team-review"
+      ],
+      "tags": [
+        "red-team-review"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "adversarial-check"
+      ],
+      "tags": [
+        "adversarial-check"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.draft",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "purple-team-exercise"
+      ],
+      "tags": [
+        "purple-team-exercise"
+      ],
+      "parent_tags": null,
+      "goal": "Plan a drill",
+      "lane": "cade.delegate.business",
+      "hits": [
+        "purple-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "deep-iteration-loop"
+      ],
+      "tags": [
+        "deep-iteration-loop"
+      ],
+      "parent_tags": null,
+      "goal": "Tune the copy",
+      "lane": "cade.delegate.marketing",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "Red_Team"
+      ],
+      "tags": [
+        "red-team"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [
+        "redteam"
+      ],
+      "tags": [
+        "redteam"
+      ],
+      "parent_tags": null,
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out"
+    },
+    {
+      "raw_tags": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Red-team the auth module",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "red-team"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Run a deep iteration pass on the deck",
+      "lane": "cade.delegate.draft",
+      "hits": [
+        "deep-iteration"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inferred"
+    },
+    {
+      "raw_tags": [],
+      "tags": [],
+      "parent_tags": [
+        "adversarial"
+      ],
+      "goal": "Summarize findings",
+      "lane": "cade.delegate.research",
+      "hits": [
+        "adversarial"
+      ],
+      "root_class": "opus",
+      "reroute": "carve-out-inherited"
+    },
+    {
+      "raw_tags": [],
+      "tags": [],
+      "parent_tags": null,
+      "goal": "Add a test",
+      "lane": "cade.delegate.develop",
+      "hits": [],
+      "root_class": "opus",
+      "reroute": null
+    },
+    {
+      "raw_tags": [
+        "refutation"
+      ],
+      "tags": [
+        "refutation"
+      ],
+      "parent_tags": null,
+      "goal": "Check the claim",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null
+    }
+  ]
+}

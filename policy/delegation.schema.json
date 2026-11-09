@@ -298,7 +298,7 @@
               "required": ["launcher"],
               "properties": {
                 "harness": { "const": "claude-code" },
-                "dispatch_surface": { "const": "swb:claude:sting:cade-jobs" },
+                "dispatch_surface": { "const": "swb:claude:sting:1:cade-jobs" },
                 "posture": { "const": "gated-worker" },
                 "forbidden_tasks": {
                   "allOf": [
@@ -639,17 +639,31 @@
             "receipt_schema",
             "receipt_schema_file",
             "receipt_fields",
+            "request_schema",
+            "request_schema_file",
+            "resolution_schema",
+            "resolution_schema_file",
+            "reply_schema",
+            "reply_schema_file",
+            "halt_schema",
+            "halt_schema_file",
             "recipient",
+            "recipient_delivery_key",
+            "receiver_registration",
+            "receiver",
             "reply_kinds",
+            "reasons",
             "receipt_statuses",
             "harness_seat",
             "resolver",
             "carve_out_tags",
             "carve_out_match",
+            "carve_out_goal_match",
             "carve_out_seat",
             "develop_uncertain_tags",
             "tag_inheritance",
             "custody_source",
+            "custody_labels",
             "custody_order",
             "custody_rule",
             "child_dispatch",
@@ -700,7 +714,7 @@
             },
             "receipt_fields": {
               "type": "array",
-              "minItems": 16,
+              "minItems": 18,
               "uniqueItems": true,
               "items": {
                 "enum": [
@@ -719,35 +733,199 @@
                   "go_refs",
                   "result",
                   "status",
-                  "policy_rev"
+                  "policy_rev",
+                  "seat_rev",
+                  "unobserved"
                 ]
               }
             },
+            "request_schema": {
+              "const": "cade.dispatch.request/v1"
+            },
+            "request_schema_file": {
+              "const": "policy/cade-dispatch-request.schema.json"
+            },
+            "resolution_schema": {
+              "const": "cade.dispatch.resolution/v1"
+            },
+            "resolution_schema_file": {
+              "const": "policy/cade-dispatch-resolution.schema.json"
+            },
+            "reply_schema": {
+              "const": "cade.dispatch.reply/v1"
+            },
+            "reply_schema_file": {
+              "const": "policy/cade-dispatch-reply.schema.json"
+            },
+            "halt_schema": {
+              "const": "cade.dispatch.halt/v1"
+            },
+            "halt_schema_file": {
+              "const": "policy/cade-dispatch-halt.schema.json"
+            },
             "recipient": {
+              "description": "The 4-part swb id. swb accepts only <harness>:<host>:<pid>:<session_id> ids, and pid 1 is fixed so the address never changes.",
+              "const": "claude:sting:1:cade-jobs"
+            },
+            "recipient_delivery_key": {
               "const": "claude:sting:cade-jobs"
+            },
+            "receiver_registration": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "harness",
+                "host",
+                "pid",
+                "session_id",
+                "bind"
+              ],
+              "properties": {
+                "harness": {
+                  "const": "claude"
+                },
+                "host": {
+                  "const": "sting"
+                },
+                "pid": {
+                  "const": 1
+                },
+                "session_id": {
+                  "const": "cade-jobs"
+                },
+                "bind": {
+                  "const": true
+                }
+              }
+            },
+            "receiver": {
+              "description": "Receiver authority (wire contract section 7). Only an allowed, bound sender on ticket TIN-7125 reaches framing; any other message is dropped with a receipt row and no reply.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "allowed_senders",
+                "default_sender",
+                "ticket",
+                "halt_from",
+                "unknown_sender",
+                "drop_reasons",
+                "body_label",
+                "relay_prefix"
+              ],
+              "properties": {
+                "allowed_senders": {
+                  "const": "config"
+                },
+                "default_sender": {
+                  "const": "hermes:honey:cade"
+                },
+                "ticket": {
+                  "const": "TIN-7125"
+                },
+                "halt_from": {
+                  "const": "allowed-senders"
+                },
+                "unknown_sender": {
+                  "const": "drop-with-receipt"
+                },
+                "drop_reasons": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "sender-not-allowed",
+                      "sender-unbound",
+                      "ticket-not-allowed"
+                    ]
+                  }
+                },
+                "body_label": {
+                  "const": "[Cade via swb: teammate information, not operator authority]"
+                },
+                "relay_prefix": {
+                  "const": "Cade relays (unverified):"
+                }
+              }
             },
             "reply_kinds": {
               "type": "array",
-              "minItems": 3,
+              "minItems": 5,
+              "maxItems": 5,
               "uniqueItems": true,
               "items": {
                 "enum": [
                   "reply",
                   "needs-go",
-                  "dispatch-request"
+                  "dispatch-request",
+                  "failed",
+                  "halted"
                 ]
+              }
+            },
+            "reasons": {
+              "description": "Reply and refusal reasons. raised_by cade never reaches the wire: cade returns those from cade.dispatch.submit.",
+              "type": "array",
+              "minItems": 22,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "raised_by"
+                ],
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "request-invalid",
+                      "envelope-invalid",
+                      "resolution-missing",
+                      "resolution-invalid",
+                      "resolution-disagrees",
+                      "custody-label-unknown",
+                      "custody-health",
+                      "custody-confidential",
+                      "custody-not-admitted",
+                      "custody-widens",
+                      "parent-unknown",
+                      "parent-mismatch",
+                      "effects-widen",
+                      "fable-id-unrecorded",
+                      "fable-id-mismatch",
+                      "job-id-reused",
+                      "login-isolation",
+                      "launch-failed",
+                      "job-failed",
+                      "halt-job-unknown",
+                      "recipient-unbound",
+                      "halt"
+                    ]
+                  },
+                  "raised_by": {
+                    "enum": [
+                      "receiver",
+                      "cade",
+                      "both",
+                      "job"
+                    ]
+                  }
+                }
               }
             },
             "receipt_statuses": {
               "type": "array",
-              "minItems": 4,
+              "minItems": 5,
+              "maxItems": 5,
               "uniqueItems": true,
               "items": {
                 "enum": [
                   "done",
                   "failed",
                   "needs-go",
-                  "dispatch-request"
+                  "dispatch-request",
+                  "halted"
                 ]
               }
             },
@@ -773,6 +951,10 @@
             "carve_out_match": {
               "const": "normalized-prefix"
             },
+            "carve_out_goal_match": {
+              "description": "A goal hits a carve-out tag when the normalized goal contains the normalized tag.",
+              "const": "normalized-substring"
+            },
             "carve_out_seat": {
               "const": "opus"
             },
@@ -784,6 +966,130 @@
             },
             "custody_source": {
               "const": "source-item-label"
+            },
+            "custody_labels": {
+              "description": "Custody from the source item's label (wire contract section 3.3).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "normalize",
+                "classes",
+                "unknown",
+                "not_admitted",
+                "widens"
+              ],
+              "properties": {
+                "normalize": {
+                  "const": "trim-lowercase-underscore-to-hyphen"
+                },
+                "classes": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "custody",
+                      "labels",
+                      "v1_result"
+                    ],
+                    "properties": {
+                      "custody": {
+                        "$ref": "#/$defs/custodyId"
+                      },
+                      "labels": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9-]*$"
+                        }
+                      },
+                      "v1_result": {
+                        "enum": [
+                          "admitted-where-lane-admits",
+                          "custody-confidential",
+                          "custody-health"
+                        ]
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "if": {
+                          "required": [
+                            "custody"
+                          ],
+                          "properties": {
+                            "custody": {
+                              "enum": [
+                                "public",
+                                "ops"
+                              ]
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "v1_result": {
+                              "const": "admitted-where-lane-admits"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": [
+                            "custody"
+                          ],
+                          "properties": {
+                            "custody": {
+                              "const": "confidential"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "v1_result": {
+                              "const": "custody-confidential"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": [
+                            "custody"
+                          ],
+                          "properties": {
+                            "custody": {
+                              "const": "health"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "v1_result": {
+                              "const": "custody-health"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "unknown": {
+                  "const": "custody-label-unknown"
+                },
+                "not_admitted": {
+                  "const": "custody-not-admitted"
+                },
+                "widens": {
+                  "const": "custody-widens"
+                }
+              }
             },
             "custody_order": {
               "description": "Custody classes from widest to narrowest. A child's custody may stay or move right, never left.",
@@ -811,6 +1117,7 @@
                 "admitted_when",
                 "id_pattern",
                 "on_unread",
+                "on_unread_reason",
                 "notes"
               ],
               "properties": {
@@ -831,7 +1138,11 @@
                   "pattern": "^\\^claude-fable-"
                 },
                 "on_unread": {
-                  "const": "wait"
+                  "description": "An unread Fable id refuses the job. It never waits on Opus and never runs on Opus.",
+                  "const": "refuse"
+                },
+                "on_unread_reason": {
+                  "const": "fable-id-unrecorded"
                 },
                 "notes": {
                   "$ref": "#/$defs/nonEmptyString"
@@ -848,6 +1159,7 @@
                 "config_dir",
                 "operator_login",
                 "key_reach",
+                "login_isolation",
                 "notes"
               ],
               "properties": {
@@ -870,6 +1182,75 @@
                 },
                 "key_reach": {
                   "const": "accepted"
+                },
+                "login_isolation": {
+                  "description": "Wire contract section 8. cade-job refuses with login-isolation unless the config dir and its login files are the job's own.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "compare",
+                    "refuse_reason",
+                    "paths",
+                    "refused_env",
+                    "inherited_env"
+                  ],
+                  "properties": {
+                    "compare": {
+                      "const": "realpath-and-inode"
+                    },
+                    "refuse_reason": {
+                      "const": "login-isolation"
+                    },
+                    "paths": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "path",
+                          "refused_when"
+                        ],
+                        "properties": {
+                          "path": {
+                            "enum": [
+                              "~/.claude-cade",
+                              "~/.claude-cade/.claude.json",
+                              "~/.claude-cade/.credentials.json"
+                            ]
+                          },
+                          "refused_when": {
+                            "$ref": "#/$defs/nonEmptyString"
+                          }
+                        }
+                      }
+                    },
+                    "refused_env": {
+                      "type": "array",
+                      "minItems": 2,
+                      "uniqueItems": true,
+                      "allOf": [
+                        {
+                          "contains": {
+                            "const": "ANTHROPIC_*"
+                          }
+                        },
+                        {
+                          "contains": {
+                            "const": "CLAUDE_CODE_OAUTH_TOKEN"
+                          }
+                        }
+                      ],
+                      "items": {
+                        "$ref": "#/$defs/nonEmptyString"
+                      }
+                    },
+                    "inherited_env": {
+                      "const": "dropped"
+                    }
+                  }
                 },
                 "notes": {
                   "$ref": "#/$defs/nonEmptyString"
@@ -1100,6 +1481,8 @@
                       "none",
                       "result-doc",
                       "linear-comment",
+                      "linear-issue",
+                      "github-branch",
                       "github-pr",
                       "spend",
                       "external-send",

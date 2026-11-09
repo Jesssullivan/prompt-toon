@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "a100990e517270776259bf7b363aba2c8bd84ff88217d16c2a8ef888e1db9b91"
+      "sha256": "64d70365df65390a06c84e61ca9fc231c1fad1781946cd2ad5aecebdc56d7453"
     },
     "nix": {
       "enabled": true
@@ -44,20 +44,36 @@
   "name": "prompt-toon",
   "policy": [
     {
+      "file": "policy/cade-dispatch-halt.schema.json",
+      "sha256": "745d8dcf4682334e79ec69784f0fb642fe1cf2be79442bbe611fbef5a4128be9"
+    },
+    {
       "file": "policy/cade-dispatch-receipt.schema.json",
-      "sha256": "b75fa0195f85593c7d11bf5c1a456e0f539fb8f4f1439899111df7a40cf83ca5"
+      "sha256": "d5073c0a2b7c6c2196aba9bcb58606113f0f541c31136da0a4bd64065a0e5654"
+    },
+    {
+      "file": "policy/cade-dispatch-reply.schema.json",
+      "sha256": "165f54a25f3cea14b4c40f9af95c76e41b07bcb7cf18a55d91cecfc88bf664e7"
+    },
+    {
+      "file": "policy/cade-dispatch-request.schema.json",
+      "sha256": "81539be7cc502ef0b9bf3e35608c9e2f26b57fb90e0286564af90cc6cdefc901"
+    },
+    {
+      "file": "policy/cade-dispatch-resolution.schema.json",
+      "sha256": "0fce0a036575e6460cd4238fbaefa3a57108ee2da45a820bc6016a7a1922c685"
     },
     {
       "file": "policy/cade-dispatch.schema.json",
-      "sha256": "e326163d4b05045af43a1e77c67d0b9edc32c512631e25487ba69eeee4d22227"
+      "sha256": "b65ad385c601ef6055140a3e84019b5a91f326549ca3d08928d54ec4e18b0cd6"
     },
     {
       "file": "policy/delegation.json",
-      "sha256": "884476f5684f8545222311fe0b1792a67ea4d3864c8c3e9c4482296b54403fb5"
+      "sha256": "474c8deeeb16f79a07b74a8e3a0805560c53966600f13114bb6e071c4dc37108"
     },
     {
       "file": "policy/delegation.schema.json",
-      "sha256": "ee191c2bd5012e2f308ac5c8d29e4a926a39003da689a336c02c79235bec1e99"
+      "sha256": "828f4621547d700b36d2b129e1e041ce5f9319e507ff69743fa9558901ad2d18"
     },
     {
       "file": "policy/io.json",
@@ -85,7 +101,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "2105fc6976fd929a88c3990d0833d95208e1096a866afef0a798c3ac20cf168b"
+          "sha256": "eb6ad28222e5bae5eb9a34c74686b680d0bbad94ceba0e6705025e36108cc232"
         }
       ],
       "name": "mythos-delegation"

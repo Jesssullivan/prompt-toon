@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ DHALL_SOURCE_PATH = ROOT / "policy" / "dhall" / "delegation.dhall"
 SKILL_PATH = ROOT / ".agents" / "skills" / "mythos-delegation" / "SKILL.md"
 ENVELOPE_SCHEMA_PATH = ROOT / "policy" / "cade-dispatch.schema.json"
 RECEIPT_SCHEMA_PATH = ROOT / "policy" / "cade-dispatch-receipt.schema.json"
+DISPATCH_FIXTURES = ROOT / "tests" / "fixtures" / "cade-dispatch"
 
 FABLE_FORBIDDEN = {
     "adversarial-analysis",
@@ -177,6 +179,20 @@ DISPATCH_ROUTES = {
 DEVELOP_ROUTE = "cade.delegate.develop"
 ENVELOPE_SCHEMA_ID = "cade.dispatch/v1"
 RECEIPT_SCHEMA_ID = "cade.dispatch.receipt/v1"
+REQUEST_SCHEMA_ID = "cade.dispatch.request/v1"
+RESOLUTION_SCHEMA_ID = "cade.dispatch.resolution/v1"
+REPLY_SCHEMA_ID = "cade.dispatch.reply/v1"
+HALT_SCHEMA_ID = "cade.dispatch.halt/v1"
+# Wire contract contract-v1 (TIN-7125, 2026-11-09): every object has its own
+# schema file, and lab and cade validate against pinned copies of these.
+WIRE_SCHEMAS = {
+    ENVELOPE_SCHEMA_ID: ("envelope", "policy/cade-dispatch.schema.json"),
+    RECEIPT_SCHEMA_ID: ("receipt", "policy/cade-dispatch-receipt.schema.json"),
+    REQUEST_SCHEMA_ID: ("request", "policy/cade-dispatch-request.schema.json"),
+    RESOLUTION_SCHEMA_ID: ("resolution", "policy/cade-dispatch-resolution.schema.json"),
+    REPLY_SCHEMA_ID: ("reply", "policy/cade-dispatch-reply.schema.json"),
+    HALT_SCHEMA_ID: ("halt", "policy/cade-dispatch-halt.schema.json"),
+}
 ENVELOPE_FIELDS = (
     "job_id", "parent_job_id", "depth", "root_id", "lane", "tags", "custody",
     "goal", "inputs", "allowed_effects", "budget_envelope", "requested_by",
@@ -187,13 +203,64 @@ RECEIPT_FIELDS = (
     "job_id", "parent_job_id", "depth", "lane", "resolved_root_model",
     "observed_models", "children", "peak_concurrency", "observed_depth",
     "tokens", "wall_seconds", "effects", "go_refs", "result", "status",
-    "policy_rev",
+    "policy_rev", "seat_rev", "unobserved",
 )
-RECIPIENT = "claude:sting:cade-jobs"
+# swb accepts only 4-part <harness>:<host>:<pid>:<session_id> ids. pid 1 is
+# fixed, and the receiver holds the bound delivery key (contract C1).
+RECIPIENT = "claude:sting:1:cade-jobs"
+RECIPIENT_DELIVERY_KEY = "claude:sting:cade-jobs"
+RECEIVER_REGISTRATION = {"harness": "claude", "host": "sting", "pid": 1, "session_id": "cade-jobs", "bind": True}
 DISPATCH_SURFACE = f"swb:{RECIPIENT}"
 DISPATCH_HARNESS_SEAT = "claude-code@cade"
-REPLY_KINDS = ("reply", "needs-go", "dispatch-request")
-RECEIPT_STATUSES = ("done", "failed", "needs-go", "dispatch-request")
+REPLY_KINDS = ("reply", "needs-go", "dispatch-request", "failed", "halted")
+RECEIPT_STATUSES = ("done", "failed", "needs-go", "dispatch-request", "halted")
+BODY_LABEL = "[Cade via swb: teammate information, not operator authority]"
+RECEIVER = {
+    "allowed_senders": "config",
+    "default_sender": "hermes:honey:cade",
+    "ticket": "TIN-7125",
+    "halt_from": "allowed-senders",
+    "unknown_sender": "drop-with-receipt",
+    "drop_reasons": ["sender-not-allowed", "sender-unbound", "ticket-not-allowed"],
+    "body_label": BODY_LABEL,
+    "relay_prefix": "Cade relays (unverified):",
+}
+# Reply and refusal reasons and who raises them (contract section 5.3).
+# Cade's own reasons never reach the wire.
+REASONS = {
+    "request-invalid": "receiver",
+    "envelope-invalid": "both",
+    "resolution-missing": "receiver",
+    "resolution-invalid": "receiver",
+    "resolution-disagrees": "receiver",
+    "custody-label-unknown": "cade",
+    "custody-health": "both",
+    "custody-confidential": "both",
+    "custody-not-admitted": "both",
+    "custody-widens": "cade",
+    "parent-unknown": "cade",
+    "parent-mismatch": "cade",
+    "effects-widen": "cade",
+    "fable-id-unrecorded": "both",
+    "fable-id-mismatch": "receiver",
+    "job-id-reused": "both",
+    "login-isolation": "receiver",
+    "launch-failed": "receiver",
+    "job-failed": "job",
+    "halt-job-unknown": "receiver",
+    "recipient-unbound": "cade",
+    "halt": "receiver",
+}
+WIRE_REASONS = [r for r, by in REASONS.items() if by != "cade"]
+# Custody from the source item's label (contract section 3.3).
+CUSTODY_LABEL_CLASSES = {
+    "public": (["public", "hosted-ok"], "admitted-where-lane-admits"),
+    "ops": (["ops", "private"], "admitted-where-lane-admits"),
+    "confidential": (["confidential", "client", "client-raw"], "custody-confidential"),
+    "health": (["health"], "custody-health"),
+}
+LOGIN_ISOLATION_PATHS = ("~/.claude-cade", "~/.claude-cade/.claude.json", "~/.claude-cade/.credentials.json")
+OPUS_ID = "claude-opus-5-5"
 CARVE_OUT_TAGS = ("adversarial", "red-team", "purple-team", "deep-iteration")
 CUSTODY_ORDER = ("public", "ops", "confidential", "health")
 # Who runs each unit inside a job. Fable never runs one and Kimi never runs
@@ -206,7 +273,7 @@ UNIT_SEATS = {
     "carve-out": ["opus"],
 }
 OPUS_ONLY_UNITS = {"code", "gate", "carve-out"}
-ENVELOPE_EFFECTS = {"none", "result-doc", "linear-comment", "github-pr"}
+ENVELOPE_EFFECTS = {"none", "result-doc", "linear-comment", "linear-issue", "github-branch", "github-pr"}
 GO_EFFECTS = {"spend", "external-send", "host-act", "merge", "credential-change"}
 BROKER_MAY = {"route", "author-envelope"}
 BROKER_WRITES = {"lane", "tags", "goal", "inputs", "allowed_effects", "budget_envelope"}
@@ -221,6 +288,7 @@ JOB_SEAT = {
 CLAUDE_CODE_CADE_FORBIDDEN = HARNESS_FORBIDDEN | {"review-own-pr", "credential-minting"}
 # Key fragments that would put a cap on a job. Dispatch adds accounting and
 # visibility, never containment ("Harnesses run unconstrained").
+NEWLINE_GUARD = '{"pattern": "\\\\n"}'
 CAP_KEY_RE = re.compile(r"(^max|_max$|^min_|cap$|_cap_|limit|ceiling|quota)")
 DISPATCH_TABLE_HEADER = ["Dispatch route", "Root persona", "Root seat", "Custody"]
 DISPATCH_ROUTE_RE = re.compile(r"cade\.delegate(?:\.[a-z0-9*-]+)+")
@@ -359,6 +427,7 @@ RULE_SENTENCES = {
         "its lane and tags.",
         "cade.delegate.develop gets an Opus root.",
         "Any carve-out tag on any lane reroutes the root to Opus.",
+        "A goal that contains a carve-out tag reroutes the root to Opus too.",
         "Uncertain or missing tags on cade.delegate.develop resolve to Opus.",
         "A lane that does not admit the job's custody gets no root, and the job "
         "does not run.",
@@ -383,7 +452,8 @@ RULE_SENTENCES = {
         "The Fable model id is a config value read from the cade@xoxd.ai account "
         "after Jess's attended login.",
         "This policy never carries it.",
-        "A Fable-root job waits until the id is read.",
+        "A Fable-root job is refused with fable-id-unrecorded until the id is read, "
+        "and it never runs on Opus instead.",
     ),
     "cade-never-reviews-own-pr": (
         "A Cade job never reviews a pull request that Cade opened.",
@@ -444,6 +514,7 @@ SKILL_SENTENCES = (
     "Nothing caps subagent count, depth or cost.",
     "Jess's own `~/.claude` login is never used for a job.",
     "The policy never names it.",
+    "It never runs on Opus instead.",
 )
 
 # Load-bearing sentences in the policy's own prose, keyed by (collection,
@@ -1248,6 +1319,148 @@ def carve_out_hits(policy, tags):
     return hits
 
 
+def goal_carve_out_hits(policy, goal):
+    """The carve-out tags a goal names: the normalized goal contains the
+    normalized tag (normalized-substring, contract section 6.1)."""
+    dispatch = policy.get("cade", {}).get("dispatch", {})
+    norm = normalize_tag(goal if isinstance(goal, str) else "")
+    return {
+        raw
+        for raw in dispatch.get("carve_out_tags", [])
+        if normalize_tag(raw) and normalize_tag(raw) in norm
+    }
+
+
+def slug_tag(raw):
+    """Cade's slug for a raw tag Kimi wrote: lowercase, every run outside a-z
+    and 0-9 becomes one hyphen, hyphens trimmed. An empty result is dropped."""
+    slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
+    return slug or None
+
+
+def stamp_tags(policy, raw_tags, goal, parent_tags=()):
+    """The tags Cade stamps on an envelope: the slugged raw tags, then the
+    canonical carve-out tag for every hit and every inherited carve-out tag
+    that is not already present."""
+    tags = []
+    for raw in raw_tags:
+        slug = slug_tag(raw)
+        if slug and slug not in tags:
+            tags.append(slug)
+    hits = carve_out_hits(policy, tags) | goal_carve_out_hits(policy, goal) | carve_out_hits(policy, list(parent_tags))
+    for canonical in policy.get("cade", {}).get("dispatch", {}).get("carve_out_tags", []):
+        if canonical in hits and canonical not in tags:
+            tags.append(canonical)
+    return tags
+
+
+class Refusal(Exception):
+    """A refusal with a contract reason id."""
+
+    def __init__(self, reason, detail=""):
+        super().__init__(reason)
+        self.reason = reason
+        self.detail = detail
+
+
+TAG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+
+
+def lane_custody_reason(policy, lane_route, custody):
+    """None when the lane admits the custody class, else the reason."""
+    dispatch = policy.get("cade", {}).get("dispatch", {})
+    classes = {c.get("custody"): c for c in dispatch.get("custody_labels", {}).get("classes", [])}
+    order = dispatch.get("custody_order", [])
+    if custody not in order or custody not in classes:
+        return "envelope-invalid"
+    result = classes[custody].get("v1_result")
+    if result != "admitted-where-lane-admits":
+        return result if result in REASONS else "custody-label-unknown"
+    lanes = {l.get("route"): l for l in dispatch.get("lanes", [])}
+    lane = lanes.get(lane_route)
+    if lane is None:
+        return "envelope-invalid"
+    if custody not in lane.get("custody", []):
+        return dispatch.get("custody_labels", {}).get("not_admitted", "custody-not-admitted")
+    return None
+
+
+def custody_from_label(policy, label):
+    """Cade's custody class for a source label (contract section 3.3).
+    Returns (custody, reason): one of them is None."""
+    labels = policy.get("cade", {}).get("dispatch", {}).get("custody_labels", {})
+    unknown = labels.get("unknown", "custody-label-unknown")
+    if labels.get("normalize") != "trim-lowercase-underscore-to-hyphen" or not isinstance(label, str):
+        return None, unknown
+    norm = label.strip().lower().replace("_", "-")
+    for klass in labels.get("classes", []):
+        if norm in klass.get("labels", []):
+            result = klass.get("v1_result")
+            if result == "admitted-where-lane-admits":
+                return klass.get("custody"), None
+            return None, result if result in REASONS else unknown
+    return None, unknown
+
+
+def admit_custody(policy, label, lane_route, envelope_custody=None, parent_custody=None):
+    """Cade's custody admission: the label class, then the lane, then the
+    envelope and the parent may only keep or narrow it."""
+    custody, reason = custody_from_label(policy, label)
+    if reason:
+        raise Refusal(reason)
+    reason = lane_custody_reason(policy, lane_route, custody)
+    if reason:
+        raise Refusal(reason)
+    order = list(policy.get("cade", {}).get("dispatch", {}).get("custody_order", []))
+    widens = policy.get("cade", {}).get("dispatch", {}).get("custody_labels", {}).get("widens", "custody-widens")
+    claimed = custody if envelope_custody is None else envelope_custody
+    if claimed not in order or order.index(claimed) < order.index(custody):
+        raise Refusal(widens)
+    if parent_custody is not None and (parent_custody not in order or order.index(claimed) < order.index(parent_custody)):
+        raise Refusal(widens)
+    return claimed
+
+
+def resolve_root_class(policy, envelope, inherited=()):
+    """Contract section 6.1: (root_class, reroute, carve_out_hits). Raises
+    Refusal for an unknown lane, malformed tags, custody the lane does not
+    admit or a weakened policy. Fable is never the fallback."""
+    dispatch = policy.get("cade", {}).get("dispatch", {})
+    lanes = {l.get("route"): l for l in dispatch.get("lanes", [])}
+    lane = lanes.get(envelope.get("lane"))
+    if lane is None:
+        raise Refusal("envelope-invalid", "unknown lane")
+    reason = lane_custody_reason(policy, lane.get("route"), envelope.get("custody"))
+    if reason:
+        raise Refusal(reason)
+    tags = envelope.get("tags")
+    if not isinstance(tags, list) or not all(isinstance(t, str) and TAG_RE.fullmatch(t) for t in tags):
+        raise Refusal("envelope-invalid", "malformed tags")
+    if dispatch.get("carve_out_seat") != "opus":
+        raise Refusal("policy-invalid", "carve_out_seat is not opus")
+    tag_hits = carve_out_hits(policy, tags)
+    inherited_hits = carve_out_hits(policy, list(inherited))
+    goal_hits = goal_carve_out_hits(policy, envelope.get("goal"))
+    hits = sorted(tag_hits | inherited_hits | goal_hits)
+    weakened = (
+        dispatch.get("carve_out_match") != "normalized-prefix"
+        or dispatch.get("carve_out_goal_match") != "normalized-substring"
+    )
+    if lane.get("root_seat") == "opus":
+        if lane.get("parent_persona") != "critical":
+            raise Refusal("policy-invalid", "an opus root off the critical persona")
+        return "opus", None, hits
+    if lane.get("root_seat") != "fable" or lane.get("parent_persona") != "fable-orchestrator":
+        raise Refusal("policy-invalid", "a fable lane off fable-orchestrator")
+    if tag_hits or weakened:
+        return "opus", "carve-out", hits
+    if inherited_hits:
+        return "opus", "carve-out-inherited", hits
+    if goal_hits:
+        return "opus", "carve-out-inferred", hits
+    return "fable", None, hits
+
+
 def admit_fable_id(policy, read_id):
     """A Fable id read from the account, or None when it fails the pattern."""
     pattern = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {}).get("id_pattern")
@@ -1256,39 +1469,152 @@ def admit_fable_id(policy, read_id):
     return read_id
 
 
-def resolve_root(policy, envelope, read_fable_id=None):
-    """Reference root resolver for a cade.dispatch/v1 envelope.
+def resolve_root(policy, envelope, read_fable_id=None, inherited=()):
+    """Reference root resolver: (seat, model_id). Raises Refusal when the job
+    gets no root. An unread Fable id refuses with fable-id-unrecorded; it
+    never runs on Opus instead (contract C9)."""
+    root_class, _, _ = resolve_root_class(policy, envelope, inherited)
+    seats = {s.get("id"): s for s in policy.get("seats", [])}
+    if root_class == "opus":
+        return "opus", seats.get("opus", {}).get("model_id")
+    cfg = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {})
+    fable_id = admit_fable_id(policy, read_fable_id)
+    if fable_id is None:
+        if cfg.get("on_unread") != "refuse":
+            raise Refusal("policy-invalid", "fable_model_id.on_unread is not refuse")
+        raise Refusal(cfg.get("on_unread_reason", "fable-id-unrecorded"))
+    return "fable", fable_id
 
-    Returns (seat, model_id) for the job root. A Fable root whose id has not
-    been read from the account returns ("fable", None): the job waits. A job
-    whose lane is unknown, whose custody the lane does not admit or whose tags
-    are malformed off the develop lane gets None: no root, the job does not
-    run. Anything uncertain resolves toward Opus, never toward Fable.
-    """
+
+def sha256_text(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def dedupe_key(envelope):
+    return sha256_text(str(envelope.get("root_id")) + "\n" + sha256_text(str(envelope.get("goal"))))
+
+
+def child_job_id(parent_job_id, n, goal, depth):
+    """Contract section 3.1: c<depth>- plus the first 20 hex digits of
+    sha256(parent_job_id + LF + n + LF + goal)."""
+    return f"c{depth}-" + sha256_text(f"{parent_job_id}\n{n}\n{goal}")[:20]
+
+
+def child_policy(policy, root_class, hits):
+    """The child_policy block of a resolution, read from the policy."""
     dispatch = policy.get("cade", {}).get("dispatch", {})
     seats = {s.get("id"): s for s in policy.get("seats", [])}
-    lanes = {l.get("route"): l for l in dispatch.get("lanes", [])}
-    lane = lanes.get(envelope.get("lane"))
-    if lane is None or envelope.get("custody") not in lane.get("custody", []):
-        return None
-    carve_seat = dispatch.get("carve_out_seat")
-    if carve_seat != "opus":
-        return None
-    opus = ("opus", seats.get("opus", {}).get("model_id"))
-    tags = envelope.get("tags")
-    tags_ok = isinstance(tags, list) and all(isinstance(tag, str) and tag.strip() for tag in tags)
-    if lane.get("route") == DEVELOP_ROUTE and dispatch.get("develop_uncertain_tags") == "opus":
-        if not tags_ok:
-            return opus
-    if lane.get("root_seat") == "opus":
-        return opus
-    if not tags_ok:
-        return None
-    if dispatch.get("carve_out_match") != "normalized-prefix" or carve_out_hits(policy, tags):
-        return opus
-    if lane.get("root_seat") == "fable" and lane.get("parent_persona") == "fable-orchestrator":
-        return ("fable", admit_fable_id(policy, read_fable_id))
-    return None
+    personas = {p.get("id"): p for p in policy.get("personas", [])}
+    model = lambda sid: seats.get(sid, {}).get("model_id")
+    units = {u.get("kind"): [model(s) for s in u.get("seats", [])] for u in dispatch.get("units", [])}
+    units["unknown"] = [model(dispatch.get("unknown_unit"))]
+    forbidden = personas.get("fable-orchestrator", {}).get("forbidden_tasks", [])
+    return {
+        "orchestrator": root_class,
+        "fable_runs_units": False,
+        "fable_forbidden": [t for t in forbidden if t in FABLE_FORBIDDEN],
+        "units": units,
+        "carve_out_tags": list(hits),
+        "custody_rule": dispatch.get("custody_rule"),
+        "effects_rule": "narrow-only",
+        "child_jobs": "dispatch-request",
+        "on_no_seat": "wait",
+        "provider_fallback": "none",
+        "accounting": dispatch.get("accounting", {}).get("budget_envelope"),
+    }
+
+
+def build_resolution(policy, envelope, source_label, read_fable_id, inherited=(), policy_rev=None, resolved_at=None):
+    """Cade's resolution for an admitted envelope (contract section 4.4)."""
+    admit_custody(policy, source_label, envelope.get("lane"), envelope.get("custody"))
+    root_class, reroute, hits = resolve_root_class(policy, envelope, inherited)
+    _, model = resolve_root(policy, envelope, read_fable_id, inherited)
+    return {
+        "schema": RESOLUTION_SCHEMA_ID,
+        "root_class": root_class,
+        "root_model": model,
+        "reroute": reroute,
+        "carve_out_hits": hits,
+        "custody": envelope.get("custody"),
+        "source_label": source_label,
+        "child_policy": child_policy(policy, root_class, hits),
+        "policy_rev": policy_rev or "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+        "dedupe_key": dedupe_key(envelope),
+        "resolved_at": resolved_at or envelope.get("created_at"),
+    }
+
+
+def envelope_semantic_violations(envelope):
+    """Envelope rules JSON Schema cannot state (contract sections 3.1, 4.3)."""
+    errors = []
+    if envelope.get("depth") == 0 and envelope.get("root_id") != envelope.get("job_id"):
+        errors.append("a root job's root_id is its own job_id")
+    goal = envelope.get("goal")
+    if isinstance(goal, str) and len(goal.encode("utf-8")) > 6000:
+        errors.append("goal is over 6000 UTF-8 bytes")
+    return errors
+
+
+def resolution_semantic_violations(policy, envelope, resolution):
+    """Resolution rules beyond its schema: resolution-invalid on failure."""
+    errors = []
+    if resolution.get("custody") != envelope.get("custody"):
+        errors.append("resolution custody differs from the envelope's")
+    hits = resolution.get("carve_out_hits")
+    if hits != sorted(set(hits or [])):
+        errors.append("carve_out_hits is not sorted and unique")
+    if resolution.get("child_policy", {}).get("carve_out_tags") != hits:
+        errors.append("child_policy.carve_out_tags differs from carve_out_hits")
+    if resolution.get("dedupe_key") != dedupe_key(envelope):
+        errors.append("dedupe_key is not sha256(root_id + LF + sha256(goal))")
+    label = resolution.get("source_label")
+    if isinstance(label, str) and len(label.encode("utf-8")) > 64:
+        errors.append("source_label is over 64 bytes")
+    want = child_policy(policy, resolution.get("root_class"), hits or [])
+    got = resolution.get("child_policy", {})
+    if sorted(got.get("fable_forbidden") or []) != sorted(want["fable_forbidden"]):
+        errors.append("child_policy.fable_forbidden differs from the policy")
+    for key in ("units", "custody_rule", "accounting"):
+        if got.get(key) != want[key]:
+            errors.append(f"child_policy.{key} differs from the policy")
+    return errors
+
+
+def receipt_semantic_violations(receipt):
+    """Receipt rules beyond its schema (contract section 5.2)."""
+    errors = []
+    tokens = receipt.get("tokens")
+    if isinstance(tokens, dict):
+        parts = [tokens.get(k) for k in ("input", "output", "cache_read", "cache_write")]
+        if all(isinstance(v, int) for v in parts) and sum(parts) != tokens.get("total"):
+            errors.append("tokens.total is not the sum of the other four")
+    if receipt.get("children") == 0 and receipt.get("observed_depth") != 0:
+        errors.append("a job with no subagents reports observed_depth 0")
+    for key in ("observed_depth", "tokens"):
+        if receipt.get(key) is None and key not in receipt.get("unobserved", {}):
+            errors.append(f"null {key} names no reason in unobserved")
+    return errors
+
+
+def reply_semantic_violations(reply):
+    """Reply rules beyond its schema (contract section 5.3)."""
+    errors = []
+    receipt = reply.get("receipt")
+    if isinstance(receipt, dict):
+        if receipt.get("job_id") != reply.get("job_id"):
+            errors.append("receipt.job_id differs from job_id")
+        errors.extend(receipt_semantic_violations(receipt))
+    if reply.get("kind") == "dispatch-request":
+        child = reply.get("envelope", {})
+        if child.get("parent_job_id") != reply.get("job_id"):
+            errors.append("the child does not name this job as its parent")
+        if isinstance(receipt, dict) and child.get("depth") != receipt.get("depth", 0) + 1:
+            errors.append("the child's depth is not the parent's plus one")
+        errors.extend(envelope_semantic_violations(child))
+    if reply.get("kind") == "halted" and isinstance(receipt, dict):
+        if reply.get("job_id") not in reply.get("halted_jobs", []):
+            errors.append("a halted job's own reply lists it in halted_jobs")
+    return errors
 
 
 def child_envelope_violations(policy, parent, child):
@@ -1312,6 +1638,173 @@ def child_envelope_violations(policy, parent, child):
     if pc not in order or cc not in order or order.index(cc) < order.index(pc):
         errors.append(f"child custody {cc!r} widens the parent's {pc!r}")
     return errors
+
+
+def load_wire_schemas():
+    return {sid: json.loads((ROOT / path).read_text(encoding="utf-8")) for sid, (_, path) in WIRE_SCHEMAS.items()}
+
+
+def parse_body(policy, body):
+    """Contract section 4.1 framing: strip exactly the label line, refuse a
+    relay line, then one JSON object with nothing after it and no duplicate
+    key. Raises Refusal("request-invalid")."""
+    receiver = policy.get("cade", {}).get("dispatch", {}).get("receiver", {})
+    label = receiver.get("body_label")
+    if not label:
+        raise Refusal("request-invalid", "no body label in the policy")
+    first, sep, rest = body.partition("\n")
+    if sep and first == label:
+        body = rest
+    if body.startswith(receiver.get("relay_prefix") or "\0"):
+        raise Refusal("request-invalid", "a dispatch or halt never relays")
+    def no_constant(name):
+        raise ValueError(f"{name} is not JSON")
+
+    try:
+        value = json.loads(body, object_pairs_hook=reject_duplicate_keys, parse_constant=no_constant)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise Refusal("request-invalid", f"body is not one JSON object: {exc}")
+    if not isinstance(value, dict):
+        raise Refusal("request-invalid", "body is not a JSON object")
+    return value
+
+
+def parse_sender(sender):
+    """(harness, host, pid, session_id) for a 4-part swb id, else None."""
+    parts = sender.split(":") if isinstance(sender, str) else []
+    if len(parts) != 4 or not all(parts) or not parts[2].isdigit():
+        return None
+    return tuple(parts)
+
+
+def wire_errors(instance, schema):
+    return structural_schema_violations(instance, schema)
+
+
+def receiver_decide(policy, schemas, message, context):
+    """Reference receiver (contract section 7), steps 1 to 6. Returns a
+    decision dict: drop with a reason, reply failed with a reason, halt with
+    the sessions stopped, or launch with the model passed to claude --model.
+    The first failure decides."""
+    receiver = policy.get("cade", {}).get("dispatch", {}).get("receiver", {})
+    drops = receiver.get("drop_reasons", [])
+    parsed = parse_sender(message.get("from"))
+    allowed = {e.get("key"): e for e in context.get("allowed_senders", [])}
+    key = f"{parsed[0]}:{parsed[1]}:{parsed[3]}" if parsed else None
+    if receiver.get("allowed_senders") != "config" or key not in allowed:
+        return {"action": "drop", "reason": drops[0] if drops else "sender-not-allowed"}
+    if allowed[key].get("requireBound", True) and context.get("peers", {}).get(key) is not True:
+        return {"action": "drop", "reason": drops[1] if len(drops) > 1 else "sender-unbound"}
+    if message.get("ticket") != receiver.get("ticket"):
+        return {"action": "drop", "reason": drops[2] if len(drops) > 2 else "ticket-not-allowed"}
+    try:
+        body = parse_body(policy, message.get("body", ""))
+        kind = body.get("schema")
+        if kind == HALT_SCHEMA_ID:
+            if wire_errors(body, schemas[HALT_SCHEMA_ID]):
+                raise Refusal("request-invalid", "halt fails its schema")
+            if receiver.get("halt_from") != "allowed-senders":
+                raise Refusal("request-invalid", "halt_from is not allowed-senders")
+            ours = [
+                s["job_id"]
+                for s in context.get("sessions", [])
+                if s.get("started_by") == "cade-job" and s.get("name") == f"job-{s.get('job_id')}"
+            ]
+            if body["job_id"] == "all":
+                return {"action": "halt", "jobs": ours}
+            if body["job_id"] not in ours:
+                raise Refusal("halt-job-unknown")
+            return {"action": "halt", "jobs": [body["job_id"]]}
+        if kind != REQUEST_SCHEMA_ID:
+            raise Refusal("request-invalid", "unknown schema")
+        if body.get("kind") != "dispatch" or set(body) - {"schema", "kind", "envelope", "resolution"}:
+            raise Refusal("request-invalid", "unknown kind or field")
+        envelope = body.get("envelope")
+        if not isinstance(envelope, dict) or wire_errors(envelope, schemas[ENVELOPE_SCHEMA_ID]):
+            raise Refusal("envelope-invalid")
+        if envelope_semantic_violations(envelope):
+            raise Refusal("envelope-invalid")
+        if "resolution" not in body:
+            raise Refusal("resolution-missing")
+        resolution = body["resolution"]
+        if not isinstance(resolution, dict) or wire_errors(resolution, schemas[RESOLUTION_SCHEMA_ID]):
+            raise Refusal("resolution-invalid")
+        if resolution_semantic_violations(policy, envelope, resolution):
+            raise Refusal("resolution-invalid")
+        reason = lane_custody_reason(policy, envelope.get("lane"), envelope.get("custody"))
+        if reason:
+            raise Refusal(reason)
+        root_class, _, hits = resolve_root_class(policy, envelope)
+        if root_class != resolution.get("root_class") or set(hits) != set(resolution.get("carve_out_hits", [])):
+            raise Refusal("resolution-disagrees")
+        if root_class == "opus" and resolution.get("root_model") != OPUS_ID:
+            raise Refusal("resolution-disagrees")
+        if root_class == "fable":
+            recorded = admit_fable_id(policy, context.get("recorded_fable_id"))
+            if recorded is None:
+                raise Refusal("fable-id-unrecorded")
+            if resolution.get("root_model") != recorded:
+                raise Refusal("fable-id-mismatch")
+        if envelope["job_id"] in context.get("job_records", []):
+            raise Refusal("job-id-reused")
+        if context.get("login_isolated") is not True:
+            raise Refusal("login-isolation")
+        return {"action": "launch", "model": resolution["root_model"]}
+    except Refusal as refusal:
+        return {"action": "reply", "kind": "failed", "reason": refusal.reason}
+
+
+def login_isolation_violations(home):
+    """Contract section 8, read from a real HOME tree. Every path compares by
+    real path, and files also by (st_dev, st_ino), which catches a hard
+    link."""
+    errors = []
+    home = Path(home)
+    cade = home / ".claude-cade"
+    operator_dir = Path(os.path.realpath(home / ".claude"))
+    operator_json = home / ".claude.json"
+
+    def inside(path, root):
+        real = Path(os.path.realpath(path))
+        return real == root or root in real.parents
+
+    def same_inode(a, b):
+        try:
+            sa, sb = os.stat(a), os.stat(b)
+        except OSError:
+            return False
+        return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+
+    if not cade.exists() or cade.is_symlink() or not cade.is_dir():
+        return ["~/.claude-cade is missing or a symlink"]
+    if inside(cade, operator_dir):
+        errors.append("~/.claude-cade resolves to or inside ~/.claude")
+    cade_json = cade / ".claude.json"
+    if os.path.lexists(cade_json):
+        if Path(os.path.realpath(cade_json)) == Path(os.path.realpath(operator_json)):
+            errors.append("~/.claude-cade/.claude.json is the operator's ~/.claude.json")
+        if inside(cade_json, operator_dir):
+            errors.append("~/.claude-cade/.claude.json resolves inside ~/.claude")
+        if same_inode(cade_json, operator_json):
+            errors.append("~/.claude-cade/.claude.json is a hard link to ~/.claude.json")
+    creds = cade / ".credentials.json"
+    if os.path.lexists(creds):
+        if inside(creds, operator_dir):
+            errors.append("~/.claude-cade/.credentials.json resolves inside ~/.claude")
+        if same_inode(creds, home / ".claude" / ".credentials.json"):
+            errors.append("~/.claude-cade/.credentials.json is a hard link to the operator's")
+    return errors
+
+
+FABLE_PLACEHOLDER = "@FABLE_ID@"
+# A Fable-class id built at test time. It is a shape, not a real id: real ids
+# are read from the account and never land in source, policy or fixtures.
+TEST_FABLE_ID = "claude-fable-" + "9-9"
+
+
+def load_fixture(name):
+    text = (DISPATCH_FIXTURES / name).read_text(encoding="utf-8")
+    return load_json_strict(text.replace(FABLE_PLACEHOLDER, TEST_FABLE_ID))
 
 
 def walk_keys(node):
@@ -1366,7 +1859,8 @@ def fable_id_violations(policy):
         "source": "account",
         "account": JOB_SEAT["account"],
         "admitted_when": "read-from-account-after-login",
-        "on_unread": "wait",
+        "on_unread": "refuse",
+        "on_unread_reason": "fable-id-unrecorded",
     }
     for key, value in want.items():
         if cfg.get(key) != value:
@@ -1438,9 +1932,11 @@ def dispatch_violations(policy):
         "receipt_schema": RECEIPT_SCHEMA_ID,
         "receipt_schema_file": "policy/cade-dispatch-receipt.schema.json",
         "recipient": RECIPIENT,
+        "recipient_delivery_key": RECIPIENT_DELIVERY_KEY,
         "harness_seat": DISPATCH_HARNESS_SEAT,
         "resolver": "fixed-resolver-reads-this-policy",
         "carve_out_match": "normalized-prefix",
+        "carve_out_goal_match": "normalized-substring",
         "carve_out_seat": "opus",
         "develop_uncertain_tags": "opus",
         "tag_inheritance": "carve-out-tags-pass-to-every-child",
@@ -1449,9 +1945,45 @@ def dispatch_violations(policy):
         "child_dispatch": "dispatch-request-through-cade",
         "unknown_unit": "opus",
     }
+    for sid, (name, path) in WIRE_SCHEMAS.items():
+        scalars[f"{name}_schema"] = sid
+        scalars[f"{name}_schema_file"] = path
     for key, value in scalars.items():
         if dispatch.get(key) != value:
             errors.append(f"cade.dispatch.{key} is {dispatch.get(key)!r}, want {value!r}")
+    if dispatch.get("receiver_registration") != RECEIVER_REGISTRATION:
+        errors.append(f"cade.dispatch.receiver_registration must be {RECEIVER_REGISTRATION}")
+    reg = dispatch.get("receiver_registration", {})
+    if f"{reg.get('harness')}:{reg.get('host')}:{reg.get('pid')}:{reg.get('session_id')}" != dispatch.get("recipient"):
+        errors.append("the receiver registration does not name the recipient")
+    if f"{reg.get('harness')}:{reg.get('host')}:{reg.get('session_id')}" != dispatch.get("recipient_delivery_key"):
+        errors.append("the delivery key is not the recipient without its pid")
+    if parse_sender(dispatch.get("recipient")) is None:
+        errors.append("the recipient is not a 4-part swb id")
+    if dispatch.get("receiver") != RECEIVER:
+        errors.append(f"cade.dispatch.receiver is {dispatch.get('receiver')!r}, want {RECEIVER!r}")
+    reasons = {r.get("id"): r.get("raised_by") for r in dispatch.get("reasons", [])}
+    if reasons != REASONS or len(dispatch.get("reasons", [])) != len(REASONS):
+        errors.append(f"cade.dispatch.reasons drifted from {sorted(REASONS)}")
+    labels = dispatch.get("custody_labels", {})
+    classes = {
+        c.get("custody"): (c.get("labels"), c.get("v1_result")) for c in labels.get("classes", [])
+    }
+    if classes != CUSTODY_LABEL_CLASSES or len(labels.get("classes", [])) != len(CUSTODY_LABEL_CLASSES):
+        errors.append(f"cade.dispatch.custody_labels.classes drifted from {CUSTODY_LABEL_CLASSES}")
+    for key, value in {
+        "normalize": "trim-lowercase-underscore-to-hyphen",
+        "unknown": "custody-label-unknown",
+        "not_admitted": "custody-not-admitted",
+        "widens": "custody-widens",
+    }.items():
+        if labels.get(key) != value:
+            errors.append(f"cade.dispatch.custody_labels.{key} must be {value!r}")
+    seen_labels = [label for c in labels.get("classes", []) for label in c.get("labels", [])]
+    if len(seen_labels) != len(set(seen_labels)):
+        errors.append("a source label maps to two custody classes")
+    if "medical" in seen_labels:
+        errors.append("medical is not a v1 label: it refuses as custody-label-unknown")
     lists = {
         "envelope_fields": list(ENVELOPE_FIELDS),
         "receipt_fields": list(RECEIPT_FIELDS),
@@ -1546,47 +2078,121 @@ def dispatch_violations(policy):
             errors.append(f"job_seat.{key} is {job_seat.get(key)!r}, want {value!r}")
     if job_seat.get("config_dir") in ("$HOME/.claude", "~/.claude"):
         errors.append("a job never uses Jess's own ~/.claude login")
+    isolation = job_seat.get("login_isolation", {})
+    if isolation.get("compare") != "realpath-and-inode" or isolation.get("refuse_reason") != "login-isolation":
+        errors.append("job_seat.login_isolation compares by real path and inode and refuses login-isolation")
+    if tuple(p.get("path") for p in isolation.get("paths", [])) != LOGIN_ISOLATION_PATHS:
+        errors.append(f"job_seat.login_isolation must check {LOGIN_ISOLATION_PATHS}")
+    if not all((p.get("refused_when") or "").strip() for p in isolation.get("paths", [])):
+        errors.append("every login-isolation path says when it is refused")
+    if {"ANTHROPIC_*", "CLAUDE_CODE_OAUTH_TOKEN"} - set(isolation.get("refused_env", [])):
+        errors.append("cade-job refuses an inherited ANTHROPIC_* or CLAUDE_CODE_OAUTH_TOKEN")
+    if isolation.get("inherited_env") != "dropped":
+        errors.append("cade-job-run drops the inherited environment")
     errors.extend(broker_violations(policy))
     errors.extend(fable_id_violations(policy))
     errors.extend(fable_placement_violations(policy))
     return errors
 
 
-def dispatch_schema_violations(policy, envelope_schema, receipt_schema):
-    """The envelope and receipt schemas carry the shared contract exactly."""
+# Field sets of the four new wire objects (contract sections 4.2, 4.4, 4.5
+# and 5.3). Each schema closes its record and requires schema.
+REQUEST_FIELDS = ("kind", "envelope", "resolution")
+RESOLUTION_FIELDS = (
+    "root_class", "root_model", "reroute", "carve_out_hits", "custody", "source_label",
+    "child_policy", "policy_rev", "dedupe_key", "resolved_at",
+)
+HALT_FIELDS = ("kind", "job_id", "reason", "requested_by", "created_at")
+REPLY_FIELDS = ("kind", "job_id", "receipt", "ask", "envelope", "reason", "detail", "halted_jobs", "halt_msg_id")
+REPLY_REQUIRED = {"kind", "job_id", "receipt"}
+# Embedded copies of whole objects, so each schema stands alone for a
+# validator that reads one file.
+EMBEDDED = {REQUEST_SCHEMA_ID: {"envelope": ENVELOPE_SCHEMA_ID, "resolution": RESOLUTION_SCHEMA_ID},
+            REPLY_SCHEMA_ID: {"envelope": ENVELOPE_SCHEMA_ID, "receipt": RECEIPT_SCHEMA_ID}}
+SINGLE_LINE_DEFS = ("jobId", "tag", "utc", "sha256", "ref", "requestedBy", "modelId", "unit", "policyRev", "seatRev")
+
+
+def schema_body(schema):
+    return {k: v for k, v in schema.items() if k not in ("$schema", "$id", "title", "$defs")}
+
+
+def dispatch_schema_violations(policy, schemas):
+    """The six wire schemas carry the shared contract exactly: closed
+    records, a required schema const, one definition per shared $def across
+    every file, and enums that match .cade.dispatch."""
     errors = []
     dispatch = policy.get("cade", {}).get("dispatch", {})
-    for name, schema, fields, optional, schema_id in (
-        ("envelope", envelope_schema, ENVELOPE_FIELDS, ENVELOPE_OPTIONAL, ENVELOPE_SCHEMA_ID),
-        ("receipt", receipt_schema, RECEIPT_FIELDS, set(), RECEIPT_SCHEMA_ID),
-    ):
+    effects = {e.get("id"): e for e in dispatch.get("effects", [])}
+    wanted = {
+        ENVELOPE_SCHEMA_ID: (ENVELOPE_FIELDS, set(ENVELOPE_FIELDS) - ENVELOPE_OPTIONAL),
+        RECEIPT_SCHEMA_ID: (RECEIPT_FIELDS, set(RECEIPT_FIELDS)),
+        REQUEST_SCHEMA_ID: (REQUEST_FIELDS, set(REQUEST_FIELDS)),
+        RESOLUTION_SCHEMA_ID: (RESOLUTION_FIELDS, set(RESOLUTION_FIELDS)),
+        HALT_SCHEMA_ID: (HALT_FIELDS, set(HALT_FIELDS)),
+        REPLY_SCHEMA_ID: (REPLY_FIELDS, REPLY_REQUIRED),
+    }
+    if set(schemas) != set(WIRE_SCHEMAS):
+        return [f"wire schemas {sorted(schemas)}, want {sorted(WIRE_SCHEMAS)}"]
+    shared = {}
+    for sid, schema in schemas.items():
+        name, path = WIRE_SCHEMAS[sid]
+        fields, required = wanted[sid]
         props = schema.get("properties", {})
         if set(props) - {"schema"} != set(fields):
             errors.append(f"{name} schema fields {sorted(set(props) - {'schema'})}, want {sorted(fields)}")
-        if props.get("schema") != {"const": schema_id}:
-            errors.append(f"{name} schema field must be const {schema_id}")
-        if set(schema.get("required", [])) != set(fields) - optional:
-            errors.append(f"{name} schema required fields drifted")
+        if props.get("schema") != {"const": sid}:
+            errors.append(f"{name} schema field must be const {sid}")
+        if set(schema.get("required", [])) != required | {"schema"}:
+            errors.append(f"{name} schema required fields drifted; schema is required on every object")
         if schema.get("additionalProperties") is not False:
             errors.append(f"{name} schema must close its record")
-        lane_enum = set(schema.get("$defs", {}).get("lane", {}).get("enum", []))
-        if lane_enum != set(DISPATCH_ROUTES):
-            errors.append(f"{name} schema lane enum {sorted(lane_enum)}, want {sorted(DISPATCH_ROUTES)}")
-    env_props = envelope_schema.get("properties", {})
+        if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+            errors.append(f"{name} schema must be draft 2020-12")
+        if schema.get("$id", "").rsplit("/", 2)[-2:] != path.split("/"):
+            errors.append(f"{name} schema $id does not name {path}")
+        defs = schema.get("$defs", {})
+        for def_name, node in defs.items():
+            if def_name in ("envelope", "receipt", "resolution"):
+                continue
+            canonical = json.dumps(node, sort_keys=True)
+            if shared.setdefault(def_name, canonical) != canonical:
+                errors.append(f"$defs.{def_name} differs between the wire schemas")
+        for def_name in SINGLE_LINE_DEFS:
+            node = defs.get(def_name)
+            if node is not None and NEWLINE_GUARD not in json.dumps(node.get("not", {})):
+                errors.append(f"$defs.{def_name} must refuse a newline: $ may match before one")
+        if "lane" in defs and set(defs["lane"].get("enum", [])) != set(DISPATCH_ROUTES):
+            errors.append(f"{name} schema lane enum drifted from the dispatch routes")
+        if "custody" in defs and defs["custody"].get("enum") != list(CUSTODY_ORDER):
+            errors.append(f"{name} schema custody enum must name every custody class in order")
+        if "envelopeEffect" in defs and set(defs["envelopeEffect"].get("enum", [])) != ENVELOPE_EFFECTS:
+            errors.append(f"{name} schema envelope effects drifted")
+        if "receiptEffect" in defs and set(defs["receiptEffect"].get("enum", [])) != set(effects) - {"none"}:
+            errors.append(f"{name} schema receipt effects must be every effect but none")
+        if "carveOutTag" in defs and defs["carveOutTag"].get("enum") != list(CARVE_OUT_TAGS):
+            errors.append(f"{name} schema carve-out tags drifted")
+        for embed, source in EMBEDDED.get(sid, {}).items():
+            if defs.get(embed) != schema_body(schemas[source]):
+                errors.append(f"{name} schema $defs.{embed} differs from the {source} schema")
+    env = schemas[ENVELOPE_SCHEMA_ID]
+    env_props = env.get("properties", {})
     named = sorted(k for k in env_props if "model" in k or "seat" in k)
     if named:
         errors.append(f"envelope carries model fields {named}; the broker never names a model")
-    if set(env_props.get("allowed_effects", {}).get("items", {}).get("enum", [])) != ENVELOPE_EFFECTS:
-        errors.append("envelope allowed_effects enum drifted from the envelope effects")
-    if set(env_props.get("custody", {}).get("enum", [])) != set(CUSTODY_ORDER):
-        errors.append("envelope custody enum must name every custody class")
-    status = receipt_schema.get("properties", {}).get("status", {}).get("enum", [])
-    if status != list(RECEIPT_STATUSES):
+    if env_props.get("allowed_effects", {}).get("items") != {"$ref": "#/$defs/envelopeEffect"}:
+        errors.append("envelope allowed_effects must use the envelopeEffect enum")
+    budget = env_props.get("budget_envelope", {})
+    if budget.get("type") != "object" or set(budget.get("properties", {})) != {"tokens", "wall_seconds"}:
+        errors.append("budget_envelope is an object of tokens and wall_seconds only")
+    status = schemas[RECEIPT_SCHEMA_ID].get("properties", {}).get("status", {}).get("enum", [])
+    if status != list(RECEIPT_STATUSES) or status != dispatch.get("receipt_statuses"):
         errors.append(f"receipt status enum {status}, want {list(RECEIPT_STATUSES)}")
-    if envelope_schema.get("$id", "").rsplit("/", 2)[-2:] != dispatch.get("envelope_schema_file", "").split("/"):
-        errors.append("envelope schema $id does not name envelope_schema_file")
-    if receipt_schema.get("$id", "").rsplit("/", 2)[-2:] != dispatch.get("receipt_schema_file", "").split("/"):
-        errors.append("receipt schema $id does not name receipt_schema_file")
+    reply_props = schemas[REPLY_SCHEMA_ID].get("properties", {})
+    if reply_props.get("kind", {}).get("enum") != dispatch.get("reply_kinds"):
+        errors.append("reply kind enum drifted from .cade.dispatch.reply_kinds")
+    wire = [r.get("id") for r in dispatch.get("reasons", []) if r.get("raised_by") != "cade"]
+    if reply_props.get("reason", {}).get("enum") != wire or wire != WIRE_REASONS:
+        errors.append("reply reason enum must be exactly the reasons that reach the wire")
     return errors
 
 
@@ -1611,8 +2217,8 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "2105fc6976fd929a88c3990d0833d95208e1096a866afef0a798c3ac20cf168b"
-POLICY_CANONICAL_SHA256 = "e7be691884bc6882cec805b16430394689f07414620a8aedf0b39067a4767f56"
+SKILL_SHA256 = "eb6ad28222e5bae5eb9a34c74686b680d0bbad94ceba0e6705025e36108cc232"
+POLICY_CANONICAL_SHA256 = "cb636779d39b990826ee477b87ce84fca7918d9d74c0a35beb24cb8c6f3e7e13"
 AGENTS_DELEGATION_SHA256 = "490d1560e5854a96dc900a54c438e4878bbed04aeceb997989906d2b1452295c"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
@@ -1790,8 +2396,8 @@ def structural_schema_violations(instance, schema, path="$"):
     Covers only what the delegation and dispatch schemas use: type (object,
     array, string, integer, number, boolean, null), const, enum, required,
     additionalProperties=false, properties, items, minItems, maxItems,
-    minLength, minimum, pattern, uniqueItems, allOf, anyOf, if/then, not,
-    contains and local $ref into $defs. Unknown constructs are ignored rather
+    minLength, maxLength, minProperties, minimum, pattern, uniqueItems,
+    allOf, anyOf, if/then, not, contains and local $ref into $defs. Unknown constructs are ignored rather
     than passed silently as valid, which is why jsonschema stays the
     preferred path.
     """
@@ -1831,6 +2437,8 @@ def structural_schema_violations(instance, schema, path="$"):
             errors.append(f"{where}: {value!r} not in {node['enum']}")
         if isinstance(value, str) and len(value) < node.get("minLength", 0):
             errors.append(f"{where}: shorter than minLength")
+        if isinstance(value, str) and "maxLength" in node and len(value) > node["maxLength"]:
+            errors.append(f"{where}: longer than maxLength")
         if (
             "minimum" in node
             and isinstance(value, (int, float))
@@ -1842,6 +2450,8 @@ def structural_schema_violations(instance, schema, path="$"):
             if not re.search(node["pattern"], value):
                 errors.append(f"{where}: {value!r} fails {node['pattern']}")
         if isinstance(value, dict):
+            if len(value) < node.get("minProperties", 0):
+                errors.append(f"{where}: fewer than minProperties")
             for key in node.get("required", []):
                 if key not in value:
                     errors.append(f"{where}: missing required {key!r}")
@@ -2964,6 +3574,7 @@ class DelegationPolicyTests(unittest.TestCase):
     @staticmethod
     def sample_envelope(**overrides):
         envelope = {
+            "schema": ENVELOPE_SCHEMA_ID,
             "job_id": "j-0001",
             "parent_job_id": None,
             "depth": 0,
@@ -2979,29 +3590,6 @@ class DelegationPolicyTests(unittest.TestCase):
         }
         envelope.update(overrides)
         return envelope
-
-    @staticmethod
-    def sample_receipt(**overrides):
-        receipt = {
-            "job_id": "j-0001",
-            "parent_job_id": None,
-            "depth": 0,
-            "lane": "cade.delegate.research",
-            "resolved_root_model": "claude-opus-5-5",
-            "observed_models": [{"unit": "root", "model": "claude-opus-5-5"}],
-            "children": 3,
-            "peak_concurrency": 3,
-            "observed_depth": 1,
-            "tokens": {"input": 1000, "output": 200},
-            "wall_seconds": 61.5,
-            "effects": ["result-doc"],
-            "go_refs": [],
-            "result": {"path": "cade-work/notes/j-0001.md", "sha256": "b" * 64},
-            "status": "done",
-            "policy_rev": "prompt-toon sha256:" + "c" * 64,
-        }
-        receipt.update(overrides)
-        return receipt
 
     def schema_errors(self, instance, schema):
         """Both validators, so CI enforces the dispatch schemas without
@@ -3019,14 +3607,13 @@ class DelegationPolicyTests(unittest.TestCase):
 
     def test_dispatch_contract_holds(self):
         self.assertEqual(dispatch_violations(self.policy), [])
-        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
-        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(dispatch_schema_violations(self.policy, envelope_schema, receipt_schema), [])
+        self.assertEqual(dispatch_schema_violations(self.policy, load_wire_schemas()), [])
         dispatch = self.policy["cade"]["dispatch"]
         self.assertEqual(ROOT / dispatch["envelope_schema_file"], ENVELOPE_SCHEMA_PATH)
         self.assertEqual(ROOT / dispatch["receipt_schema_file"], RECEIPT_SCHEMA_PATH)
-        for schema in (envelope_schema, receipt_schema):
-            self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
+        for sid, (name, path) in WIRE_SCHEMAS.items():
+            self.assertEqual(dispatch[f"{name}_schema_file"], path, sid)
+            self.assertTrue((ROOT / path).is_file(), path)
 
     def test_dispatch_check_fails_closed(self):
         def mutate(fn):
@@ -3074,7 +3661,47 @@ class DelegationPolicyTests(unittest.TestCase):
             "envelope field renamed": lambda d: dispatch(d)["envelope_fields"].__setitem__(0, "id"),
             "receipt field dropped": lambda d: dispatch(d)["receipt_fields"].remove("observed_depth"),
             "recipient moved": lambda d: dispatch(d).update(recipient="claude:sting:cade-worker"),
+            "recipient three-part": lambda d: dispatch(d).update(recipient="claude:sting:cade-jobs"),
+            "recipient pid moved": lambda d: dispatch(d).update(recipient="claude:sting:2:cade-jobs"),
+            "delivery key moved": lambda d: dispatch(d).update(recipient_delivery_key="claude:sting:cade-worker"),
+            "receiver unbound": lambda d: dispatch(d)["receiver_registration"].update(bind=False),
+            "receiver on another host": lambda d: dispatch(d)["receiver_registration"].update(host="honey"),
+            "receiver takes any sender": lambda d: dispatch(d)["receiver"].update(allowed_senders="any"),
+            "receiver ticket moved": lambda d: dispatch(d)["receiver"].update(ticket="TIN-9999"),
+            "halt from anyone": lambda d: dispatch(d)["receiver"].update(halt_from="any-peer"),
+            "unknown sender answered": lambda d: dispatch(d)["receiver"].update(unknown_sender="reply-failed"),
+            "drop reason dropped": lambda d: dispatch(d)["receiver"]["drop_reasons"].remove("ticket-not-allowed"),
+            "label line changed": lambda d: dispatch(d)["receiver"].update(body_label="[Cade]"),
+            "relay prefix dropped": lambda d: dispatch(d)["receiver"].update(relay_prefix=""),
             "reply kind added": lambda d: dispatch(d)["reply_kinds"].append("approve"),
+            "failed kind dropped": lambda d: dispatch(d)["reply_kinds"].remove("failed"),
+            "halted status dropped": lambda d: dispatch(d)["receipt_statuses"].remove("halted"),
+            "reason dropped": lambda d: dispatch(d)["reasons"].pop(),
+            "cade reason on the wire": lambda d: next(
+                r for r in dispatch(d)["reasons"] if r["id"] == "recipient-unbound"
+            ).update(raised_by="receiver"),
+            "goal match dropped": lambda d: dispatch(d).update(carve_out_goal_match="none"),
+            "medical maps to public": lambda d: dispatch(d)["custody_labels"]["classes"][0]["labels"].append("medical"),
+            "client maps to ops": lambda d: dispatch(d)["custody_labels"]["classes"][1]["labels"].append("client"),
+            "confidential label admitted": lambda d: dispatch(d)["custody_labels"]["classes"][2].update(
+                v1_result="admitted-where-lane-admits"
+            ),
+            "health label admitted": lambda d: dispatch(d)["custody_labels"]["classes"][3].update(
+                v1_result="admitted-where-lane-admits"
+            ),
+            "unknown label admitted": lambda d: dispatch(d)["custody_labels"].update(unknown="public"),
+            "labels stop normalizing": lambda d: dispatch(d)["custody_labels"].update(normalize="exact"),
+            "login isolation by name only": lambda d: dispatch(d)["job_seat"]["login_isolation"].update(compare="name"),
+            "claude.json check dropped": lambda d: dispatch(d)["job_seat"]["login_isolation"]["paths"].pop(1),
+            "oauth env inherited": lambda d: dispatch(d)["job_seat"]["login_isolation"]["refused_env"].remove(
+                "CLAUDE_CODE_OAUTH_TOKEN"
+            ),
+            "env kept": lambda d: dispatch(d)["job_seat"]["login_isolation"].update(inherited_env="kept"),
+            "fable unread waits": lambda d: dispatch(d)["fable_model_id"].update(on_unread="wait"),
+            "fable unread runs on opus": lambda d: dispatch(d)["fable_model_id"].update(on_unread="opus"),
+            "reply schema moved": lambda d: dispatch(d).update(reply_schema_file="policy/reply.json"),
+            "linear-issue dropped": lambda d: dispatch(d)["effects"].remove(effect(d, "linear-issue")),
+            "github-branch behind a GO": lambda d: effect(d, "github-branch").update(envelope=False, needs_go=True),
             "spend in the envelope": lambda d: effect(d, "spend").update(envelope=True),
             "host act without a GO": lambda d: effect(d, "host-act").update(needs_go=False),
             "agent mints a credential": lambda d: dispatch(d)["credentials"][1].update(agent_mints=True),
@@ -3086,6 +3713,7 @@ class DelegationPolicyTests(unittest.TestCase):
             "job seat on Jess's login": lambda d: dispatch(d)["job_seat"].update(config_dir="$HOME/.claude"),
             "operator login allowed": lambda d: dispatch(d)["job_seat"].update(operator_login="fallback"),
             "harness surface moved": lambda d: harness(d).update(dispatch_surface="swb:claude:sting:cade-worker"),
+            "harness surface three-part": lambda d: harness(d).update(dispatch_surface="swb:claude:sting:cade-jobs"),
             "harness launcher dropped": lambda d: harness(d).pop("launcher"),
             "harness reviews its own pr": lambda d: harness(d)["forbidden_tasks"].remove("review-own-pr"),
             "harness evidentiary": lambda d: harness(d).update(posture="evidentiary-only"),
@@ -3130,7 +3758,35 @@ class DelegationPolicyTests(unittest.TestCase):
             "envelope field renamed",
             "receipt field dropped",
             "recipient moved",
+            "recipient three-part",
+            "recipient pid moved",
+            "delivery key moved",
+            "receiver unbound",
+            "receiver on another host",
+            "receiver takes any sender",
+            "receiver ticket moved",
+            "halt from anyone",
+            "unknown sender answered",
+            "drop reason dropped",
+            "label line changed",
+            "relay prefix dropped",
             "reply kind added",
+            "failed kind dropped",
+            "halted status dropped",
+            "reason dropped",
+            "goal match dropped",
+            "confidential label admitted",
+            "health label admitted",
+            "unknown label admitted",
+            "labels stop normalizing",
+            "login isolation by name only",
+            "claude.json check dropped",
+            "oauth env inherited",
+            "env kept",
+            "fable unread waits",
+            "fable unread runs on opus",
+            "reply schema moved",
+            "harness surface three-part",
             "spend in the envelope",
             "host act without a GO",
             "agent mints a credential",
@@ -3149,55 +3805,104 @@ class DelegationPolicyTests(unittest.TestCase):
         for name in schema_cases:
             self.assertTrue(structural_schema_violations(mutate(cases[name]), self.schema), f"schema: {name}")
 
+    def assertRefuses(self, reason, fn, *args, **kwargs):
+        with self.assertRaises(Refusal) as caught:
+            fn(*args, **kwargs)
+        self.assertEqual(caught.exception.reason, reason, (args, kwargs))
+
     def test_root_resolution(self):
         # The fixed resolver, not the broker, picks the root. Fable roots
         # research, draft, business and marketing as orchestrator; develop is
-        # Opus; any carve-out tag reroutes to Opus; uncertain tags on develop
-        # resolve to Opus; a lane that does not admit the custody gets none.
-        opus = ("opus", "claude-opus-5-5")
+        # Opus; any carve-out tag or goal word reroutes to Opus; a lane that
+        # does not admit the custody gets none; an unread Fable id refuses.
+        opus = ("opus", OPUS_ID)
         env = self.sample_envelope
-        read = "claude-fable-9-9"
+        read = TEST_FABLE_ID
         for route in ("cade.delegate.research", "cade.delegate.draft", "cade.delegate.marketing"):
             self.assertEqual(resolve_root(self.policy, env(lane=route), read), ("fable", read), route)
             self.assertEqual(resolve_root(self.policy, env(lane=route, tags=[]), read), ("fable", read), route)
         self.assertEqual(
             resolve_root(self.policy, env(lane="cade.delegate.business", custody="ops"), read), ("fable", read)
         )
-        self.assertEqual(resolve_root(self.policy, env(), None), ("fable", None), "unread id waits")
-        self.assertEqual(resolve_root(self.policy, env(), "claude-opus-5-5"), ("fable", None), "opus id is not fable")
+        self.assertRefuses("fable-id-unrecorded", resolve_root, self.policy, env(), None)
+        self.assertRefuses("fable-id-unrecorded", resolve_root, self.policy, env(), OPUS_ID)
         for tags in (
             ["adversarial"], ["red-team"], ["purple-team"], ["deep-iteration"],
-            ["market-scan", "Red_Team"], ["redteam-pass"], ["adversarial-review"], ["DEEP ITERATION"],
+            ["market-scan", "red-team"], ["redteam-pass"], ["adversarial-review"], ["deep-iteration-loop"],
         ):
             for route in DISPATCH_ROUTES:
                 custody = "ops" if route in ("cade.delegate.business", DEVELOP_ROUTE) else "public"
                 self.assertEqual(
-                    resolve_root(self.policy, env(lane=route, tags=tags, custody=custody), read), opus, (route, tags)
+                    resolve_root(self.policy, env(lane=route, tags=tags, custody=custody), None), opus, (route, tags)
                 )
-        for tags in (None, "red-team", [None], [""], ["ok", 3]):
-            envelope = env(lane=DEVELOP_ROUTE, tags=tags)
-            self.assertEqual(resolve_root(self.policy, envelope, read), opus, tags)
-            self.assertIsNone(resolve_root(self.policy, env(tags=tags), read), tags)
-        missing = env(lane=DEVELOP_ROUTE)
-        del missing["tags"]
-        self.assertEqual(resolve_root(self.policy, missing, read), opus)
-        self.assertEqual(resolve_root(self.policy, env(lane=DEVELOP_ROUTE, tags=[]), read), opus)
-        for custody in ("confidential", "health", "unknown"):
-            for route in DISPATCH_ROUTES:
-                self.assertIsNone(resolve_root(self.policy, env(lane=route, custody=custody), read), (route, custody))
-        self.assertIsNone(resolve_root(self.policy, env(custody="ops"), read), "research admits public only")
-        self.assertIsNone(resolve_root(self.policy, env(lane="cade.delegate.unknown"), read))
-        self.assertIsNone(resolve_root(self.policy, env(lane="cade.research"), read))
-        # The resolver never lands a carve-out or develop job on fable,
-        # whatever the read id is.
+        # Goal words reroute without a tag, and need no Fable id.
+        for goal in ("Red-team the auth module", "Run an adversarial pass", "PURPLE TEAM the drill", "a deep_iteration loop"):
+            self.assertEqual(resolve_root(self.policy, env(tags=[], goal=goal), None), opus, goal)
+        for tags in (None, "red-team", [None], [""], ["ok", 3], ["Red_Team"], ["x" * 65]):
+            self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane=DEVELOP_ROUTE, tags=tags), read)
+            self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(tags=tags), read)
+        self.assertEqual(resolve_root(self.policy, env(lane=DEVELOP_ROUTE, tags=[]), None), opus)
         for route in DISPATCH_ROUTES:
-            for tags in (["red-team"], ["adversarial"]):
-                root = resolve_root(self.policy, env(lane=route, tags=tags, custody="public"), read)
-                self.assertEqual(root, opus, route)
-        # A weakened policy fails toward Opus or no root, never toward Fable.
+            self.assertRefuses("custody-confidential", resolve_root, self.policy, env(lane=route, custody="confidential"), read)
+            self.assertRefuses("custody-health", resolve_root, self.policy, env(lane=route, custody="health"), read)
+            self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane=route, custody="internal"), read)
+        self.assertRefuses("custody-not-admitted", resolve_root, self.policy, env(custody="ops"), read)
+        self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane="cade.delegate.unknown"), read)
+        self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane="cade.research"), read)
+        # A weakened policy fails toward Opus or a refusal, never toward Fable.
+        for key, value in (("carve_out_match", "exact"), ("carve_out_goal_match", "none")):
+            broken = json.loads(json.dumps(self.policy))
+            broken["cade"]["dispatch"][key] = value
+            self.assertEqual(resolve_root(broken, env(), read), opus, key)
         broken = json.loads(json.dumps(self.policy))
-        broken["cade"]["dispatch"]["carve_out_match"] = "exact"
-        self.assertEqual(resolve_root(broken, env(), read), opus)
+        broken["cade"]["dispatch"]["fable_model_id"]["on_unread"] = "opus"
+        self.assertRefuses("policy-invalid", resolve_root, broken, env(), None)
+        broken = json.loads(json.dumps(self.policy))
+        broken["cade"]["dispatch"]["carve_out_seat"] = "sonnet"
+        self.assertRefuses("policy-invalid", resolve_root, broken, env(tags=["red-team"]), read)
+
+    def test_resolution_vectors(self):
+        # Contract section 10, first table, from the shared fixture that lab
+        # and cade read from their pinned prompt-toon.
+        vectors = load_fixture("resolution-vectors.json")["vectors"]
+        self.assertEqual(len(vectors), 12)
+        for raw, slug in (("--Red Team!", "red-team"), ("_deep__iteration_", "deep-iteration"), ("___", None), ("", None)):
+            self.assertEqual(slug_tag(raw), slug, raw)
+        for v in vectors:
+            name = (v["raw_tags"], v["goal"], v["lane"])
+            tags = [slug_tag(t) for t in v["raw_tags"] if slug_tag(t)]
+            self.assertEqual(tags, v["tags"], name)
+            envelope = self.sample_envelope(lane=v["lane"], tags=tags, goal=v["goal"], custody="public")
+            parent = v["parent_tags"] or ()
+            root_class, reroute, hits = resolve_root_class(self.policy, envelope, parent)
+            self.assertEqual((root_class, reroute, hits), (v["root_class"], v["reroute"], v["hits"]), name)
+            seat, model = resolve_root(self.policy, envelope, TEST_FABLE_ID, parent)
+            self.assertEqual(seat, v["root_class"], name)
+            self.assertEqual(model, TEST_FABLE_ID if seat == "fable" else OPUS_ID, name)
+            # Cade stamps the canonical tag for every hit, so the receiver's
+            # recomputation from the envelope alone finds the same hits and root.
+            stamped = stamp_tags(self.policy, v["raw_tags"], v["goal"], parent)
+            for hit in v["hits"]:
+                self.assertIn(hit, stamped, name)
+            again = resolve_root_class(self.policy, dict(envelope, tags=stamped))
+            self.assertEqual((again[0], again[2]), (v["root_class"], v["hits"]), name)
+
+    def test_custody_vectors(self):
+        vectors = load_fixture("custody-vectors.json")["vectors"]
+        self.assertGreaterEqual(len(vectors), 10)
+        for v in vectors:
+            name = (v["source_label"], v["lane"])
+            if v["admitted"]:
+                self.assertEqual(admit_custody(self.policy, v["source_label"], v["lane"]), v["custody"], name)
+            else:
+                self.assertRefuses(v["reason"], admit_custody, self.policy, v["source_label"], v["lane"])
+        # The envelope and a child may keep or narrow custody, never widen it.
+        self.assertEqual(admit_custody(self.policy, "private", DEVELOP_ROUTE, "ops"), "ops")
+        self.assertRefuses("custody-widens", admit_custody, self.policy, "private", DEVELOP_ROUTE, "public")
+        self.assertRefuses("custody-widens", admit_custody, self.policy, "public", DEVELOP_ROUTE, "public", "ops")
+        self.assertRefuses("custody-widens", admit_custody, self.policy, "public", DEVELOP_ROUTE, "internal")
+        for label in (3, ["public"], "", "pub lic", "public-ok"):
+            self.assertRefuses("custody-label-unknown", admit_custody, self.policy, label, DEVELOP_ROUTE)
 
     def test_child_envelopes_inherit_carve_outs_and_only_narrow_custody(self):
         parent = self.sample_envelope(tags=["red-team", "market-scan"], custody="ops", lane="cade.delegate.business")
@@ -3221,17 +3926,196 @@ class DelegationPolicyTests(unittest.TestCase):
         }
         for name, child in cases.items():
             self.assertTrue(child_envelope_violations(self.policy, parent, child), name)
-        # A child of a carve-out parent resolves to Opus on every lane.
+        # A child of a carve-out parent resolves to Opus on every lane that
+        # admits its custody, from its own stamped tags and from the parent's.
         for route in DISPATCH_ROUTES:
-            child = dict(good, lane=route, custody="public" if route != "cade.delegate.business" else "ops")
-            if child["custody"] in next(
-                l for l in self.policy["cade"]["dispatch"]["lanes"] if l["route"] == route
-            )["custody"]:
-                self.assertEqual(resolve_root(self.policy, child, "claude-fable-9-9")[0], "opus", route)
+            custody = "ops" if route == "cade.delegate.business" else "public"
+            child = dict(good, lane=route, custody=custody)
+            self.assertEqual(resolve_root(self.policy, child, TEST_FABLE_ID)[0], "opus", route)
+            bare = dict(child, tags=[])
+            self.assertEqual(resolve_root(self.policy, bare, TEST_FABLE_ID, parent["tags"])[0], "opus", route)
+        # The child id is the contract's: c<depth>- plus 20 hex digits.
+        cid = child_job_id("job-20261109-pricing-1", 1, "Red-team the scraper's rate limit handling.", 1)
+        self.assertEqual(cid, "c1-2ea538aa64508c966bc4")
+        self.assertNotEqual(cid, child_job_id("job-20261109-pricing-1", 2, "Red-team the scraper's rate limit handling.", 1))
+        self.assertFalse(wire_errors(cid, load_wire_schemas()[ENVELOPE_SCHEMA_ID]["$defs"]["jobId"]))
+
+    def test_receiver_vectors(self):
+        # Contract sections 4.1, 6.3 and 7 through the reference receiver.
+        fixture = load_fixture("receiver-vectors.json")
+        schemas = load_wire_schemas()
+        defaults = fixture["defaults"]
+        names = [v["name"] for v in fixture["vectors"]]
+        self.assertEqual(len(names), len(set(names)))
+        for v in fixture["vectors"]:
+            context = dict(defaults["context"], **v.get("context", {}))
+            message = {"from": v.get("from", defaults["from"]), "ticket": v.get("ticket", defaults["ticket"]), "body": v["body"]}
+            decision = receiver_decide(self.policy, schemas, message, context)
+            self.assertEqual(decision, v["expect"], v["name"])
+            if decision["action"] == "reply":
+                reply = {
+                    "schema": REPLY_SCHEMA_ID,
+                    "kind": "failed",
+                    "job_id": "job-20261109-pricing-1",
+                    "receipt": None,
+                    "reason": decision["reason"],
+                    "detail": "Refused.",
+                }
+                self.assertEqual(wire_errors(reply, schemas[REPLY_SCHEMA_ID]), [], v["name"])
+        # The contract's ten receiver rows are all present.
+        for row in (
+            "stranger peer", "cade key unbound", "wrong ticket", "halt all from a stranger", "no resolution",
+            "fable resolution for a red-team tag", "fable root and no recorded id", "claude.json linked to the operator's",
+        ):
+            self.assertIn(row, names)
+        # A drop answers nothing and starts nothing: only steps 1 to 3 drop.
+        drops = {v["expect"]["reason"] for v in fixture["vectors"] if v["expect"]["action"] == "drop"}
+        self.assertEqual(drops, set(RECEIVER["drop_reasons"]))
+
+    def test_body_framing(self):
+        # Contract section 4.1. A relay line is refused for what it is, before
+        # the JSON parse could refuse it for something else.
+        request = json.dumps({"schema": REQUEST_SCHEMA_ID})
+        self.assertEqual(parse_body(self.policy, BODY_LABEL + "\n" + request), {"schema": REQUEST_SCHEMA_ID})
+        self.assertEqual(parse_body(self.policy, request), {"schema": REQUEST_SCHEMA_ID})
+        with self.assertRaises(Refusal) as caught:
+            parse_body(self.policy, BODY_LABEL + "\nCade relays (unverified): " + request)
+        self.assertEqual(
+            (caught.exception.reason, caught.exception.detail), ("request-invalid", "a dispatch or halt never relays")
+        )
+        for body in (BODY_LABEL, BODY_LABEL + "\n", request + request, "[1]", '{"a": NaN}', BODY_LABEL + "\r\n" + request):
+            self.assertRaises(Refusal, parse_body, self.policy, body)
+
+    def test_receiver_refuses_without_policy_authority(self):
+        # A weakened receiver policy refuses or drops; it never launches.
+        fixture = load_fixture("receiver-vectors.json")
+        schemas = load_wire_schemas()
+        valid = next(v for v in fixture["vectors"] if v["name"] == "valid fable request")
+        halt = next(v for v in fixture["vectors"] if v["name"] == "halt one job")
+        message = {"from": fixture["defaults"]["from"], "ticket": "TIN-7125", "body": valid["body"]}
+        context = fixture["defaults"]["context"]
+        self.assertEqual(receiver_decide(self.policy, schemas, message, context)["action"], "launch")
+        for name, fn in {
+            "allowed senders not config": lambda d: d["receiver"].update(allowed_senders="any"),
+            "no body label": lambda d: d["receiver"].update(body_label=""),
+            "ticket moved": lambda d: d["receiver"].update(ticket="TIN-1"),
+            "lane admits nothing": lambda d: [l.update(custody=[]) for l in d["lanes"]],
+            "fable pattern broken": lambda d: d["fable_model_id"].update(id_pattern="^never$"),
+        }.items():
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken["cade"]["dispatch"])
+            self.assertNotEqual(receiver_decide(broken, schemas, message, context)["action"], "launch", name)
+        broken = json.loads(json.dumps(self.policy))
+        broken["cade"]["dispatch"]["receiver"]["halt_from"] = "any-peer"
+        halt_msg = dict(message, body=halt["body"])
+        self.assertEqual(receiver_decide(broken, schemas, halt_msg, context)["action"], "reply")
+
+    def test_login_isolation(self):
+        # Contract section 8 on a real tree: real paths and inodes, with
+        # ~/.claude itself a symlink as it is on sting.
+        def tree(base):
+            home = Path(base) / "home"
+            real_claude = Path(base) / "real-claude"
+            (real_claude).mkdir(parents=True)
+            (real_claude / ".credentials.json").write_text("{}")
+            home.mkdir()
+            os.symlink(real_claude, home / ".claude")
+            (home / ".claude.json").write_text("{}")
+            cade = home / ".claude-cade"
+            cade.mkdir()
+            (cade / ".claude.json").write_text("{}")
+            (cade / ".credentials.json").write_text("{}")
+            return home, cade, real_claude
+
+        with tempfile.TemporaryDirectory() as base:
+            home, _, _ = tree(base)
+            self.assertEqual(login_isolation_violations(home), [])
+
+        def broken(fn):
+            with tempfile.TemporaryDirectory() as base:
+                home, cade, real_claude = tree(base)
+                fn(home, cade, real_claude)
+                return login_isolation_violations(home)
+
+        def relink(path, target):
+            path.unlink()
+            os.symlink(target, path)
+
+        def hardlink(path, target):
+            path.unlink()
+            os.link(target, path)
+
+        def replace_dir(cade, target):
+            shutil.rmtree(cade)
+            os.symlink(target, cade)
+
+        def to_elsewhere(home, cade):
+            elsewhere = Path(home).parent / "elsewhere"
+            elsewhere.mkdir()
+            replace_dir(cade, elsewhere)
+
+        cases = {
+            "config dir missing": lambda h, c, r: shutil.rmtree(c),
+            "config dir is a symlink": lambda h, c, r: to_elsewhere(h, c),
+            "config dir is the operator's": lambda h, c, r: replace_dir(c, h / ".claude"),
+            "config dir inside the operator's": lambda h, c, r: (
+                shutil.rmtree(c), (r / "cade").mkdir(), os.symlink(r / "cade", c)
+            ),
+            "claude.json linked to the operator's": lambda h, c, r: relink(c / ".claude.json", h / ".claude.json"),
+            "claude.json linked to a missing ~/.claude.json": lambda h, c, r: (
+                relink(c / ".claude.json", h / ".claude.json"), (h / ".claude.json").unlink()
+            ),
+            "claude.json hard-linked to the operator's": lambda h, c, r: hardlink(c / ".claude.json", h / ".claude.json"),
+            "claude.json linked into ~/.claude": lambda h, c, r: relink(c / ".claude.json", h / ".claude" / ".credentials.json"),
+            "credentials linked into ~/.claude": lambda h, c, r: relink(c / ".credentials.json", h / ".claude" / ".credentials.json"),
+            "credentials hard-linked": lambda h, c, r: hardlink(c / ".credentials.json", r / ".credentials.json"),
+        }
+        for name, fn in cases.items():
+            self.assertTrue(broken(fn), name)
+
+    def test_wire_samples_accept_and_reject(self):
+        # Accept and reject samples for every contract object. A reject fails
+        # the object's schema or its semantic rules; an accept passes both.
+        samples = load_fixture("wire-samples.json")["samples"]
+        schemas = load_wire_schemas()
+        self.assertEqual(set(samples), set(WIRE_SCHEMAS))
+        semantic = {
+            ENVELOPE_SCHEMA_ID: envelope_semantic_violations,
+            RECEIPT_SCHEMA_ID: receipt_semantic_violations,
+            REPLY_SCHEMA_ID: reply_semantic_violations,
+            REQUEST_SCHEMA_ID: lambda r: envelope_semantic_violations(r.get("envelope", {}))
+            + resolution_semantic_violations(self.policy, r.get("envelope", {}), r.get("resolution", {})),
+            RESOLUTION_SCHEMA_ID: lambda r: [],
+            HALT_SCHEMA_ID: lambda r: [],
+        }
+        for sid, rows in samples.items():
+            self.assertTrue(any(r["valid"] for r in rows), sid)
+            self.assertTrue(any(not r["valid"] for r in rows), sid)
+            for row in rows:
+                name = f"{sid}: {row['name']}"
+                errors = self.schema_errors(row["value"], schemas[sid])
+                if not errors:
+                    errors = semantic[sid](row["value"])
+                if row["valid"]:
+                    self.assertEqual(errors, [], name)
+                else:
+                    self.assertTrue(errors, name)
+        # The request's resolution is the reference resolver's output.
+        request = next(r["value"] for r in samples[REQUEST_SCHEMA_ID] if r["name"] == "contract example")
+        built = build_resolution(self.policy, request["envelope"], "public", TEST_FABLE_ID, resolved_at=request["resolution"]["resolved_at"])
+        self.assertEqual(built, request["resolution"])
+
+    def test_dispatch_fixtures_carry_no_fable_id(self):
+        # A real Fable id never lands in a fixture; tests inject a shape.
+        for path in sorted(DISPATCH_FIXTURES.glob("*.json")):
+            text = path.read_text(encoding="utf-8")
+            self.assertEqual(FABLE_ID_RE.findall(text), [], path.name)
+            for key in load_json_strict(text)["placeholders"]:
+                self.assertEqual(key, FABLE_PLACEHOLDER, path.name)
 
     def test_fable_id_is_read_from_the_account(self):
         cfg = self.policy["cade"]["dispatch"]["fable_model_id"]
-        self.assertEqual(admit_fable_id(self.policy, "claude-fable-9-9"), "claude-fable-9-9")
+        self.assertEqual(admit_fable_id(self.policy, TEST_FABLE_ID), TEST_FABLE_ID)
         for bad in ("claude-opus-5-5", "claude-sonnet-5-5", "k3.1-pro", "", None, "fable", "claude-fable-"):
             self.assertIsNone(admit_fable_id(self.policy, bad), bad)
         self.assertNotIn("value", cfg)
@@ -3250,6 +4134,8 @@ class DelegationPolicyTests(unittest.TestCase):
             "pattern admits opus": lambda d: fid(d).update(id_pattern="^claude-[a-z]+-.*$"),
             "admitted before login": lambda d: fid(d).update(admitted_when="always"),
             "unread falls back": lambda d: fid(d).update(on_unread="opus"),
+            "unread waits": lambda d: fid(d).update(on_unread="wait"),
+            "unread reason renamed": lambda d: fid(d).update(on_unread_reason="fable-model-unset"),
             "source pinned": lambda d: d["seats"][0].update(model_id_source="pinned"),
             "opus from the account": lambda d: d["seats"][1].update(model_id_source="account-config"),
         }
@@ -3260,6 +4146,8 @@ class DelegationPolicyTests(unittest.TestCase):
             "pattern admits opus",
             "admitted before login",
             "unread falls back",
+            "unread waits",
+            "unread reason renamed",
             "source pinned",
             "opus from the account",
         ):
@@ -3290,105 +4178,50 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertTrue(broker_violations(mutate(fn)), name)
             self.assertTrue(structural_schema_violations(mutate(fn), self.schema), f"schema: {name}")
 
-    def test_dispatch_schemas_accept_and_reject(self):
-        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
-        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
-        good_envelopes = (
-            self.sample_envelope(),
-            self.sample_envelope(schema=ENVELOPE_SCHEMA_ID, budget_envelope={"tokens": 500000, "mode": "report-only"}),
-            self.sample_envelope(budget_envelope=12.5),
-            self.sample_envelope(job_id="j-2", parent_job_id="j-1", depth=1, root_id="j-1", tags=[]),
-            self.sample_envelope(lane=DEVELOP_ROUTE, custody="ops", allowed_effects=["github-pr", "result-doc"]),
-            self.sample_envelope(allowed_effects=["none"], inputs=[]),
-        )
-        for envelope in good_envelopes:
-            self.assertEqual(self.schema_errors(envelope, envelope_schema), [], envelope)
-        bad_envelopes = {
-            "model field": self.sample_envelope(model="claude-opus-5-5"),
-            "seat field": self.sample_envelope(root_seat="fable"),
-            "unknown lane": self.sample_envelope(lane="cade.research"),
-            "spend allowed": self.sample_envelope(allowed_effects=["spend"]),
-            "host act allowed": self.sample_envelope(allowed_effects=["host-act"]),
-            "none with others": self.sample_envelope(allowed_effects=["none", "result-doc"]),
-            "no effects": self.sample_envelope(allowed_effects=[]),
-            "root with a parent": self.sample_envelope(parent_job_id="j-0"),
-            "child without a parent": self.sample_envelope(depth=1),
-            "negative depth": self.sample_envelope(depth=-1),
-            "colon in job id": self.sample_envelope(job_id="j:1"),
-            "bad input digest": self.sample_envelope(inputs=[{"ref": "x", "sha256": "abc"}]),
-            "bad tag": self.sample_envelope(tags=["Red Team"]),
-            "unknown custody": self.sample_envelope(custody="internal"),
-            "wrong schema id": self.sample_envelope(schema="cade.dispatch/v2"),
-            "budget cap mode": self.sample_envelope(budget_envelope={"tokens": 5, "mode": "hard-stop"}),
-            "bad timestamp": self.sample_envelope(created_at="yesterday"),
-        }
-        missing_goal = self.sample_envelope()
-        del missing_goal["goal"]
-        bad_envelopes["missing goal"] = missing_goal
-        missing_tags = self.sample_envelope()
-        del missing_tags["tags"]
-        bad_envelopes["missing tags"] = missing_tags
-        for name, envelope in bad_envelopes.items():
-            self.assertTrue(structural_schema_violations(envelope, envelope_schema), name)
-        good_receipts = (
-            self.sample_receipt(),
-            self.sample_receipt(schema=RECEIPT_SCHEMA_ID, tokens=1200),
-            self.sample_receipt(status="needs-go", resolved_root_model=None, result=None, go_refs=["needs-go:fable-id"]),
-            self.sample_receipt(status="failed", result=None),
-            self.sample_receipt(
-                job_id="j-2", parent_job_id="j-1", depth=1, status="dispatch-request",
-                effects=[{"effect": "github-pr", "ref": "https://example.invalid/pr/1"}],
-            ),
-        )
-        for receipt in good_receipts:
-            self.assertEqual(self.schema_errors(receipt, receipt_schema), [], receipt)
-        bad_receipts = {
-            "done without a result": self.sample_receipt(result=None),
-            "unknown status": self.sample_receipt(status="approved"),
-            "negative children": self.sample_receipt(children=-1),
-            "fractional depth": self.sample_receipt(observed_depth=1.5),
-            "boolean concurrency": self.sample_receipt(peak_concurrency=True),
-            "model row without unit": self.sample_receipt(observed_models=[{"model": "claude-opus-5-5"}]),
-            "unknown effect": self.sample_receipt(effects=["deploy"]),
-            "extra field": self.sample_receipt(reroute="carve-out"),
-            "bad result digest": self.sample_receipt(result={"path": "x", "sha256": "z"}),
-        }
-        missing_rev = self.sample_receipt()
-        del missing_rev["policy_rev"]
-        bad_receipts["missing policy_rev"] = missing_rev
-        for name, receipt in bad_receipts.items():
-            self.assertTrue(structural_schema_violations(receipt, receipt_schema), name)
-
     def test_dispatch_schema_contract_fails_closed(self):
-        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
-        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        schemas = load_wire_schemas()
 
-        def broken(schema, fn):
-            copy = json.loads(json.dumps(schema))
-            fn(copy)
+        def broken(sid, fn):
+            copy = json.loads(json.dumps(schemas))
+            fn(copy[sid])
             return copy
 
-        env_cases = {
-            "model field added": lambda s: s["properties"].update(model={"type": "string"}),
-            "field dropped": lambda s: s["properties"].pop("root_id"),
-            "budget required": lambda s: s["required"].append("budget_envelope"),
-            "record opened": lambda s: s.update(additionalProperties=True),
-            "spend admitted": lambda s: s["properties"]["allowed_effects"]["items"]["enum"].append("spend"),
-            "lane added": lambda s: s["$defs"]["lane"]["enum"].append("cade.delegate.send"),
+        env, rec, req, res, rep, hal = (
+            ENVELOPE_SCHEMA_ID, RECEIPT_SCHEMA_ID, REQUEST_SCHEMA_ID, RESOLUTION_SCHEMA_ID, REPLY_SCHEMA_ID, HALT_SCHEMA_ID,
+        )
+        cases = {
+            "envelope model field added": (env, lambda s: s["properties"].update(model={"type": "string"})),
+            "envelope field dropped": (env, lambda s: s["properties"].pop("root_id")),
+            "envelope budget required": (env, lambda s: s["required"].append("budget_envelope")),
+            "envelope schema optional": (env, lambda s: s["required"].remove("schema")),
+            "envelope record opened": (env, lambda s: s.update(additionalProperties=True)),
+            "envelope spend admitted": (env, lambda s: s["$defs"]["envelopeEffect"]["enum"].append("spend")),
+            "envelope lane added": (env, lambda s: s["$defs"]["lane"]["enum"].append("cade.delegate.send")),
+            "envelope budget number back": (env, lambda s: s["properties"]["budget_envelope"]["properties"].update(usd={})),
+            "envelope job id newline allowed": (env, lambda s: s["$defs"]["jobId"].update({"not": {"const": "all"}})),
+            "receipt status added": (rec, lambda s: s["properties"]["status"]["enum"].append("approved")),
+            "receipt field dropped": (rec, lambda s: s["properties"].pop("observed_models")),
+            "receipt required relaxed": (rec, lambda s: s["required"].remove("go_refs")),
+            "receipt seat_rev optional": (rec, lambda s: s["required"].remove("seat_rev")),
+            "receipt none effect": (rec, lambda s: s["$defs"]["receiptEffect"]["enum"].append("none")),
+            "receipt jobId drifts": (rec, lambda s: s["$defs"]["jobId"].update(pattern="^[A-Za-z0-9_-]+$")),
+            "request drops resolution": (req, lambda s: s["required"].remove("resolution")),
+            "request envelope copy drifts": (req, lambda s: s["$defs"]["envelope"]["properties"].pop("root_id")),
+            "resolution limits added": (res, lambda s: s["properties"].update(limits={"type": "null"})),
+            "resolution carve-out tag added": (res, lambda s: s["$defs"]["carveOutTag"]["enum"].append("refutation")),
+            "reply kind added": (rep, lambda s: s["properties"]["kind"]["enum"].append("approve")),
+            "reply cade reason on the wire": (rep, lambda s: s["properties"]["reason"]["enum"].append("recipient-unbound")),
+            "reply reason dropped": (rep, lambda s: s["properties"]["reason"]["enum"].remove("halt-job-unknown")),
+            "reply receipt copy drifts": (rep, lambda s: s["$defs"]["receipt"]["required"].remove("tokens")),
+            "reply status field added": (rep, lambda s: s["properties"].update(status={"type": "string"})),
+            "halt schema id moved": (hal, lambda s: s.update({"$id": s["$id"].replace("halt", "stop")})),
+            "halt record opened": (hal, lambda s: s.update(additionalProperties=True)),
         }
-        for name, fn in env_cases.items():
-            self.assertTrue(
-                dispatch_schema_violations(self.policy, broken(envelope_schema, fn), receipt_schema), name
-            )
-        rec_cases = {
-            "status added": lambda s: s["properties"]["status"]["enum"].append("approved"),
-            "field dropped": lambda s: s["properties"].pop("observed_models"),
-            "required relaxed": lambda s: s["required"].remove("go_refs"),
-        }
-        for name, fn in rec_cases.items():
-            self.assertTrue(
-                dispatch_schema_violations(self.policy, envelope_schema, broken(receipt_schema, fn)), name
-            )
+        for name, (sid, fn) in cases.items():
+            self.assertTrue(dispatch_schema_violations(self.policy, broken(sid, fn)), name)
+        dropped = dict(schemas)
+        dropped.pop(HALT_SCHEMA_ID)
+        self.assertTrue(dispatch_schema_violations(self.policy, dropped))
 
     def test_dispatch_skill_table_fails_closed(self):
         skill_text = SKILL_PATH.read_text(encoding="utf-8")
@@ -3420,10 +4253,19 @@ class DelegationPolicyTests(unittest.TestCase):
                 "b": {"type": "boolean", "const": False},
                 "xs": {"type": "array", "maxItems": 1},
                 "f": {"type": "number"},
+                "s": {"type": "string", "maxLength": 2},
+                "o": {"type": "object", "minProperties": 1},
+                "line": {"type": "string", "pattern": "^a$", "not": {"pattern": "\\n"}},
             },
         }
-        self.assertEqual(structural_schema_violations({"n": None, "b": False, "xs": [1], "f": 1.5}, schema), [])
-        for bad in ({"n": -1}, {"n": "x"}, {"b": 0}, {"b": True}, {"xs": [1, 2]}, {"f": True}, {"f": "1"}):
+        self.assertEqual(
+            structural_schema_violations({"n": None, "b": False, "xs": [1], "f": 1.5, "s": "ab", "o": {"k": 1}, "line": "a"}, schema),
+            [],
+        )
+        for bad in (
+            {"n": -1}, {"n": "x"}, {"b": 0}, {"b": True}, {"xs": [1, 2]}, {"f": True}, {"f": "1"},
+            {"s": "abc"}, {"o": {}}, {"line": "a\n"},
+        ):
             self.assertTrue(structural_schema_violations(bad, schema), bad)
 
     def test_dhall_json_structural_equality(self):

@@ -222,7 +222,7 @@ in    { `$comment` =
               , "credential-minting"
               , "secret-mutation"
               ]
-            , dispatch_surface = "swb:claude:sting:cade-jobs"
+            , dispatch_surface = "swb:claude:sting:1:cade-jobs"
             , launcher = Some
                 "cade-job: the lab-managed fixed launcher the swb receiver calls (never a raw binary)"
             , posture = "gated-worker"
@@ -643,19 +643,100 @@ in    { `$comment` =
               , "result"
               , "status"
               , "policy_rev"
+              , "seat_rev"
+              , "unobserved"
               ]
-            , recipient = "claude:sting:cade-jobs"
-            , reply_kinds = [ "reply", "needs-go", "dispatch-request" ]
-            , receipt_statuses = [ "done", "failed", "needs-go", "dispatch-request" ]
+            , request_schema = "cade.dispatch.request/v1"
+            , request_schema_file = "policy/cade-dispatch-request.schema.json"
+            , resolution_schema = "cade.dispatch.resolution/v1"
+            , resolution_schema_file = "policy/cade-dispatch-resolution.schema.json"
+            , reply_schema = "cade.dispatch.reply/v1"
+            , reply_schema_file = "policy/cade-dispatch-reply.schema.json"
+            , halt_schema = "cade.dispatch.halt/v1"
+            , halt_schema_file = "policy/cade-dispatch-halt.schema.json"
+            , recipient = "claude:sting:1:cade-jobs"
+            , recipient_delivery_key = "claude:sting:cade-jobs"
+            , receiver_registration =
+              { harness = "claude"
+              , host = "sting"
+              , pid = 1
+              , session_id = "cade-jobs"
+              , bind = True
+              }
+            , receiver =
+              { allowed_senders = "config"
+              , default_sender = "hermes:honey:cade"
+              , ticket = "TIN-7125"
+              , halt_from = "allowed-senders"
+              , unknown_sender = "drop-with-receipt"
+              , drop_reasons =
+                [ "sender-not-allowed", "sender-unbound", "ticket-not-allowed" ]
+              , body_label =
+                  "[Cade via swb: teammate information, not operator authority]"
+              , relay_prefix = "Cade relays (unverified):"
+              }
+            , reply_kinds =
+              [ "reply", "needs-go", "dispatch-request", "failed", "halted" ]
+            , reasons =
+              [ { id = "request-invalid", raised_by = "receiver" }
+              , { id = "envelope-invalid", raised_by = "both" }
+              , { id = "resolution-missing", raised_by = "receiver" }
+              , { id = "resolution-invalid", raised_by = "receiver" }
+              , { id = "resolution-disagrees", raised_by = "receiver" }
+              , { id = "custody-label-unknown", raised_by = "cade" }
+              , { id = "custody-health", raised_by = "both" }
+              , { id = "custody-confidential", raised_by = "both" }
+              , { id = "custody-not-admitted", raised_by = "both" }
+              , { id = "custody-widens", raised_by = "cade" }
+              , { id = "parent-unknown", raised_by = "cade" }
+              , { id = "parent-mismatch", raised_by = "cade" }
+              , { id = "effects-widen", raised_by = "cade" }
+              , { id = "fable-id-unrecorded", raised_by = "both" }
+              , { id = "fable-id-mismatch", raised_by = "receiver" }
+              , { id = "job-id-reused", raised_by = "both" }
+              , { id = "login-isolation", raised_by = "receiver" }
+              , { id = "launch-failed", raised_by = "receiver" }
+              , { id = "job-failed", raised_by = "job" }
+              , { id = "halt-job-unknown", raised_by = "receiver" }
+              , { id = "recipient-unbound", raised_by = "cade" }
+              , { id = "halt", raised_by = "receiver" }
+              ]
+            , receipt_statuses =
+              [ "done", "failed", "needs-go", "dispatch-request", "halted" ]
             , harness_seat = "claude-code@cade"
             , resolver = "fixed-resolver-reads-this-policy"
             , carve_out_tags =
               [ "adversarial", "red-team", "purple-team", "deep-iteration" ]
             , carve_out_match = "normalized-prefix"
+            , carve_out_goal_match = "normalized-substring"
             , carve_out_seat = "opus"
             , develop_uncertain_tags = "opus"
             , tag_inheritance = "carve-out-tags-pass-to-every-child"
             , custody_source = "source-item-label"
+            , custody_labels =
+              { normalize = "trim-lowercase-underscore-to-hyphen"
+              , classes =
+                [ { custody = "public"
+                  , labels = [ "public", "hosted-ok" ]
+                  , v1_result = "admitted-where-lane-admits"
+                  }
+                , { custody = "ops"
+                  , labels = [ "ops", "private" ]
+                  , v1_result = "admitted-where-lane-admits"
+                  }
+                , { custody = "confidential"
+                  , labels = [ "confidential", "client", "client-raw" ]
+                  , v1_result = "custody-confidential"
+                  }
+                , { custody = "health"
+                  , labels = [ "health" ]
+                  , v1_result = "custody-health"
+                  }
+                ]
+              , unknown = "custody-label-unknown"
+              , not_admitted = "custody-not-admitted"
+              , widens = "custody-widens"
+              }
             , custody_order = [ "public", "ops", "confidential", "health" ]
             , custody_rule = "narrow-only"
             , child_dispatch = "dispatch-request-through-cade"
@@ -665,9 +746,10 @@ in    { `$comment` =
               , account = "cade@xoxd.ai"
               , admitted_when = "read-from-account-after-login"
               , id_pattern = "^claude-fable-[0-9a-z][0-9a-z.-]*$"
-              , on_unread = "wait"
+              , on_unread = "refuse"
+              , on_unread_reason = "fable-id-unrecorded"
               , notes =
-                  "Jess said \"fable 5.2\" and that id is not verified. After Jess's attended login under the job seat's config dir, the id is read from the account's model list, written to the job seat's dispatch config as fable_model_id and recorded on TIN-7125. Until then a Fable-root job waits and replies needs-go. The id never lands in this policy or in the provider allow-list. A read id must match id_pattern, so an Opus or Sonnet id cannot stand in for Fable."
+                  "Jess said \"fable 5.2\" and that id is not verified. After Jess's attended login under the job seat's config dir, the id is read from the account's model list, written to the job seat's dispatch config as fable_model_id and recorded on TIN-7125. Until then a Fable-root job is refused with reply kind failed and reason fable-id-unrecorded. It never runs on Opus instead. The id never lands in this policy, the provider allow-list or a test fixture. A read id must match id_pattern, so an Opus or Sonnet id cannot stand in for Fable."
               }
             , job_seat =
               { host = "sting"
@@ -676,6 +758,26 @@ in    { `$comment` =
               , config_dir = "$HOME/.claude-cade"
               , operator_login = "never"
               , key_reach = "accepted"
+              , login_isolation =
+                { compare = "realpath-and-inode"
+                , refuse_reason = "login-isolation"
+                , paths =
+                  [ { path = "~/.claude-cade"
+                    , refused_when =
+                        "It is missing, it is a symlink, or its real path is realpath(~/.claude) or inside it."
+                    }
+                  , { path = "~/.claude-cade/.claude.json"
+                    , refused_when =
+                        "Its real path is realpath(~/.claude.json) or inside realpath(~/.claude), or it is the same inode as ~/.claude.json."
+                    }
+                  , { path = "~/.claude-cade/.credentials.json"
+                    , refused_when =
+                        "Its real path is inside realpath(~/.claude), or it is the same inode as ~/.claude/.credentials.json."
+                    }
+                  ]
+                , refused_env = [ "ANTHROPIC_*", "CLAUDE_CODE_OAUTH_TOKEN" ]
+                , inherited_env = "dropped"
+                }
               , notes =
                   "Jess ruled \"Under your own user on sting\" (TIN-7125 0a1924b3). Jobs run as jess on sting with CLAUDE_CONFIG_DIR=$HOME/.claude-cade, signed in to cade@xoxd.ai. There is no separate Unix user for jobs. Jess's own ~/.claude login is never used for a job. Jobs can reach Jess's keys, become file and gh login, and Jess accepted that. A job acts under Cade's own credentials, never under Jess's."
               }
@@ -754,14 +856,15 @@ in    { `$comment` =
                 , envelope = True
                 , needs_go = False
                 , identity = "none"
-                , notes = "The job writes only its result doc and receipt."
+                , notes =
+                    "The job writes only its result file and receipt under its own state dir."
                 }
               , { id = "result-doc"
                 , envelope = True
                 , needs_go = False
                 , identity = "job-seat"
                 , notes =
-                    "A result doc in a git-tracked cade-work notes path. Its {path, sha256} returns over swb."
+                    "The result doc is also committed, signed, to the git-tracked cade-work notes path. Nothing is pushed. Its {path, sha256} returns over swb."
                 }
               , { id = "linear-comment"
                 , envelope = True
@@ -769,12 +872,25 @@ in    { `$comment` =
                 , identity = "cade-linear"
                 , notes = "A Linear comment under Cade's own Linear identity."
                 }
+              , { id = "linear-issue"
+                , envelope = True
+                , needs_go = False
+                , identity = "cade-linear"
+                , notes = "A new Linear issue under Cade's own Linear identity."
+                }
+              , { id = "github-branch"
+                , envelope = True
+                , needs_go = False
+                , identity = "cade-github"
+                , notes =
+                    "A branch pushed to a fork under Cade's own GitHub identity, with no pull request."
+                }
               , { id = "github-pr"
                 , envelope = True
                 , needs_go = False
                 , identity = "cade-github"
                 , notes =
-                    "A branch pushed to a fork and a pull request opened under Cade's own GitHub identity. Cade never reviews her own PR and never merges it."
+                    "A branch pushed to a fork and a pull request opened under Cade's own GitHub identity. It includes github-branch. Cade never reviews her own PR and never merges it."
                 }
               , { id = "spend"
                 , envelope = False
@@ -849,7 +965,7 @@ in    { `$comment` =
                   "Every receipt records lineage, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. The budget envelope is report-only: the card posts status lines at 50, 80 and 100 percent, and nothing stops. Nothing in dispatch caps subagent count, depth or cost, because a cap is containment and needs a ruled interview. Extra jobs queue first come, first served. An audit finding is a warning on the card, never a denial (R-N12)."
               }
             , notes =
-                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:cade-jobs, where a receiver calls the fixed cade-job launcher. Replies carry kind reply, needs-go or dispatch-request. A tag matches a carve-out tag after lowercasing and dropping every character outside a-z and 0-9, and a tag that starts with a carve-out tag matches too. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
+                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. A tag matches a carve-out tag after lowercasing and dropping every character outside a-z and 0-9, and a tag that starts with a carve-out tag matches too. A goal that contains a carve-out tag after the same normalizing matches as well. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
             }
           }
       , enforcement =
@@ -911,7 +1027,7 @@ in    { `$comment` =
           , { id = "cade-dispatch-root-resolution"
             , severity = "error"
             , rule =
-                "A fixed resolver, not the broker, picks a dispatched job's root seat from its lane and tags. cade.delegate.research, cade.delegate.draft, cade.delegate.business and cade.delegate.marketing get a Fable root as orchestrator. cade.delegate.develop gets an Opus root. Any carve-out tag on any lane reroutes the root to Opus. Uncertain or missing tags on cade.delegate.develop resolve to Opus. A lane that does not admit the job's custody gets no root, and the job does not run."
+                "A fixed resolver, not the broker, picks a dispatched job's root seat from its lane and tags. cade.delegate.research, cade.delegate.draft, cade.delegate.business and cade.delegate.marketing get a Fable root as orchestrator. cade.delegate.develop gets an Opus root. Any carve-out tag on any lane reroutes the root to Opus. A goal that contains a carve-out tag reroutes the root to Opus too. Uncertain or missing tags on cade.delegate.develop resolve to Opus. A lane that does not admit the job's custody gets no root, and the job does not run."
             }
           , { id = "cade-dispatch-carve-out-inheritance"
             , severity = "error"
@@ -931,7 +1047,7 @@ in    { `$comment` =
           , { id = "fable-id-from-account"
             , severity = "error"
             , rule =
-                "The Fable model id is a config value read from the cade@xoxd.ai account after Jess's attended login. This policy never carries it. A Fable-root job waits until the id is read. A receipt whose observed root model differs from its resolved root model is an audit finding."
+                "The Fable model id is a config value read from the cade@xoxd.ai account after Jess's attended login. This policy never carries it. A Fable-root job is refused with fable-id-unrecorded until the id is read, and it never runs on Opus instead. A receipt whose observed root model differs from its resolved root model is an audit finding."
             }
           , { id = "cade-never-reviews-own-pr"
             , severity = "error"
