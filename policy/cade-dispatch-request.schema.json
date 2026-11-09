@@ -106,7 +106,7 @@
           "$ref": "#/$defs/custody"
         },
         "goal": {
-          "description": "At most 6000 UTF-8 bytes. maxLength bounds code points, and every validator also checks the byte length.",
+          "description": "At most 6000 UTF-8 bytes, checked as bytes. maxLength counts code points, so it bounds the goal and never refuses a valid one; every implementer also counts the UTF-8 bytes and refuses more than 6000 with envelope-invalid. A non-ASCII letter is allowed and makes the carve-out status uncertain.",
           "type": "string",
           "minLength": 1,
           "maxLength": 6000,
@@ -330,12 +330,13 @@
           "$ref": "#/$defs/modelId"
         },
         "reroute": {
-          "description": "Set only when a Fable lane moved to Opus.",
+          "description": "Set only when a Fable lane moved to Opus. Contract section 6.1 gives the precedence: own tag hit, inherited hit, goal hit, then a goal with a non-ASCII letter after NFKC.",
           "enum": [
             null,
             "carve-out",
             "carve-out-inherited",
-            "carve-out-inferred"
+            "carve-out-inferred",
+            "carve-out-uncertain"
           ]
         },
         "carve_out_hits": {
@@ -351,7 +352,7 @@
           "$ref": "#/$defs/custody"
         },
         "source_label": {
-          "description": "The source item's label, verbatim, for the card. At most 64 bytes.",
+          "description": "The source item's label, verbatim, for the card. At most 64 UTF-8 bytes, checked as bytes: maxLength counts code points and is only a bound. The receiver uses it for no custody check.",
           "type": "string",
           "minLength": 1,
           "maxLength": 64
@@ -475,7 +476,7 @@
           "$ref": "#/$defs/policyRev"
         },
         "dedupe_key": {
-          "description": "sha256(root_id + LF + hex sha256(goal)).",
+          "description": "The lowercase hex sha256 of the UTF-8 bytes of root_id + LF + goal, the envelope's values exactly as sent with no normalization. The receiver recomputes it and refuses a mismatch with resolution-invalid.",
           "$ref": "#/$defs/sha256"
         },
         "resolved_at": {
@@ -493,7 +494,8 @@
                 "enum": [
                   "carve-out",
                   "carve-out-inherited",
-                  "carve-out-inferred"
+                  "carve-out-inferred",
+                  "carve-out-uncertain"
                 ]
               }
             }
@@ -562,7 +564,7 @@
       }
     },
     "tag": {
-      "description": "A slugged task tag.",
+      "description": "A slugged task tag, ASCII only. Cade slugs each raw tag after NFKC and refuses one with a non-ASCII letter or an empty slug, so a non-ASCII tag on the wire fails this pattern.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
       "not": {

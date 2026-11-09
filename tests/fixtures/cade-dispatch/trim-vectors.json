@@ -1,0 +1,3331 @@
+{
+  "schema": "prompt-toon.cade-dispatch.trim-vectors/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 5.4 (R3-f). Each vector is a reply whose receipt is the complete receipt. The tests take the receipt file to be the compact JSON of reply.receipt after the Fable id is injected, so receipt_sha256 is the sha256 of those UTF-8 bytes. A real receiver hashes its own file. The limit is 16384 UTF-8 bytes of the reply as sent; the reference serializes compact JSON with separators , and : and no ASCII escaping. A trimmed reply removes observed_models entries from the end, one at a time, until it fits, never the root entry and never an entry whose model matches fableId. It keeps the order and every other receipt field, and observed_models is never added to unobserved. expect.kept_always lists units that must survive. A reply still over the limit becomes kind failed, reason reply-too-large, receipt null.",
+  "limit_bytes": 16384,
+  "vectors": [
+    {
+      "name": "fits, unchanged",
+      "reply": {
+        "schema": "cade.dispatch.reply/v1",
+        "kind": "reply",
+        "job_id": "job-20261109-pricing-1",
+        "receipt": {
+          "schema": "cade.dispatch.receipt/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "lane": "cade.delegate.research",
+          "resolved_root_model": "@FABLE_ID@",
+          "observed_models": [
+            {
+              "unit": "root",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0000",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0001",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0002",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0003",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0004",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0005",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0006",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0007",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0008",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0009",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0010",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0011",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0012",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0013",
+              "model": "claude-sonnet-5-5"
+            }
+          ],
+          "children": 20,
+          "peak_concurrency": 8,
+          "observed_depth": null,
+          "tokens": {
+            "input": 412000,
+            "output": 61000,
+            "cache_read": 1180000,
+            "cache_write": 96000,
+            "total": 1749000
+          },
+          "wall_seconds": 1834.512,
+          "effects": [],
+          "go_refs": [],
+          "result": {
+            "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+            "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+          },
+          "status": "done",
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+          "unobserved": {
+            "observed_depth": "hook-no-depth"
+          }
+        }
+      },
+      "expect": {
+        "kind": "reply",
+        "trimmed": false
+      }
+    },
+    {
+      "name": "over the limit with Sonnet units",
+      "reply": {
+        "schema": "cade.dispatch.reply/v1",
+        "kind": "reply",
+        "job_id": "job-20261109-pricing-1",
+        "receipt": {
+          "schema": "cade.dispatch.receipt/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "lane": "cade.delegate.research",
+          "resolved_root_model": "@FABLE_ID@",
+          "observed_models": [
+            {
+              "unit": "root",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0000",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0001",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0002",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0003",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0004",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0005",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0006",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0007",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0008",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0009",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:000f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0010",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0011",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0012",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0013",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0014",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0015",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0016",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0017",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0018",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0019",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:001f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0020",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0021",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0022",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0023",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0024",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0025",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0026",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0027",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0028",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0029",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:002f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0030",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0031",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0032",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0033",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0034",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0035",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0036",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0037",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0038",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0039",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:003f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0040",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0041",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0042",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0043",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0044",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0045",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0046",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0047",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0048",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0049",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:004f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0050",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0051",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0052",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0053",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0054",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0055",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0056",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0057",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0058",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0059",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:005f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0060",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0061",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0062",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0063",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0064",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0065",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0066",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0067",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0068",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0069",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:006f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0070",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0071",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0072",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0073",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0074",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0075",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0076",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:0077",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research:f001",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-bulk:0000",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0001",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0002",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0003",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0004",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0005",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0006",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0007",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0008",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0009",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:000f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0010",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0011",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0012",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0013",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0014",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0015",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0016",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0017",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0018",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0019",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:001f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0020",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0021",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0022",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0023",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0024",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0025",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0026",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0027",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0028",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0029",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:002f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0030",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0031",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0032",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0033",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0034",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0035",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0036",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0037",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0038",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0039",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:003f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0040",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0041",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0042",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0043",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0044",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0045",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0046",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0047",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0048",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0049",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:004f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0050",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0051",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0052",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0053",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0054",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0055",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0056",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0057",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0058",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0059",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:005f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0060",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0061",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0062",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0063",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0064",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0065",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0066",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0067",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0068",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0069",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006a",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006b",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006c",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006d",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006e",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:006f",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0070",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0071",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0072",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0073",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0074",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0075",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0076",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0077",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-adversarial-review:c9d0",
+              "model": "claude-opus-5-5"
+            },
+            {
+              "unit": "cade-research-b:0000",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0001",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0002",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0003",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0004",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0005",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0006",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0007",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0008",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0009",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:000f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0010",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0011",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0012",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0013",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0014",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0015",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0016",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0017",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0018",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0019",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:001f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0020",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0021",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0022",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0023",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0024",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0025",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0026",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0027",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0028",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0029",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:002f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0030",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0031",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0032",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0033",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0034",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0035",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0036",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0037",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0038",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0039",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:003f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0040",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0041",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0042",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0043",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0044",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0045",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0046",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0047",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0048",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0049",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:004f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0050",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0051",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0052",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0053",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0054",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0055",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0056",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0057",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0058",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0059",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:005f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0060",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0061",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0062",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0063",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0064",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0065",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0066",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0067",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0068",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0069",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006a",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006b",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006c",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006d",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006e",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:006f",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0070",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0071",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0072",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0073",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0074",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0075",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0076",
+              "model": "claude-sonnet-5-5"
+            },
+            {
+              "unit": "cade-research-b:0077",
+              "model": "claude-sonnet-5-5"
+            }
+          ],
+          "children": 362,
+          "peak_concurrency": 8,
+          "observed_depth": null,
+          "tokens": {
+            "input": 412000,
+            "output": 61000,
+            "cache_read": 1180000,
+            "cache_write": 96000,
+            "total": 1749000
+          },
+          "wall_seconds": 1834.512,
+          "effects": [],
+          "go_refs": [],
+          "result": {
+            "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+            "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+          },
+          "status": "done",
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+          "unobserved": {
+            "observed_depth": "hook-no-depth"
+          }
+        }
+      },
+      "expect": {
+        "kind": "reply",
+        "trimmed": true,
+        "kept_always": [
+          "root",
+          "cade-research:f001"
+        ]
+      }
+    },
+    {
+      "name": "still over after trimming",
+      "reply": {
+        "schema": "cade.dispatch.reply/v1",
+        "kind": "reply",
+        "job_id": "job-20261109-pricing-1",
+        "receipt": {
+          "schema": "cade.dispatch.receipt/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "lane": "cade.delegate.research",
+          "resolved_root_model": "@FABLE_ID@",
+          "observed_models": [
+            {
+              "unit": "root",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0000",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0001",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0002",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0003",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0004",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0005",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0006",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0007",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0008",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0009",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:000f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0010",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0011",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0012",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0013",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0014",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0015",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0016",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0017",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0018",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0019",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:001f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0020",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0021",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0022",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0023",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0024",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0025",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0026",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0027",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0028",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0029",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:002f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0030",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0031",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0032",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0033",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0034",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0035",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0036",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0037",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0038",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0039",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:003f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0040",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0041",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0042",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0043",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0044",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0045",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0046",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0047",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0048",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0049",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:004f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0050",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0051",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0052",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0053",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0054",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0055",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0056",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0057",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0058",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0059",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:005f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0060",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0061",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0062",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0063",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0064",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0065",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0066",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0067",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0068",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0069",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:006f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0070",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0071",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0072",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0073",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0074",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0075",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0076",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0077",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0078",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0079",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:007f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0080",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0081",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0082",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0083",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0084",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0085",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0086",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0087",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0088",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0089",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:008f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0090",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0091",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0092",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0093",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0094",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0095",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0096",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0097",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0098",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0099",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:009f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00a9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00aa",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ab",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ac",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ad",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ae",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00af",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00b9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ba",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00bb",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00bc",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00bd",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00be",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00bf",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00c9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ca",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00cb",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00cc",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00cd",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ce",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00cf",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00d9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00da",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00db",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00dc",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00dd",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00de",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00df",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00e9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ea",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00eb",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ec",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ed",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ee",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ef",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f0",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f1",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f2",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f3",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f4",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f5",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f6",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f7",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f8",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00f9",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00fa",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00fb",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00fc",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00fd",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00fe",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:00ff",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0100",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0101",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0102",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0103",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0104",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0105",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0106",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0107",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0108",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0109",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:010f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0110",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0111",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0112",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0113",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0114",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0115",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0116",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0117",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0118",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0119",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:011f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0120",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0121",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0122",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0123",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0124",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0125",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0126",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0127",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0128",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0129",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:012f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0130",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0131",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0132",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0133",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0134",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0135",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0136",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0137",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0138",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0139",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:013f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0140",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0141",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0142",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0143",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0144",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0145",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0146",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0147",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0148",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0149",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:014f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0150",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0151",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0152",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0153",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0154",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0155",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0156",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0157",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0158",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0159",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:015f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0160",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0161",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0162",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0163",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0164",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0165",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0166",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0167",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0168",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0169",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:016f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0170",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0171",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0172",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0173",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0174",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0175",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0176",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0177",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0178",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0179",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:017f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0180",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0181",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0182",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0183",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0184",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0185",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0186",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0187",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0188",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:0189",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018a",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018b",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018c",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018d",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018e",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-research:018f",
+              "model": "@FABLE_ID@"
+            },
+            {
+              "unit": "cade-bulk:0000",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0001",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0002",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0003",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0004",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0005",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0006",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0007",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0008",
+              "model": "claude-haiku-5-5"
+            },
+            {
+              "unit": "cade-bulk:0009",
+              "model": "claude-haiku-5-5"
+            }
+          ],
+          "children": 410,
+          "peak_concurrency": 8,
+          "observed_depth": null,
+          "tokens": {
+            "input": 412000,
+            "output": 61000,
+            "cache_read": 1180000,
+            "cache_write": 96000,
+            "total": 1749000
+          },
+          "wall_seconds": 1834.512,
+          "effects": [],
+          "go_refs": [],
+          "result": {
+            "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+            "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+          },
+          "status": "done",
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+          "unobserved": {
+            "observed_depth": "hook-no-depth"
+          }
+        }
+      },
+      "expect": {
+        "kind": "failed",
+        "reason": "reply-too-large",
+        "receipt": null
+      }
+    }
+  ]
+}

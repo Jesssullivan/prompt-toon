@@ -659,6 +659,9 @@
             "carve_out_tags",
             "carve_out_match",
             "carve_out_goal_match",
+            "carve_out_normalize",
+            "carve_out_stems",
+            "carve_out_non_ascii",
             "carve_out_seat",
             "develop_uncertain_tags",
             "tag_inheritance",
@@ -867,7 +870,7 @@
             "reasons": {
               "description": "Reply and refusal reasons. raised_by cade never reaches the wire: cade returns those from cade.dispatch.submit.",
               "type": "array",
-              "minItems": 22,
+              "minItems": 23,
               "uniqueItems": true,
               "items": {
                 "type": "object",
@@ -899,6 +902,7 @@
                       "launch-failed",
                       "job-failed",
                       "halt-job-unknown",
+                      "reply-too-large",
                       "recipient-unbound",
                       "halt"
                     ]
@@ -949,11 +953,33 @@
               }
             },
             "carve_out_match": {
-              "const": "normalized-prefix"
+              "description": "A tag hits a carve-out tag when its normalized form contains a normalized carve-out stem (TIN-7125 contract-v1 section 6.1, round 3).",
+              "const": "normalized-substring"
             },
             "carve_out_goal_match": {
-              "description": "A goal hits a carve-out tag when the normalized goal contains the normalized tag.",
+              "description": "A goal hits a carve-out tag when its normalized form contains a normalized carve-out stem.",
               "const": "normalized-substring"
+            },
+            "carve_out_normalize": {
+              "description": "Applied before matching: NFKC, then A-Z lowercased to a-z, then every character outside a-z and 0-9 removed.",
+              "const": "nfkc"
+            },
+            "carve_out_stems": {
+              "description": "The eight carve-out stems and the canonical tag each stands for. Every canonical tag contains its own stem, so a stamped canonical tag hits again.",
+              "const": [
+                { "stem": "adversar", "canonical": "adversarial" },
+                { "stem": "red-team", "canonical": "red-team" },
+                { "stem": "redteam", "canonical": "red-team" },
+                { "stem": "team-red", "canonical": "red-team" },
+                { "stem": "purple-team", "canonical": "purple-team" },
+                { "stem": "purpleteam", "canonical": "purple-team" },
+                { "stem": "deep-iteration", "canonical": "deep-iteration" },
+                { "stem": "deep-iterat", "canonical": "deep-iteration" }
+              ]
+            },
+            "carve_out_non_ascii": {
+              "description": "A raw tag with a non-ASCII letter after NFKC is refused with tag. A goal with one makes the carve-out status uncertain, which reroutes a Fable lane to Opus with goal as the reroute.",
+              "const": { "tag": "request-invalid", "goal": "carve-out-uncertain" }
             },
             "carve_out_seat": {
               "const": "opus"

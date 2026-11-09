@@ -26,7 +26,7 @@
       "contract_ready": true,
       "enabled": false,
       "note": "Declarative source contract only; enabled becomes true after the separate lab Home Manager unit consumes it.",
-      "sha256": "64d70365df65390a06c84e61ca9fc231c1fad1781946cd2ad5aecebdc56d7453"
+      "sha256": "d89c6bd18e4d3a97ca48860f37d1e3ad08f5190cf239a847381c10f36a67b417"
     },
     "nix": {
       "enabled": true
@@ -53,27 +53,27 @@
     },
     {
       "file": "policy/cade-dispatch-reply.schema.json",
-      "sha256": "165f54a25f3cea14b4c40f9af95c76e41b07bcb7cf18a55d91cecfc88bf664e7"
+      "sha256": "a7e9495f03ded8fd1a08bdb0a21641c94f0919be9a8bc429721177c6ab97e7f5"
     },
     {
       "file": "policy/cade-dispatch-request.schema.json",
-      "sha256": "81539be7cc502ef0b9bf3e35608c9e2f26b57fb90e0286564af90cc6cdefc901"
+      "sha256": "aa0bacf52762d8da9cd1e9ec8732f4a7714285710e51a0041f2a5bb85cb2f810"
     },
     {
       "file": "policy/cade-dispatch-resolution.schema.json",
-      "sha256": "0fce0a036575e6460cd4238fbaefa3a57108ee2da45a820bc6016a7a1922c685"
+      "sha256": "1c5d4d9d181c7a57868e877413261637173cc3403f613c82e4150364df85b01a"
     },
     {
       "file": "policy/cade-dispatch.schema.json",
-      "sha256": "b65ad385c601ef6055140a3e84019b5a91f326549ca3d08928d54ec4e18b0cd6"
+      "sha256": "4b9e7b7ffabac168ffc50edfdccdc8e0d8e86da32af59706729b96a505fd30d1"
     },
     {
       "file": "policy/delegation.json",
-      "sha256": "474c8deeeb16f79a07b74a8e3a0805560c53966600f13114bb6e071c4dc37108"
+      "sha256": "d6b53e2c3579fe9cd5f89dd2d86576f3698d31f1b2e5a50146eaa76594d36354"
     },
     {
       "file": "policy/delegation.schema.json",
-      "sha256": "828f4621547d700b36d2b129e1e041ce5f9319e507ff69743fa9558901ad2d18"
+      "sha256": "13bbf665a55f06a0a13577c8e51d5173f363eacd020514c14285fe5aceb80129"
     },
     {
       "file": "policy/io.json",
@@ -101,7 +101,7 @@
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "eb6ad28222e5bae5eb9a34c74686b680d0bbad94ceba0e6705025e36108cc232"
+          "sha256": "8af572012dcb9caf69a3a0923e32de06eeead739f54353fd09e8e9e9629661c9"
         }
       ],
       "name": "mythos-delegation"

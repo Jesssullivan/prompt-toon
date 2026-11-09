@@ -3,8 +3,10 @@ import json
 import os
 import re
 import shutil
+import string
 import subprocess
 import tempfile
+import unicodedata
 import unittest
 from pathlib import Path
 
@@ -248,6 +250,7 @@ REASONS = {
     "launch-failed": "receiver",
     "job-failed": "job",
     "halt-job-unknown": "receiver",
+    "reply-too-large": "receiver",
     "recipient-unbound": "cade",
     "halt": "receiver",
 }
@@ -262,6 +265,20 @@ CUSTODY_LABEL_CLASSES = {
 LOGIN_ISOLATION_PATHS = ("~/.claude-cade", "~/.claude-cade/.claude.json", "~/.claude-cade/.credentials.json")
 OPUS_ID = "claude-opus-5-5"
 CARVE_OUT_TAGS = ("adversarial", "red-team", "purple-team", "deep-iteration")
+# Contract section 6.1, round 3 (R3-a): tags and goals hit a canonical
+# carve-out tag when their normalized form contains a normalized stem.
+CARVE_OUT_STEMS = (
+    ("adversar", "adversarial"),
+    ("red-team", "red-team"),
+    ("redteam", "red-team"),
+    ("team-red", "red-team"),
+    ("purple-team", "purple-team"),
+    ("purpleteam", "purple-team"),
+    ("deep-iteration", "deep-iteration"),
+    ("deep-iterat", "deep-iteration"),
+)
+CARVE_OUT_NON_ASCII = {"tag": "request-invalid", "goal": "carve-out-uncertain"}
+REPLY_LIMIT_BYTES = 16384
 CUSTODY_ORDER = ("public", "ops", "confidential", "health")
 # Who runs each unit inside a job. Fable never runs one and Kimi never runs
 # inside a Claude Code job.
@@ -427,7 +444,10 @@ RULE_SENTENCES = {
         "its lane and tags.",
         "cade.delegate.develop gets an Opus root.",
         "Any carve-out tag on any lane reroutes the root to Opus.",
-        "A goal that contains a carve-out tag reroutes the root to Opus too.",
+        "A tag or a goal whose NFKC-normalized form contains a carve-out stem "
+        "reroutes the root to Opus too.",
+        "A goal with a non-ASCII letter after NFKC makes the carve-out status "
+        "uncertain, and an uncertain goal on a Fable lane reroutes the root to Opus.",
         "Uncertain or missing tags on cade.delegate.develop resolve to Opus.",
         "A lane that does not admit the job's custody gets no root, and the job "
         "does not run.",
@@ -438,6 +458,7 @@ RULE_SENTENCES = {
     ),
     "cade-dispatch-custody-narrows": (
         "Custody comes from the source item's label, never from the broker.",
+        "A job's custody keeps or narrows its label's class.",
         "A child's custody stays the same as its parent's or narrows, in the order "
         "public, ops, confidential, health.",
         "It never widens.",
@@ -1300,52 +1321,101 @@ def dispatch_skill_table_violations(policy, skill_text):
     return errors
 
 
-def normalize_tag(tag):
-    return re.sub(r"[^a-z0-9]", "", str(tag).lower())
+class Refusal(Exception):
+    """A refusal with a contract reason id."""
+
+    def __init__(self, reason, detail=""):
+        super().__init__(reason)
+        self.reason = reason
+        self.detail = detail
+
+
+ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def nfkc(text):
+    return unicodedata.normalize("NFKC", text)
+
+
+def has_non_ascii_letter(text):
+    """Contract section 6.1 nonascii: a code point above U+007F whose general
+    category is L (Lu, Ll, Lt, Lm or Lo)."""
+    return any(ord(ch) > 0x7F and unicodedata.category(ch).startswith("L") for ch in text)
+
+
+def normalize_tag(text):
+    """Contract section 6.1 norm: NFKC, then A-Z lowercased to a-z, then every
+    character outside a-z and 0-9 removed. Lowercasing is ASCII only."""
+    return re.sub(r"[^a-z0-9]", "", nfkc(str(text)).translate(ASCII_LOWER))
+
+
+def policy_stems(dispatch):
+    """The policy's carve-out stems as (stem, canonical) pairs, or None when
+    the list is malformed."""
+    stems = dispatch.get("carve_out_stems")
+    if not isinstance(stems, list) or not all(isinstance(s, dict) for s in stems):
+        return None
+    return [(s.get("stem"), s.get("canonical")) for s in stems]
+
+
+def stem_hits(policy, text):
+    """The canonical carve-out tags whose normalized stem is a substring of
+    the normalized text."""
+    norm = normalize_tag(text)
+    hits = set()
+    for stem, canonical in policy_stems(policy.get("cade", {}).get("dispatch", {})) or []:
+        target = normalize_tag(stem or "")
+        if target and target in norm:
+            hits.add(canonical)
+    return hits
 
 
 def carve_out_hits(policy, tags):
-    """The carve-out tags a tag list carries. A tag matches after lowercasing
-    and dropping everything outside a-z and 0-9, and a tag that starts with a
-    carve-out tag matches too (normalized-prefix)."""
-    carve = policy.get("cade", {}).get("dispatch", {}).get("carve_out_tags", [])
+    """The carve-out tags a tag list carries: for each tag, the canonical tag
+    of every stem whose normalized form is a substring of the normalized tag
+    (normalized-substring, contract section 6.1)."""
     hits = set()
     for tag in tags if isinstance(tags, list) else []:
-        norm = normalize_tag(tag)
-        for raw in carve:
-            target = normalize_tag(raw)
-            if target and norm.startswith(target):
-                hits.add(raw)
+        hits |= stem_hits(policy, tag)
     return hits
 
 
 def goal_carve_out_hits(policy, goal):
-    """The carve-out tags a goal names: the normalized goal contains the
-    normalized tag (normalized-substring, contract section 6.1)."""
-    dispatch = policy.get("cade", {}).get("dispatch", {})
-    norm = normalize_tag(goal if isinstance(goal, str) else "")
-    return {
-        raw
-        for raw in dispatch.get("carve_out_tags", [])
-        if normalize_tag(raw) and normalize_tag(raw) in norm
-    }
+    """The carve-out tags a goal names, by the same stems and normalizing."""
+    return stem_hits(policy, goal if isinstance(goal, str) else "")
+
+
+def goal_uncertain(goal):
+    """Contract section 6.1 uncertain: NFKC leaves a non-ASCII letter in the
+    goal. A goal that is not text is uncertain too."""
+    return not isinstance(goal, str) or has_non_ascii_letter(nfkc(goal))
 
 
 def slug_tag(raw):
-    """Cade's slug for a raw tag Kimi wrote: lowercase, every run outside a-z
-    and 0-9 becomes one hyphen, hyphens trimmed. An empty result is dropped."""
-    slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
-    return slug or None
+    """Cade's slug for a raw tag Kimi wrote (contract section 6.1): NFKC, then
+    a refusal for a non-ASCII letter, then A-Z lowercased, every run outside
+    a-z and 0-9 becomes one hyphen and hyphens are trimmed. An empty slug is
+    refused, never dropped. Raises Refusal("request-invalid")."""
+    if not isinstance(raw, str):
+        raise Refusal("request-invalid", "a raw tag is not text")
+    text = nfkc(raw)
+    if has_non_ascii_letter(text):
+        raise Refusal("request-invalid", f"raw tag {raw!r} holds a non-ASCII letter after NFKC")
+    slug = re.sub(r"[^a-z0-9]+", "-", text.translate(ASCII_LOWER)).strip("-")
+    if not slug:
+        raise Refusal("request-invalid", f"raw tag {raw!r} slugs to empty")
+    return slug
 
 
 def stamp_tags(policy, raw_tags, goal, parent_tags=()):
     """The tags Cade stamps on an envelope: the slugged raw tags, then the
     canonical carve-out tag for every hit and every inherited carve-out tag
-    that is not already present."""
+    that is not already present. A raw tag that cannot be slugged refuses
+    the request."""
     tags = []
     for raw in raw_tags:
         slug = slug_tag(raw)
-        if slug and slug not in tags:
+        if slug not in tags:
             tags.append(slug)
     hits = carve_out_hits(policy, tags) | goal_carve_out_hits(policy, goal) | carve_out_hits(policy, list(parent_tags))
     for canonical in policy.get("cade", {}).get("dispatch", {}).get("carve_out_tags", []):
@@ -1354,13 +1424,16 @@ def stamp_tags(policy, raw_tags, goal, parent_tags=()):
     return tags
 
 
-class Refusal(Exception):
-    """A refusal with a contract reason id."""
-
-    def __init__(self, reason, detail=""):
-        super().__init__(reason)
-        self.reason = reason
-        self.detail = detail
+def carve_out_rule_weakened(dispatch):
+    """True when the policy's carve-out rule differs from contract section
+    6.1. A weakened rule routes every Fable lane to Opus."""
+    return (
+        dispatch.get("carve_out_match") != "normalized-substring"
+        or dispatch.get("carve_out_goal_match") != "normalized-substring"
+        or dispatch.get("carve_out_normalize") != "nfkc"
+        or dispatch.get("carve_out_non_ascii") != CARVE_OUT_NON_ASCII
+        or policy_stems(dispatch) != list(CARVE_OUT_STEMS)
+    )
 
 
 TAG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
@@ -1402,29 +1475,45 @@ def custody_from_label(policy, label):
     return None, unknown
 
 
-def admit_custody(policy, label, lane_route, envelope_custody=None, parent_custody=None):
-    """Cade's custody admission: the label class, then the lane, then the
-    envelope and the parent may only keep or narrow it."""
-    custody, reason = custody_from_label(policy, label)
-    if reason:
-        raise Refusal(reason)
-    reason = lane_custody_reason(policy, lane_route, custody)
-    if reason:
-        raise Refusal(reason)
+def custody_rank(policy, custody):
+    """Contract section 3.3 rank, wide to narrow: public 0, ops 1,
+    confidential 2, health 3. None outside the custody order."""
     order = list(policy.get("cade", {}).get("dispatch", {}).get("custody_order", []))
+    return order.index(custody) if custody in order else None
+
+
+def admit_custody(policy, label, lane_route, envelope_custody=None, parent_custody=None):
+    """Cade's custody admission (contract section 3.3, R3-c). The label gives
+    the source class. The claimed custody, the envelope's, may only narrow:
+    a root needs rank(claimed) >= rank(label class) and a child also needs
+    rank(claimed) >= rank(parent custody). The lane check then runs on the
+    claimed custody, never on the label class. Returns the claimed custody."""
+    source, reason = custody_from_label(policy, label)
+    if reason:
+        raise Refusal(reason)
     widens = policy.get("cade", {}).get("dispatch", {}).get("custody_labels", {}).get("widens", "custody-widens")
-    claimed = custody if envelope_custody is None else envelope_custody
-    if claimed not in order or order.index(claimed) < order.index(custody):
-        raise Refusal(widens)
-    if parent_custody is not None and (parent_custody not in order or order.index(claimed) < order.index(parent_custody)):
-        raise Refusal(widens)
+    claimed = source if envelope_custody is None else envelope_custody
+    claimed_rank, source_rank = custody_rank(policy, claimed), custody_rank(policy, source)
+    if claimed_rank is None:
+        raise Refusal("envelope-invalid", f"claimed custody {claimed!r} is not a custody class")
+    if source_rank is None or claimed_rank < source_rank:
+        raise Refusal(widens, f"claimed {claimed!r} widens the label class {source!r}")
+    if parent_custody is not None:
+        parent_rank = custody_rank(policy, parent_custody)
+        if parent_rank is None or claimed_rank < parent_rank:
+            raise Refusal(widens, f"child custody {claimed!r} widens the parent's {parent_custody!r}")
+    reason = lane_custody_reason(policy, lane_route, claimed)
+    if reason:
+        raise Refusal(reason)
     return claimed
 
 
 def resolve_root_class(policy, envelope, inherited=()):
-    """Contract section 6.1: (root_class, reroute, carve_out_hits). Raises
-    Refusal for an unknown lane, malformed tags, custody the lane does not
-    admit or a weakened policy. Fable is never the fallback."""
+    """Contract section 6.1: (root_class, reroute, carve_out_hits). The first
+    row that matches decides: develop, an own hit, an inherited hit, a goal
+    hit, an uncertain goal, then Fable. inherited is the parent ledger row's
+    tags. Raises Refusal for an unknown lane, malformed tags, custody the
+    lane does not admit or a weakened policy. Fable is never the fallback."""
     dispatch = policy.get("cade", {}).get("dispatch", {})
     lanes = {l.get("route"): l for l in dispatch.get("lanes", [])}
     lane = lanes.get(envelope.get("lane"))
@@ -1440,24 +1529,27 @@ def resolve_root_class(policy, envelope, inherited=()):
         raise Refusal("policy-invalid", "carve_out_seat is not opus")
     tag_hits = carve_out_hits(policy, tags)
     inherited_hits = carve_out_hits(policy, list(inherited))
+    # Lab stamps the parent's hits into a child's own tags, so own hits are
+    # tag hits minus the parent's.
+    own_hits = tag_hits - inherited_hits
     goal_hits = goal_carve_out_hits(policy, envelope.get("goal"))
+    uncertain = goal_uncertain(envelope.get("goal"))
     hits = sorted(tag_hits | inherited_hits | goal_hits)
-    weakened = (
-        dispatch.get("carve_out_match") != "normalized-prefix"
-        or dispatch.get("carve_out_goal_match") != "normalized-substring"
-    )
+    weakened = carve_out_rule_weakened(dispatch)
     if lane.get("root_seat") == "opus":
         if lane.get("parent_persona") != "critical":
             raise Refusal("policy-invalid", "an opus root off the critical persona")
         return "opus", None, hits
     if lane.get("root_seat") != "fable" or lane.get("parent_persona") != "fable-orchestrator":
         raise Refusal("policy-invalid", "a fable lane off fable-orchestrator")
-    if tag_hits or weakened:
+    if own_hits or weakened:
         return "opus", "carve-out", hits
     if inherited_hits:
         return "opus", "carve-out-inherited", hits
     if goal_hits:
         return "opus", "carve-out-inferred", hits
+    if uncertain:
+        return "opus", "carve-out-uncertain", hits
     return "fable", None, hits
 
 
@@ -1491,7 +1583,9 @@ def sha256_text(text):
 
 
 def dedupe_key(envelope):
-    return sha256_text(str(envelope.get("root_id")) + "\n" + sha256_text(str(envelope.get("goal"))))
+    """Contract section 4.4 (R3-d): the lowercase hex sha256 of the UTF-8
+    bytes of root_id, one LF and goal, exactly as sent."""
+    return sha256_text(str(envelope.get("root_id")) + "\n" + str(envelope.get("goal")))
 
 
 def child_job_id(parent_job_id, n, goal, depth):
@@ -1524,9 +1618,13 @@ def child_policy(policy, root_class, hits):
     }
 
 
-def build_resolution(policy, envelope, source_label, read_fable_id, inherited=(), policy_rev=None, resolved_at=None):
-    """Cade's resolution for an admitted envelope (contract section 4.4)."""
-    admit_custody(policy, source_label, envelope.get("lane"), envelope.get("custody"))
+def build_resolution(
+    policy, envelope, source_label, read_fable_id, inherited=(), policy_rev=None, resolved_at=None, parent_custody=None
+):
+    """Cade's resolution for an admitted envelope (contract section 4.4). For a
+    child, source_label is the parent's and inherited and parent_custody come
+    from the parent ledger row."""
+    admit_custody(policy, source_label, envelope.get("lane"), envelope.get("custody"), parent_custody)
     root_class, reroute, hits = resolve_root_class(policy, envelope, inherited)
     _, model = resolve_root(policy, envelope, read_fable_id, inherited)
     return {
@@ -1566,7 +1664,7 @@ def resolution_semantic_violations(policy, envelope, resolution):
     if resolution.get("child_policy", {}).get("carve_out_tags") != hits:
         errors.append("child_policy.carve_out_tags differs from carve_out_hits")
     if resolution.get("dedupe_key") != dedupe_key(envelope):
-        errors.append("dedupe_key is not sha256(root_id + LF + sha256(goal))")
+        errors.append("dedupe_key is not sha256(root_id + LF + goal)")
     label = resolution.get("source_label")
     if isinstance(label, str) and len(label.encode("utf-8")) > 64:
         errors.append("source_label is over 64 bytes")
@@ -1754,6 +1852,54 @@ def receiver_decide(policy, schemas, message, context):
         return {"action": "reply", "kind": "failed", "reason": refusal.reason}
 
 
+def reply_wire_bytes(reply):
+    """The reference serialization of a reply as sent: compact JSON, UTF-8."""
+    return json.dumps(reply, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def trim_reply(policy, reply, receipt_file_bytes, limit=REPLY_LIMIT_BYTES, serialize=reply_wire_bytes):
+    """Contract section 5.4 (R3-f). A reply that fits is returned unchanged.
+    Otherwise entries are removed from the end of the wire receipt's
+    observed_models, one at a time, until the reply fits, never the root
+    entry and never an entry whose model matches fableId, and trimmed records
+    the count and the receipt file's digest. A reply that still does not fit
+    becomes kind failed, reason reply-too-large, receipt null. The receipt
+    file itself is never changed."""
+    if len(serialize(reply)) <= limit:
+        return reply
+    digest = hashlib.sha256(receipt_file_bytes).hexdigest()
+    pattern = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {}).get("id_pattern")
+    receipt = reply.get("receipt")
+    models = receipt.get("observed_models") if isinstance(receipt, dict) else None
+    if isinstance(models, list):
+        wire = json.loads(json.dumps(reply))
+        kept = wire["receipt"]["observed_models"]
+        omitted = 0
+        for index in range(len(kept) - 1, -1, -1):
+            entry = kept[index]
+            model = entry.get("model") if isinstance(entry, dict) else None
+            fable = isinstance(model, str) and bool(pattern) and re.fullmatch(pattern, model) is not None
+            if not isinstance(entry, dict) or entry.get("unit") == "root" or fable:
+                continue
+            del kept[index]
+            omitted += 1
+            wire["trimmed"] = {"observed_models_omitted": omitted, "receipt_sha256": digest}
+            if len(serialize(wire)) <= limit:
+                return wire
+    count = len(models) if isinstance(models, list) else 0
+    return {
+        "schema": REPLY_SCHEMA_ID,
+        "kind": "failed",
+        "job_id": reply.get("job_id"),
+        "receipt": None,
+        "reason": "reply-too-large",
+        "detail": (
+            f"The reply is over {limit} bytes after every removable observed_models entry is gone. "
+            f"The receipt file's sha256 is {digest}, and it lists {count} observed_models entries."
+        ),
+    }
+
+
 def login_isolation_violations(home):
     """Contract section 8, read from a real HOME tree. Every path compares by
     real path, and files also by (st_dev, st_ino), which catches a hard
@@ -1935,8 +2081,9 @@ def dispatch_violations(policy):
         "recipient_delivery_key": RECIPIENT_DELIVERY_KEY,
         "harness_seat": DISPATCH_HARNESS_SEAT,
         "resolver": "fixed-resolver-reads-this-policy",
-        "carve_out_match": "normalized-prefix",
+        "carve_out_match": "normalized-substring",
         "carve_out_goal_match": "normalized-substring",
+        "carve_out_normalize": "nfkc",
         "carve_out_seat": "opus",
         "develop_uncertain_tags": "opus",
         "tag_inheritance": "carve-out-tags-pass-to-every-child",
@@ -1951,6 +2098,19 @@ def dispatch_violations(policy):
     for key, value in scalars.items():
         if dispatch.get(key) != value:
             errors.append(f"cade.dispatch.{key} is {dispatch.get(key)!r}, want {value!r}")
+    if dispatch.get("carve_out_non_ascii") != CARVE_OUT_NON_ASCII:
+        errors.append(f"cade.dispatch.carve_out_non_ascii must be {CARVE_OUT_NON_ASCII}")
+    stems = policy_stems(dispatch)
+    if stems != list(CARVE_OUT_STEMS):
+        errors.append(f"cade.dispatch.carve_out_stems is {stems!r}, want {list(CARVE_OUT_STEMS)!r}")
+    for stem, canonical in stems or []:
+        if canonical not in CARVE_OUT_TAGS or not normalize_tag(stem or ""):
+            errors.append(f"carve-out stem {stem!r} must name a carve-out tag and normalize to text")
+    for canonical in CARVE_OUT_TAGS:
+        # A stamped canonical tag hits itself, so the receiver's recompute
+        # from the envelope finds every hit cade stamped.
+        if canonical not in stem_hits(policy, canonical):
+            errors.append(f"carve-out tag {canonical!r} does not hit itself")
     if dispatch.get("receiver_registration") != RECEIVER_REGISTRATION:
         errors.append(f"cade.dispatch.receiver_registration must be {RECEIVER_REGISTRATION}")
     reg = dispatch.get("receiver_registration", {})
@@ -2103,7 +2263,7 @@ RESOLUTION_FIELDS = (
     "child_policy", "policy_rev", "dedupe_key", "resolved_at",
 )
 HALT_FIELDS = ("kind", "job_id", "reason", "requested_by", "created_at")
-REPLY_FIELDS = ("kind", "job_id", "receipt", "ask", "envelope", "reason", "detail", "halted_jobs", "halt_msg_id")
+REPLY_FIELDS = ("kind", "job_id", "receipt", "ask", "envelope", "reason", "detail", "halted_jobs", "halt_msg_id", "trimmed")
 REPLY_REQUIRED = {"kind", "job_id", "receipt"}
 # Embedded copies of whole objects, so each schema stands alone for a
 # validator that reads one file.
@@ -2217,8 +2377,8 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "eb6ad28222e5bae5eb9a34c74686b680d0bbad94ceba0e6705025e36108cc232"
-POLICY_CANONICAL_SHA256 = "cb636779d39b990826ee477b87ce84fca7918d9d74c0a35beb24cb8c6f3e7e13"
+SKILL_SHA256 = "8af572012dcb9caf69a3a0923e32de06eeead739f54353fd09e8e9e9629661c9"
+POLICY_CANONICAL_SHA256 = "b7aae0b1f8f385284dfbbb6a41c8f4d64b7d4e5118e45e03ad5693698d32c127"
 AGENTS_DELEGATION_SHA256 = "490d1560e5854a96dc900a54c438e4878bbed04aeceb997989906d2b1452295c"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
@@ -3681,6 +3841,15 @@ class DelegationPolicyTests(unittest.TestCase):
                 r for r in dispatch(d)["reasons"] if r["id"] == "recipient-unbound"
             ).update(raised_by="receiver"),
             "goal match dropped": lambda d: dispatch(d).update(carve_out_goal_match="none"),
+            "tag match back to prefix": lambda d: dispatch(d).update(carve_out_match="normalized-prefix"),
+            "nfkc dropped": lambda d: dispatch(d).update(carve_out_normalize="none"),
+            "adversar stem dropped": lambda d: dispatch(d)["carve_out_stems"].pop(0),
+            "team-red stem dropped": lambda d: dispatch(d)["carve_out_stems"].pop(3),
+            "stem names a fifth tag": lambda d: dispatch(d)["carve_out_stems"].append(
+                {"stem": "refut", "canonical": "refutation"}
+            ),
+            "non-ASCII tag dropped": lambda d: dispatch(d)["carve_out_non_ascii"].update(tag="drop"),
+            "non-ASCII goal on fable": lambda d: dispatch(d)["carve_out_non_ascii"].update(goal="fable"),
             "medical maps to public": lambda d: dispatch(d)["custody_labels"]["classes"][0]["labels"].append("medical"),
             "client maps to ops": lambda d: dispatch(d)["custody_labels"]["classes"][1]["labels"].append("client"),
             "confidential label admitted": lambda d: dispatch(d)["custody_labels"]["classes"][2].update(
@@ -3775,6 +3944,13 @@ class DelegationPolicyTests(unittest.TestCase):
             "halted status dropped",
             "reason dropped",
             "goal match dropped",
+            "tag match back to prefix",
+            "nfkc dropped",
+            "adversar stem dropped",
+            "team-red stem dropped",
+            "stem names a fifth tag",
+            "non-ASCII tag dropped",
+            "non-ASCII goal on fable",
             "confidential label admitted",
             "health label admitted",
             "unknown label admitted",
@@ -3838,6 +4014,49 @@ class DelegationPolicyTests(unittest.TestCase):
         # Goal words reroute without a tag, and need no Fable id.
         for goal in ("Red-team the auth module", "Run an adversarial pass", "PURPLE TEAM the drill", "a deep_iteration loop"):
             self.assertEqual(resolve_root(self.policy, env(tags=[], goal=goal), None), opus, goal)
+        # Round 3 (R3-a): a stem anywhere in a tag reroutes, and NFKC comes first.
+        for tags in (["api-red-team"], ["web-adversarial"], ["x-deep-iteration"], ["adversary-emulation"], ["team-red"], ["nopurpleteamyes"]):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=tags, goal="Check the parser."))[:2], ("opus", "carve-out"), tags)
+        for goal in ("\uff32\uff45\uff44\uff0d\uff54\uff45\uff41\uff4d the parser", "\uff24eep-iterate the copy", "Red\u200bteam the parser"):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=[], goal=goal))[:2], ("opus", "carve-out-inferred"), goal)
+        # A non-ASCII letter after NFKC makes the goal uncertain: Opus on a Fable lane.
+        for goal in ("R\u0435d team the parser", "Survey caf\u00e9 pricing pages", "\u0280\u1d07\u1d05 team the parser", "Plan the \u65e5\u672c launch"):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=[], goal=goal)), ("opus", "carve-out-uncertain", []), goal)
+            self.assertEqual(resolve_root(self.policy, env(tags=[], goal=goal), None), opus, goal)
+            self.assertEqual(
+                resolve_root_class(self.policy, env(lane=DEVELOP_ROUTE, tags=[], goal=goal, custody="ops")), ("opus", None, []), goal
+            )
+        # Lowercasing is ASCII only: U+0130 is not folded to i, so the goal is
+        # uncertain and has no hit. A goal hit outranks an uncertain goal.
+        self.assertEqual(
+            resolve_root_class(self.policy, env(tags=[], goal="Deep-\u0130teration pass")), ("opus", "carve-out-uncertain", [])
+        )
+        self.assertEqual(
+            resolve_root_class(self.policy, env(tags=[], goal="Red-team the caf\u00e9 parser")),
+            ("opus", "carve-out-inferred", ["red-team"]),
+        )
+        # A non-letter outside ASCII is not uncertain, and fullwidth folds by NFKC.
+        for goal in ("Survey pricing \u2192 three tiers", "Price in \u20ac and \u00a3", "\uff33\uff55\uff52\uff56\uff45\uff59 pricing"):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=[], goal=goal))[:2], ("fable", None), goal)
+        # Short stems also hit ordinary words. That only moves the root to Opus.
+        for goal in ("Sum the shared team notes", "Note the team reduced scope"):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=[], goal=goal))[:2], ("opus", "carve-out-inferred"), goal)
+        # Synonyms are not stems (an accepted section 6.2 limit).
+        for tags in (["pentest"], ["hammer"], ["attacker"], ["deep-iter"], ["refutation"]):
+            self.assertEqual(resolve_root_class(self.policy, env(tags=tags, goal="Check the claim."))[:2], ("fable", None), tags)
+        # Own hits are tag hits minus the parent's (lab stamps the parent's
+        # hits into the child's own tags).
+        self.assertEqual(
+            resolve_root_class(self.policy, env(tags=["red-team"]), ["red-team"])[:2], ("opus", "carve-out-inherited")
+        )
+        self.assertEqual(
+            resolve_root_class(self.policy, env(tags=["red-team", "adversarial"]), ["red-team"])[:2], ("opus", "carve-out")
+        )
+        # Uncertainty does not pass to a child: a child's own ASCII goal is
+        # checked fresh.
+        self.assertEqual(
+            resolve_root_class(self.policy, env(tags=[], goal="Summarize the notes."), ["market-scan"])[:2], ("fable", None)
+        )
         for tags in (None, "red-team", [None], [""], ["ok", 3], ["Red_Team"], ["x" * 65]):
             self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane=DEVELOP_ROUTE, tags=tags), read)
             self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(tags=tags), read)
@@ -3850,10 +4069,19 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane="cade.delegate.unknown"), read)
         self.assertRefuses("envelope-invalid", resolve_root, self.policy, env(lane="cade.research"), read)
         # A weakened policy fails toward Opus or a refusal, never toward Fable.
-        for key, value in (("carve_out_match", "exact"), ("carve_out_goal_match", "none")):
+        for key, value in (
+            ("carve_out_match", "exact"),
+            ("carve_out_match", "normalized-prefix"),
+            ("carve_out_goal_match", "none"),
+            ("carve_out_normalize", "none"),
+            ("carve_out_non_ascii", {"tag": "request-invalid", "goal": "fable"}),
+            ("carve_out_stems", []),
+            ("carve_out_stems", None),
+            ("carve_out_stems", [{"stem": "red-team", "canonical": "red-team"}]),
+        ):
             broken = json.loads(json.dumps(self.policy))
             broken["cade"]["dispatch"][key] = value
-            self.assertEqual(resolve_root(broken, env(), read), opus, key)
+            self.assertEqual(resolve_root(broken, env(), read), opus, (key, value))
         broken = json.loads(json.dumps(self.policy))
         broken["cade"]["dispatch"]["fable_model_id"]["on_unread"] = "opus"
         self.assertRefuses("policy-invalid", resolve_root, broken, env(), None)
@@ -3864,13 +4092,28 @@ class DelegationPolicyTests(unittest.TestCase):
     def test_resolution_vectors(self):
         # Contract section 10, first table, from the shared fixture that lab
         # and cade read from their pinned prompt-toon.
-        vectors = load_fixture("resolution-vectors.json")["vectors"]
-        self.assertEqual(len(vectors), 12)
-        for raw, slug in (("--Red Team!", "red-team"), ("_deep__iteration_", "deep-iteration"), ("___", None), ("", None)):
+        fixture = load_fixture("resolution-vectors.json")
+        vectors = fixture["vectors"]
+        self.assertEqual(len(vectors), 26)
+        for raw, slug in (
+            ("--Red Team!", "red-team"), ("_deep__iteration_", "deep-iteration"), ("API Red Team", "api-red-team"),
+            ("\uff32\uff45\uff44\uff3f\uff34\uff45\uff41\uff4d", "red-team"), ("red\U0001f525team", "red-team"),
+        ):
             self.assertEqual(slug_tag(raw), slug, raw)
+        # An empty slug or a non-ASCII letter is refused, never dropped.
+        for raw in ("___", "", "!!!", "\U0001f525", "\u0280\u1d07\u1d05-\u1d1b\u1d07\u1d00\u1d0d", "r\u00e9d-team", "\u0440ed-team", None, 3):
+            self.assertRefuses("request-invalid", slug_tag, raw)
+            self.assertRefuses("request-invalid", stamp_tags, self.policy, ["pricing", raw], "Check the parser.")
+        refused = fixture["refused_tags"]
+        self.assertGreaterEqual(len(refused), 4)
+        for v in refused:
+            self.assertRefuses(v["reason"], stamp_tags, self.policy, v["raw_tags"], v["goal"])
+        for v in fixture["dedupe"]:
+            self.assertEqual(dedupe_key({"root_id": v["root_id"], "goal": v["goal"]}), v["dedupe_key"])
         for v in vectors:
             name = (v["raw_tags"], v["goal"], v["lane"])
-            tags = [slug_tag(t) for t in v["raw_tags"] if slug_tag(t)]
+            tags = [slug_tag(t) for t in v["raw_tags"]]
+            tags += [t for t in v["lab_stamped"] if t not in tags]
             self.assertEqual(tags, v["tags"], name)
             envelope = self.sample_envelope(lane=v["lane"], tags=tags, goal=v["goal"], custody="public")
             parent = v["parent_tags"] or ()
@@ -3881,7 +4124,7 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertEqual(model, TEST_FABLE_ID if seat == "fable" else OPUS_ID, name)
             # Cade stamps the canonical tag for every hit, so the receiver's
             # recomputation from the envelope alone finds the same hits and root.
-            stamped = stamp_tags(self.policy, v["raw_tags"], v["goal"], parent)
+            stamped = stamp_tags(self.policy, v["raw_tags"] + v["lab_stamped"], v["goal"], parent)
             for hit in v["hits"]:
                 self.assertIn(hit, stamped, name)
             again = resolve_root_class(self.policy, dict(envelope, tags=stamped))
@@ -3896,11 +4139,33 @@ class DelegationPolicyTests(unittest.TestCase):
                 self.assertEqual(admit_custody(self.policy, v["source_label"], v["lane"]), v["custody"], name)
             else:
                 self.assertRefuses(v["reason"], admit_custody, self.policy, v["source_label"], v["lane"])
-        # The envelope and a child may keep or narrow custody, never widen it.
+        # The envelope and a child may keep or narrow custody, never widen it
+        # (R3-c), and the lane check runs on the claimed custody.
+        narrowing = load_fixture("custody-vectors.json")["narrowing"]
+        self.assertGreaterEqual(len(narrowing), 6)
+        for v in narrowing:
+            name = (v["source_label"], v["parent_custody"], v["claimed"], v["lane"])
+            call = (self.policy, v["source_label"], v["lane"], v["claimed"], v["parent_custody"])
+            if v["admitted"]:
+                self.assertEqual(admit_custody(*call), v["custody"], name)
+            else:
+                self.assertRefuses(v["reason"], admit_custody, *call)
         self.assertEqual(admit_custody(self.policy, "private", DEVELOP_ROUTE, "ops"), "ops")
         self.assertRefuses("custody-widens", admit_custody, self.policy, "private", DEVELOP_ROUTE, "public")
         self.assertRefuses("custody-widens", admit_custody, self.policy, "public", DEVELOP_ROUTE, "public", "ops")
-        self.assertRefuses("custody-widens", admit_custody, self.policy, "public", DEVELOP_ROUTE, "internal")
+        self.assertRefuses("custody-widens", admit_custody, self.policy, "public", DEVELOP_ROUTE, "ops", "internal")
+        self.assertRefuses("envelope-invalid", admit_custody, self.policy, "public", DEVELOP_ROUTE, "internal")
+        # The review's two probes: the lane admits the claimed custody, not the label's.
+        self.assertRefuses("custody-not-admitted", admit_custody, self.policy, "public", "cade.delegate.research", "ops")
+        self.assertRefuses("custody-confidential", admit_custody, self.policy, "ops", DEVELOP_ROUTE, "confidential")
+        # build_resolution carries the same checks for a root and for a child.
+        business = self.sample_envelope(lane="cade.delegate.business", custody="ops", tags=[])
+        self.assertEqual(build_resolution(self.policy, business, "public", TEST_FABLE_ID)["custody"], "ops")
+        self.assertRefuses("custody-widens", build_resolution, self.policy, dict(business, custody="public"), "Private", TEST_FABLE_ID)
+        self.assertRefuses(
+            "custody-widens", build_resolution, self.policy, dict(business, custody="public"), "public", TEST_FABLE_ID,
+            parent_custody="ops",
+        )
         for label in (3, ["public"], "", "pub lic", "public-ok"):
             self.assertRefuses("custody-label-unknown", admit_custody, self.policy, label, DEVELOP_ROUTE)
 
@@ -3914,6 +4179,9 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertEqual(
             child_envelope_violations(self.policy, parent, dict(good, custody="confidential")), []
         )
+        public_parent = dict(parent, custody="public")
+        self.assertEqual(child_envelope_violations(self.policy, public_parent, dict(good, custody="ops")), [])
+        self.assertTrue(child_envelope_violations(self.policy, parent, dict(good, custody="public")))
         cases = {
             "carve-out dropped": dict(good, tags=["market-scan"]),
             "custody widened": dict(good, custody="public"),
@@ -3966,11 +4234,101 @@ class DelegationPolicyTests(unittest.TestCase):
         for row in (
             "stranger peer", "cade key unbound", "wrong ticket", "halt all from a stranger", "no resolution",
             "fable resolution for a red-team tag", "fable root and no recorded id", "claude.json linked to the operator's",
+            "label public claimed ops on business launches", "source label Private claimed public launches",
+            "round 2 dedupe key", "source label of 66 bytes", "goal of 6003 bytes in 2001 code points",
+            "fable resolution for a Cyrillic goal", "fable resolution for a fullwidth goal",
         ):
             self.assertIn(row, names)
         # A drop answers nothing and starts nothing: only steps 1 to 3 drop.
         drops = {v["expect"]["reason"] for v in fixture["vectors"] if v["expect"]["action"] == "drop"}
         self.assertEqual(drops, set(RECEIVER["drop_reasons"]))
+
+    def test_reply_trimming(self):
+        # Contract section 5.4 (R3-f) on the shared trim vectors.
+        fixture = load_fixture("trim-vectors.json")
+        schemas = load_wire_schemas()
+        limit = fixture["limit_bytes"]
+        self.assertEqual(limit, REPLY_LIMIT_BYTES)
+        pattern = self.policy["cade"]["dispatch"]["fable_model_id"]["id_pattern"]
+        protected = lambda e: e["unit"] == "root" or re.fullmatch(pattern, e["model"]) is not None
+        for v in fixture["vectors"]:
+            name = v["name"]
+            reply = v["reply"]
+            before = json.dumps(reply, sort_keys=True)
+            receipt_file = json.dumps(reply["receipt"], separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+            digest = hashlib.sha256(receipt_file).hexdigest()
+            out = trim_reply(self.policy, reply, receipt_file)
+            self.assertEqual(json.dumps(reply, sort_keys=True), before, f"{name}: the input reply changed")
+            self.assertLessEqual(len(reply_wire_bytes(out)), limit, name)
+            self.assertEqual(self.schema_errors(out, schemas[REPLY_SCHEMA_ID]), [], name)
+            self.assertEqual(reply_semantic_violations(out), [], name)
+            expect = v["expect"]
+            self.assertEqual(out["kind"], expect["kind"], name)
+            if expect["kind"] == "failed":
+                self.assertEqual((out["reason"], out["receipt"]), ("reply-too-large", None), name)
+                self.assertNotIn("trimmed", out, name)
+                self.assertIn(digest, out["detail"], name)
+                self.assertIn(str(len(reply["receipt"]["observed_models"])), out["detail"], name)
+                continue
+            if not expect["trimmed"]:
+                self.assertEqual(out, reply, name)
+                continue
+            original = reply["receipt"]["observed_models"]
+            kept = out["receipt"]["observed_models"]
+            removable = [e for e in original if not protected(e)]
+            omitted = out["trimmed"]["observed_models_omitted"]
+            self.assertEqual(out["trimmed"]["receipt_sha256"], digest, name)
+            self.assertEqual(omitted, len(original) - len(kept), name)
+            self.assertGreaterEqual(omitted, 1, name)
+            # root and every Fable-observed entry stay, in the file's order,
+            # and entries leave from the end.
+            self.assertEqual([e for e in kept if protected(e)], [e for e in original if protected(e)], name)
+            self.assertEqual([e for e in kept if not protected(e)], removable[: len(removable) - omitted], name)
+            it = iter(original)
+            self.assertTrue(all(e in it for e in kept), f"{name}: order changed")
+            for unit in expect["kept_always"]:
+                self.assertIn(unit, [e["unit"] for e in kept], name)
+            # Every other receipt field is whole, and observed_models is not
+            # put in unobserved.
+            self.assertEqual(
+                {k: x for k, x in out["receipt"].items() if k != "observed_models"},
+                {k: x for k, x in reply["receipt"].items() if k != "observed_models"},
+                name,
+            )
+            self.assertNotIn("observed_models", out["receipt"]["unobserved"], name)
+            # One entry fewer removed would not fit.
+            fewer = json.loads(json.dumps(out))
+            fewer["receipt"]["observed_models"] = [e for e in original if protected(e)] + removable[: len(removable) - omitted + 1]
+            fewer["receipt"]["observed_models"].sort(key=original.index)
+            if omitted > 1:
+                fewer["trimmed"]["observed_models_omitted"] = omitted - 1
+            else:
+                fewer.pop("trimmed")
+            self.assertGreater(len(reply_wire_bytes(fewer)), limit, name)
+        # An Opus root is kept for itself, not because its model is Fable:
+        # a limit that only the root-free reply would fit gives
+        # reply-too-large, never a reply without root.
+        opus_reply = json.loads(json.dumps(fixture["vectors"][1]["reply"]))
+        opus_reply["receipt"]["resolved_root_model"] = OPUS_ID
+        opus_reply["receipt"]["observed_models"] = [{"unit": "root", "model": OPUS_ID}] + [
+            e for e in opus_reply["receipt"]["observed_models"] if not protected(e)
+        ]
+        root_only = json.loads(json.dumps(opus_reply))
+        root_only["receipt"]["observed_models"] = root_only["receipt"]["observed_models"][:1]
+        root_only["trimmed"] = {
+            "observed_models_omitted": len(opus_reply["receipt"]["observed_models"]) - 1,
+            "receipt_sha256": "0" * 64,
+        }
+        tight = len(reply_wire_bytes(root_only))
+        kept = trim_reply(self.policy, opus_reply, b"{}", limit=tight)
+        self.assertEqual(kept["receipt"]["observed_models"], [{"unit": "root", "model": OPUS_ID}])
+        refused = trim_reply(self.policy, opus_reply, b"{}", limit=tight - 1)
+        self.assertEqual((refused["kind"], refused["reason"], refused["receipt"]), ("failed", "reply-too-large", None))
+        # A reply at exactly the limit is sent whole.
+        small = fixture["vectors"][0]["reply"]
+        exact = len(reply_wire_bytes(small))
+        self.assertEqual(trim_reply(self.policy, small, b"{}", limit=exact), small)
+        self.assertNotEqual(trim_reply(self.policy, small, b"{}", limit=exact - 1), small)
 
     def test_body_framing(self):
         # Contract section 4.1. A relay line is refused for what it is, before

@@ -242,11 +242,15 @@ A fixed resolver reads this policy and picks the root:
 - a lane that does not admit the job's custody gets no root, and the job
   does not run.
 
-A tag matches a carve-out tag after lowercasing and dropping every character
-outside a-z and 0-9. A tag that starts with a carve-out tag matches too. A
-goal that contains a carve-out tag after the same normalizing reroutes the
-root to Opus as well. No dispatch lane admits confidential or health custody
-in v1.
+Tags and goals match by normalized substring. The resolver applies NFKC,
+lowercases A-Z and drops every character outside a-z and 0-9. A tag or goal
+that then contains a carve-out stem reroutes the root to Opus. The stems are
+`adversar`, `red-team`, `redteam`, `team-red`, `purple-team`, `purpleteam`,
+`deep-iteration` and `deep-iterat`. Cade refuses a raw tag that holds a
+non-ASCII letter after NFKC or slugs to empty. A goal that holds a non-ASCII
+letter after NFKC is uncertain, and an uncertain goal on a Fable lane reroutes
+the root to Opus. No dispatch lane admits confidential or health custody in
+v1.
 
 The Fable id is read from the account. Jess said "fable 5.2", and that id is
 not verified. After Jess's attended login the id is read from the account's

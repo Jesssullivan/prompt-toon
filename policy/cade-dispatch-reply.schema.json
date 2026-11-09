@@ -39,7 +39,7 @@
       ]
     },
     "receipt": {
-      "description": "null before start and for a halt ack. receipt.job_id equals job_id.",
+      "description": "null before start, for a halt ack and for reason reply-too-large. receipt.job_id equals job_id.",
       "anyOf": [
         {
           "$ref": "#/$defs/receipt"
@@ -126,6 +126,7 @@
         "launch-failed",
         "job-failed",
         "halt-job-unknown",
+        "reply-too-large",
         "halt"
       ]
     },
@@ -148,7 +149,28 @@
       }
     },
     "halt_msg_id": {
+      "description": "A ref. For a halt that came by swb, that halt message's swb id, a 26-character ULID. For a stop that did not come by swb, such as the receiver's local stop, the literal local.",
       "$ref": "#/$defs/ref"
+    },
+    "trimmed": {
+      "description": "Present only when the receiver trimmed observed_models to fit the 16384-byte reply (contract section 5.4). The receipt file stays complete.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_models_omitted",
+        "receipt_sha256"
+      ],
+      "properties": {
+        "observed_models_omitted": {
+          "description": "The number of observed_models entries removed.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "receipt_sha256": {
+          "description": "The lowercase hex sha256 of the complete receipt file's bytes.",
+          "$ref": "#/$defs/sha256"
+        }
+      }
     }
   },
   "allOf": [
@@ -476,6 +498,42 @@
     {
       "if": {
         "required": [
+          "trimmed"
+        ]
+      },
+      "then": {
+        "required": [
+          "receipt"
+        ],
+        "properties": {
+          "receipt": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "const": "reply-too-large"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "receipt": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
           "job_id"
         ],
         "properties": {
@@ -584,7 +642,7 @@
           "$ref": "#/$defs/custody"
         },
         "goal": {
-          "description": "At most 6000 UTF-8 bytes. maxLength bounds code points, and every validator also checks the byte length.",
+          "description": "At most 6000 UTF-8 bytes, checked as bytes. maxLength counts code points, so it bounds the goal and never refuses a valid one; every implementer also counts the UTF-8 bytes and refuses more than 6000 with envelope-invalid. A non-ASCII letter is allowed and makes the carve-out status uncertain.",
           "type": "string",
           "minLength": 1,
           "maxLength": 6000,
@@ -1136,7 +1194,7 @@
       }
     },
     "tag": {
-      "description": "A slugged task tag.",
+      "description": "A slugged task tag, ASCII only. Cade slugs each raw tag after NFKC and refuses one with a non-ASCII letter or an empty slug, so a non-ASCII tag on the wire fails this pattern.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
       "not": {

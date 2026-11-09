@@ -341,6 +341,26 @@ let DispatchReason =
       }
 
 {-
+A carve-out stem and the canonical carve-out tag it stands for (TIN-7125
+contract-v1 section 6.1, round 3). A tag or a goal hits the canonical tag
+when its normalized form contains the normalized stem.
+-}
+let CarveOutStem =
+      { stem : Text
+      , canonical : Text
+      }
+
+{-
+What a non-ASCII letter after NFKC means: a raw tag is refused with tag, and
+a goal makes the carve-out status uncertain, which reroutes a Fable lane to
+Opus with goal as the reroute.
+-}
+let CarveOutNonAscii =
+      { tag : Text
+      , goal : Text
+      }
+
+{-
 An effect a job may have. envelope says whether an envelope may list it in
 allowed_effects. needs_go says the job replies needs-go and waits for Jess
 instead. identity names the credential the effect acts under.
@@ -411,6 +431,9 @@ let CadeDispatch =
       , carve_out_tags : List Text
       , carve_out_match : Text
       , carve_out_goal_match : Text
+      , carve_out_normalize : Text
+      , carve_out_stems : List CarveOutStem
+      , carve_out_non_ascii : CarveOutNonAscii
       , carve_out_seat : Text
       , develop_uncertain_tags : Text
       , tag_inheritance : Text
@@ -486,6 +509,8 @@ in  { Metadata
     , CustodyLabelClass
     , CustodyLabels
     , DispatchReason
+    , CarveOutStem
+    , CarveOutNonAscii
     , DispatchEffect
     , DispatchCredential
     , DispatchAccounting

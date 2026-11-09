@@ -64,7 +64,7 @@
       "$ref": "#/$defs/custody"
     },
     "goal": {
-      "description": "At most 6000 UTF-8 bytes. maxLength bounds code points, and every validator also checks the byte length.",
+      "description": "At most 6000 UTF-8 bytes, checked as bytes. maxLength counts code points, so it bounds the goal and never refuses a valid one; every implementer also counts the UTF-8 bytes and refuses more than 6000 with envelope-invalid. A non-ASCII letter is allowed and makes the carve-out status uncertain.",
       "type": "string",
       "minLength": 1,
       "maxLength": 6000,
@@ -258,7 +258,7 @@
       }
     },
     "tag": {
-      "description": "A slugged task tag.",
+      "description": "A slugged task tag, ASCII only. Cade slugs each raw tag after NFKC and refuses one with a non-ASCII letter or an empty slug, so a non-ASCII tag on the wire fails this pattern.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
       "not": {

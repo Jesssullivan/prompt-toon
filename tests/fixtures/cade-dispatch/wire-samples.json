@@ -1,6 +1,6 @@
 {
   "schema": "prompt-toon.cade-dispatch.wire-samples/v1",
-  "contract": "TIN-7125 contract-v1 2026-11-09",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
   "placeholders": {
     "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
   },
@@ -1750,6 +1750,136 @@
           "requested_by": "jess@discord",
           "created_at": "2026-11-09T21:04:11Z"
         }
+      },
+      {
+        "name": "goal with a non-ASCII letter",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "root_id": "job-20261109-pricing-1",
+          "lane": "cade.delegate.research",
+          "tags": [
+            "pricing",
+            "competitors"
+          ],
+          "custody": "public",
+          "goal": "Survey café pricing pages.",
+          "inputs": [
+            {
+              "ref": "discord:1437/msg/88120",
+              "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+            }
+          ],
+          "allowed_effects": [
+            "none"
+          ],
+          "budget_envelope": {
+            "tokens": 2000000,
+            "wall_seconds": 3600
+          },
+          "requested_by": "jess@discord",
+          "created_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "goal of 6003 bytes in 2001 code points",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "root_id": "job-20261109-pricing-1",
+          "lane": "cade.delegate.research",
+          "tags": [
+            "pricing",
+            "competitors"
+          ],
+          "custody": "public",
+          "goal": "語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語語",
+          "inputs": [
+            {
+              "ref": "discord:1437/msg/88120",
+              "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+            }
+          ],
+          "allowed_effects": [
+            "none"
+          ],
+          "budget_envelope": {
+            "tokens": 2000000,
+            "wall_seconds": 3600
+          },
+          "requested_by": "jess@discord",
+          "created_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "non-ASCII tag",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "root_id": "job-20261109-pricing-1",
+          "lane": "cade.delegate.research",
+          "tags": [
+            "ʀᴇᴅ-ᴛᴇᴀᴍ"
+          ],
+          "custody": "public",
+          "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+          "inputs": [
+            {
+              "ref": "discord:1437/msg/88120",
+              "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+            }
+          ],
+          "allowed_effects": [
+            "none"
+          ],
+          "budget_envelope": {
+            "tokens": 2000000,
+            "wall_seconds": 3600
+          },
+          "requested_by": "jess@discord",
+          "created_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "fullwidth tag",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch/v1",
+          "job_id": "job-20261109-pricing-1",
+          "parent_job_id": null,
+          "depth": 0,
+          "root_id": "job-20261109-pricing-1",
+          "lane": "cade.delegate.research",
+          "tags": [
+            "ｒｅｄ"
+          ],
+          "custody": "public",
+          "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+          "inputs": [
+            {
+              "ref": "discord:1437/msg/88120",
+              "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+            }
+          ],
+          "allowed_effects": [
+            "none"
+          ],
+          "budget_envelope": {
+            "tokens": 2000000,
+            "wall_seconds": 3600
+          },
+          "requested_by": "jess@discord",
+          "created_at": "2026-11-09T21:04:11Z"
+        }
       }
     ],
     "cade.dispatch.resolution/v1": [
@@ -1805,7 +1935,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -1865,7 +1995,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -1921,7 +2051,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "a9dd0c1d27e0da1fe4a810c567ef5fe3d799a683f0060ee01bc7fbab28d63718",
+          "dedupe_key": "47cb824ffee011c6f9829b1a41f9c5cbcfb9da51ae0d6ae49144d3958601c278",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -1976,7 +2106,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2032,7 +2162,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z",
           "limits": null
         }
@@ -2093,7 +2223,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2149,7 +2279,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2205,7 +2335,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2260,7 +2390,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2316,7 +2446,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2369,7 +2499,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2425,7 +2555,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2477,7 +2607,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2537,7 +2667,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2593,7 +2723,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2649,7 +2779,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2705,7 +2835,7 @@
             "accounting": "report-only"
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-          "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       },
@@ -2762,6 +2892,174 @@
           },
           "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
           "dedupe_key": "abc",
+          "resolved_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "uncertain reroute",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.resolution/v1",
+          "root_class": "opus",
+          "root_model": "claude-opus-5-5",
+          "reroute": "carve-out-uncertain",
+          "carve_out_hits": [],
+          "custody": "public",
+          "source_label": "public",
+          "child_policy": {
+            "orchestrator": "opus",
+            "fable_runs_units": false,
+            "fable_forbidden": [
+              "adversarial-analysis",
+              "purple-team",
+              "red-team",
+              "deep-iteration-hammering",
+              "bulk-execution"
+            ],
+            "units": {
+              "research": [
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5"
+              ],
+              "bulk": [
+                "claude-haiku-5-5",
+                "claude-sonnet-5-5"
+              ],
+              "code": [
+                "claude-opus-5-5"
+              ],
+              "gate": [
+                "claude-opus-5-5"
+              ],
+              "carve-out": [
+                "claude-opus-5-5"
+              ],
+              "unknown": [
+                "claude-opus-5-5"
+              ]
+            },
+            "carve_out_tags": [],
+            "custody_rule": "narrow-only",
+            "effects_rule": "narrow-only",
+            "child_jobs": "dispatch-request",
+            "on_no_seat": "wait",
+            "provider_fallback": "none",
+            "accounting": "report-only"
+          },
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "dedupe_key": "842c2985355c7ad64794e8c49e8c5a4ed6a74e8fab49dcedd656abf1f53d65ea",
+          "resolved_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "uncertain reroute on a fable root",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.resolution/v1",
+          "root_class": "fable",
+          "root_model": "@FABLE_ID@",
+          "reroute": "carve-out-uncertain",
+          "carve_out_hits": [],
+          "custody": "public",
+          "source_label": "public",
+          "child_policy": {
+            "orchestrator": "fable",
+            "fable_runs_units": false,
+            "fable_forbidden": [
+              "adversarial-analysis",
+              "purple-team",
+              "red-team",
+              "deep-iteration-hammering",
+              "bulk-execution"
+            ],
+            "units": {
+              "research": [
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5"
+              ],
+              "bulk": [
+                "claude-haiku-5-5",
+                "claude-sonnet-5-5"
+              ],
+              "code": [
+                "claude-opus-5-5"
+              ],
+              "gate": [
+                "claude-opus-5-5"
+              ],
+              "carve-out": [
+                "claude-opus-5-5"
+              ],
+              "unknown": [
+                "claude-opus-5-5"
+              ]
+            },
+            "carve_out_tags": [],
+            "custody_rule": "narrow-only",
+            "effects_rule": "narrow-only",
+            "child_jobs": "dispatch-request",
+            "on_no_seat": "wait",
+            "provider_fallback": "none",
+            "accounting": "report-only"
+          },
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
+          "resolved_at": "2026-11-09T21:04:11Z"
+        }
+      },
+      {
+        "name": "dedupe key uppercase",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.resolution/v1",
+          "root_class": "fable",
+          "root_model": "@FABLE_ID@",
+          "reroute": null,
+          "carve_out_hits": [],
+          "custody": "public",
+          "source_label": "public",
+          "child_policy": {
+            "orchestrator": "fable",
+            "fable_runs_units": false,
+            "fable_forbidden": [
+              "adversarial-analysis",
+              "purple-team",
+              "red-team",
+              "deep-iteration-hammering",
+              "bulk-execution"
+            ],
+            "units": {
+              "research": [
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5"
+              ],
+              "bulk": [
+                "claude-haiku-5-5",
+                "claude-sonnet-5-5"
+              ],
+              "code": [
+                "claude-opus-5-5"
+              ],
+              "gate": [
+                "claude-opus-5-5"
+              ],
+              "carve-out": [
+                "claude-opus-5-5"
+              ],
+              "unknown": [
+                "claude-opus-5-5"
+              ]
+            },
+            "carve_out_tags": [],
+            "custody_rule": "narrow-only",
+            "effects_rule": "narrow-only",
+            "child_jobs": "dispatch-request",
+            "on_no_seat": "wait",
+            "provider_fallback": "none",
+            "accounting": "report-only"
+          },
+          "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+          "dedupe_key": "78896A2C96BD9D812CE86C7944E528CC8405869F11FE55516474CEE2E6D1F388",
           "resolved_at": "2026-11-09T21:04:11Z"
         }
       }
@@ -2851,7 +3149,7 @@
               "accounting": "report-only"
             },
             "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-            "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
             "resolved_at": "2026-11-09T21:04:11Z"
           }
         }
@@ -2977,7 +3275,7 @@
               "accounting": "report-only"
             },
             "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-            "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
             "resolved_at": "2026-11-09T21:04:11Z"
           }
         }
@@ -3066,7 +3364,7 @@
               "accounting": "report-only"
             },
             "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-            "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
             "resolved_at": "2026-11-09T21:04:11Z"
           },
           "limits": null
@@ -3155,7 +3453,7 @@
               "accounting": "report-only"
             },
             "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
-            "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
             "resolved_at": "2026-11-09T21:04:11Z"
           }
         }
@@ -3243,7 +3541,274 @@
               "accounting": "report-only"
             },
             "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
+            "resolved_at": "2026-11-09T21:04:11Z"
+          }
+        }
+      },
+      {
+        "name": "round 2 dedupe key",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.request/v1",
+          "kind": "dispatch",
+          "envelope": {
+            "schema": "cade.dispatch/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "root_id": "job-20261109-pricing-1",
+            "lane": "cade.delegate.research",
+            "tags": [
+              "pricing",
+              "competitors"
+            ],
+            "custody": "public",
+            "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+            "inputs": [
+              {
+                "ref": "discord:1437/msg/88120",
+                "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+              }
+            ],
+            "allowed_effects": [
+              "none"
+            ],
+            "budget_envelope": {
+              "tokens": 2000000,
+              "wall_seconds": 3600
+            },
+            "requested_by": "jess@discord",
+            "created_at": "2026-11-09T21:04:11Z"
+          },
+          "resolution": {
+            "schema": "cade.dispatch.resolution/v1",
+            "root_class": "fable",
+            "root_model": "@FABLE_ID@",
+            "reroute": null,
+            "carve_out_hits": [],
+            "custody": "public",
+            "source_label": "public",
+            "child_policy": {
+              "orchestrator": "fable",
+              "fable_runs_units": false,
+              "fable_forbidden": [
+                "adversarial-analysis",
+                "purple-team",
+                "red-team",
+                "deep-iteration-hammering",
+                "bulk-execution"
+              ],
+              "units": {
+                "research": [
+                  "claude-sonnet-5-5",
+                  "claude-haiku-5-5"
+                ],
+                "bulk": [
+                  "claude-haiku-5-5",
+                  "claude-sonnet-5-5"
+                ],
+                "code": [
+                  "claude-opus-5-5"
+                ],
+                "gate": [
+                  "claude-opus-5-5"
+                ],
+                "carve-out": [
+                  "claude-opus-5-5"
+                ],
+                "unknown": [
+                  "claude-opus-5-5"
+                ]
+              },
+              "carve_out_tags": [],
+              "custody_rule": "narrow-only",
+              "effects_rule": "narrow-only",
+              "child_jobs": "dispatch-request",
+              "on_no_seat": "wait",
+              "provider_fallback": "none",
+              "accounting": "report-only"
+            },
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
             "dedupe_key": "7e7cd9f43f8ef37c053c275ec645834b6d4e104a16646e6f69fcb0406bc7165d",
+            "resolved_at": "2026-11-09T21:04:11Z"
+          }
+        }
+      },
+      {
+        "name": "source label of 66 bytes in 33 code points",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.request/v1",
+          "kind": "dispatch",
+          "envelope": {
+            "schema": "cade.dispatch/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "root_id": "job-20261109-pricing-1",
+            "lane": "cade.delegate.research",
+            "tags": [
+              "pricing",
+              "competitors"
+            ],
+            "custody": "public",
+            "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+            "inputs": [
+              {
+                "ref": "discord:1437/msg/88120",
+                "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+              }
+            ],
+            "allowed_effects": [
+              "none"
+            ],
+            "budget_envelope": {
+              "tokens": 2000000,
+              "wall_seconds": 3600
+            },
+            "requested_by": "jess@discord",
+            "created_at": "2026-11-09T21:04:11Z"
+          },
+          "resolution": {
+            "schema": "cade.dispatch.resolution/v1",
+            "root_class": "fable",
+            "root_model": "@FABLE_ID@",
+            "reroute": null,
+            "carve_out_hits": [],
+            "custody": "public",
+            "source_label": "ééééééééééééééééééééééééééééééééé",
+            "child_policy": {
+              "orchestrator": "fable",
+              "fable_runs_units": false,
+              "fable_forbidden": [
+                "adversarial-analysis",
+                "purple-team",
+                "red-team",
+                "deep-iteration-hammering",
+                "bulk-execution"
+              ],
+              "units": {
+                "research": [
+                  "claude-sonnet-5-5",
+                  "claude-haiku-5-5"
+                ],
+                "bulk": [
+                  "claude-haiku-5-5",
+                  "claude-sonnet-5-5"
+                ],
+                "code": [
+                  "claude-opus-5-5"
+                ],
+                "gate": [
+                  "claude-opus-5-5"
+                ],
+                "carve-out": [
+                  "claude-opus-5-5"
+                ],
+                "unknown": [
+                  "claude-opus-5-5"
+                ]
+              },
+              "carve_out_tags": [],
+              "custody_rule": "narrow-only",
+              "effects_rule": "narrow-only",
+              "child_jobs": "dispatch-request",
+              "on_no_seat": "wait",
+              "provider_fallback": "none",
+              "accounting": "report-only"
+            },
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
+            "resolved_at": "2026-11-09T21:04:11Z"
+          }
+        }
+      },
+      {
+        "name": "source label of 64 bytes",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.request/v1",
+          "kind": "dispatch",
+          "envelope": {
+            "schema": "cade.dispatch/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "root_id": "job-20261109-pricing-1",
+            "lane": "cade.delegate.research",
+            "tags": [
+              "pricing",
+              "competitors"
+            ],
+            "custody": "public",
+            "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
+            "inputs": [
+              {
+                "ref": "discord:1437/msg/88120",
+                "sha256": "1f857b2a38c635a6b9e88953c58e9680fa9d29b3f6da543525eb6a81534d7460"
+              }
+            ],
+            "allowed_effects": [
+              "none"
+            ],
+            "budget_envelope": {
+              "tokens": 2000000,
+              "wall_seconds": 3600
+            },
+            "requested_by": "jess@discord",
+            "created_at": "2026-11-09T21:04:11Z"
+          },
+          "resolution": {
+            "schema": "cade.dispatch.resolution/v1",
+            "root_class": "fable",
+            "root_model": "@FABLE_ID@",
+            "reroute": null,
+            "carve_out_hits": [],
+            "custody": "public",
+            "source_label": "éééééééééééééééééééééééééééééééé",
+            "child_policy": {
+              "orchestrator": "fable",
+              "fable_runs_units": false,
+              "fable_forbidden": [
+                "adversarial-analysis",
+                "purple-team",
+                "red-team",
+                "deep-iteration-hammering",
+                "bulk-execution"
+              ],
+              "units": {
+                "research": [
+                  "claude-sonnet-5-5",
+                  "claude-haiku-5-5"
+                ],
+                "bulk": [
+                  "claude-haiku-5-5",
+                  "claude-sonnet-5-5"
+                ],
+                "code": [
+                  "claude-opus-5-5"
+                ],
+                "gate": [
+                  "claude-opus-5-5"
+                ],
+                "carve-out": [
+                  "claude-opus-5-5"
+                ],
+                "unknown": [
+                  "claude-opus-5-5"
+                ]
+              },
+              "carve_out_tags": [],
+              "custody_rule": "narrow-only",
+              "effects_rule": "narrow-only",
+              "child_jobs": "dispatch-request",
+              "on_no_seat": "wait",
+              "provider_fallback": "none",
+              "accounting": "report-only"
+            },
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388",
             "resolved_at": "2026-11-09T21:04:11Z"
           }
         }
@@ -5200,6 +5765,580 @@
             "c1-2ea538aa64508c966bc4"
           ],
           "halt_msg_id": "01M6K2Q9W0R7S3T5V8X1Y4Z6AB"
+        }
+      },
+      {
+        "name": "halted local stop",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              },
+              {
+                "unit": "cade-research:a1f3",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-research:b7c2",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-adversarial-review:c9d0",
+                "model": "claude-opus-5-5"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": null,
+            "status": "halted",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1"
+          ],
+          "halt_msg_id": "local"
+        }
+      },
+      {
+        "name": "halt ack local stop",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "all",
+          "receipt": null,
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1",
+            "c1-2ea538aa64508c966bc4"
+          ],
+          "halt_msg_id": "local"
+        }
+      },
+      {
+        "name": "trimmed reply",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "reply",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": {
+              "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+              "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+            },
+            "status": "done",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "trimmed": {
+            "observed_models_omitted": 140,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395"
+          }
+        }
+      },
+      {
+        "name": "trimmed halted reply",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              },
+              {
+                "unit": "cade-research:a1f3",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-research:b7c2",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-adversarial-review:c9d0",
+                "model": "claude-opus-5-5"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": null,
+            "status": "halted",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1"
+          ],
+          "halt_msg_id": "01M6K2Q9W0R7S3T5V8X1Y4Z6AB",
+          "trimmed": {
+            "observed_models_omitted": 140,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395"
+          }
+        }
+      },
+      {
+        "name": "failed reply-too-large",
+        "valid": true,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "failed",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": null,
+          "reason": "reply-too-large",
+          "detail": "The reply is over 16384 bytes after every removable observed_models entry is gone. The receipt file's sha256 is 83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395, and it lists 900 observed_models entries."
+        }
+      },
+      {
+        "name": "halt_msg_id with a space",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              },
+              {
+                "unit": "cade-research:a1f3",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-research:b7c2",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-adversarial-review:c9d0",
+                "model": "claude-opus-5-5"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": null,
+            "status": "halted",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1"
+          ],
+          "halt_msg_id": "local stop"
+        }
+      },
+      {
+        "name": "halt_msg_id empty",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              },
+              {
+                "unit": "cade-research:a1f3",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-research:b7c2",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-adversarial-review:c9d0",
+                "model": "claude-opus-5-5"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": null,
+            "status": "halted",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1"
+          ],
+          "halt_msg_id": ""
+        }
+      },
+      {
+        "name": "trimmed on a null receipt",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "failed",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": null,
+          "reason": "fable-id-unrecorded",
+          "detail": "The resolution names a Fable root, and no Fable id is recorded for this seat.",
+          "trimmed": {
+            "observed_models_omitted": 140,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395"
+          }
+        }
+      },
+      {
+        "name": "trimmed on a halt ack",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "halted",
+          "job_id": "all",
+          "receipt": null,
+          "reason": "halt",
+          "halted_jobs": [
+            "job-20261109-pricing-1",
+            "c1-2ea538aa64508c966bc4"
+          ],
+          "halt_msg_id": "01M6K2Q9W0R7S3T5V8X1Y4Z6AB",
+          "trimmed": {
+            "observed_models_omitted": 140,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395"
+          }
+        }
+      },
+      {
+        "name": "trimmed omitted zero",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "reply",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": {
+              "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+              "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+            },
+            "status": "done",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "trimmed": {
+            "observed_models_omitted": 0,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395"
+          }
+        }
+      },
+      {
+        "name": "trimmed without a digest",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "reply",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": {
+              "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+              "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+            },
+            "status": "done",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "trimmed": {
+            "observed_models_omitted": 3
+          }
+        }
+      },
+      {
+        "name": "trimmed with an extra field",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "reply",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": {
+              "path": "/home/jess/.local/state/cade-dispatch/results/job-20261109-pricing-1/result.md",
+              "sha256": "bdeed49ea83b5b555d6ce4f3355fc3c79be0cdc0e42b3d0ff6b9b18e9e3e71c4"
+            },
+            "status": "done",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "trimmed": {
+            "observed_models_omitted": 140,
+            "receipt_sha256": "83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395",
+            "kept": 1
+          }
+        }
+      },
+      {
+        "name": "reply-too-large with a receipt",
+        "valid": false,
+        "value": {
+          "schema": "cade.dispatch.reply/v1",
+          "kind": "failed",
+          "job_id": "job-20261109-pricing-1",
+          "receipt": {
+            "schema": "cade.dispatch.receipt/v1",
+            "job_id": "job-20261109-pricing-1",
+            "parent_job_id": null,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "@FABLE_ID@",
+            "observed_models": [
+              {
+                "unit": "root",
+                "model": "@FABLE_ID@"
+              },
+              {
+                "unit": "cade-research:a1f3",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-research:b7c2",
+                "model": "claude-sonnet-5-5"
+              },
+              {
+                "unit": "cade-adversarial-review:c9d0",
+                "model": "claude-opus-5-5"
+              }
+            ],
+            "children": 4,
+            "peak_concurrency": 3,
+            "observed_depth": null,
+            "tokens": {
+              "input": 412000,
+              "output": 61000,
+              "cache_read": 1180000,
+              "cache_write": 96000,
+              "total": 1749000
+            },
+            "wall_seconds": 1834.512,
+            "effects": [],
+            "go_refs": [],
+            "result": null,
+            "status": "failed",
+            "policy_rev": "prompt-toon@v0.5.0+884476f5684f/cade-dispatch-v1@9a1b2c3d4e5f6a7b",
+            "seat_rev": "cade-dispatch-seat@403fe10212f5539e/prompt-toon@v0.5.0+884476f5684f",
+            "unobserved": {
+              "observed_models": "unit-model-unobserved",
+              "observed_depth": "hook-no-depth"
+            }
+          },
+          "reason": "reply-too-large",
+          "detail": "The reply is over 16384 bytes after every removable observed_models entry is gone. The receipt file's sha256 is 83c3e69f8e82f48b68e5913e12dc5006ac38940a92bca584e863956175cdb395, and it lists 900 observed_models entries."
         }
       },
       {

@@ -698,6 +698,7 @@ in    { `$comment` =
               , { id = "launch-failed", raised_by = "receiver" }
               , { id = "job-failed", raised_by = "job" }
               , { id = "halt-job-unknown", raised_by = "receiver" }
+              , { id = "reply-too-large", raised_by = "receiver" }
               , { id = "recipient-unbound", raised_by = "cade" }
               , { id = "halt", raised_by = "receiver" }
               ]
@@ -707,8 +708,21 @@ in    { `$comment` =
             , resolver = "fixed-resolver-reads-this-policy"
             , carve_out_tags =
               [ "adversarial", "red-team", "purple-team", "deep-iteration" ]
-            , carve_out_match = "normalized-prefix"
+            , carve_out_match = "normalized-substring"
             , carve_out_goal_match = "normalized-substring"
+            , carve_out_normalize = "nfkc"
+            , carve_out_stems =
+              [ { stem = "adversar", canonical = "adversarial" }
+              , { stem = "red-team", canonical = "red-team" }
+              , { stem = "redteam", canonical = "red-team" }
+              , { stem = "team-red", canonical = "red-team" }
+              , { stem = "purple-team", canonical = "purple-team" }
+              , { stem = "purpleteam", canonical = "purple-team" }
+              , { stem = "deep-iteration", canonical = "deep-iteration" }
+              , { stem = "deep-iterat", canonical = "deep-iteration" }
+              ]
+            , carve_out_non_ascii =
+              { tag = "request-invalid", goal = "carve-out-uncertain" }
             , carve_out_seat = "opus"
             , develop_uncertain_tags = "opus"
             , tag_inheritance = "carve-out-tags-pass-to-every-child"
@@ -965,7 +979,7 @@ in    { `$comment` =
                   "Every receipt records lineage, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. The budget envelope is report-only: the card posts status lines at 50, 80 and 100 percent, and nothing stops. Nothing in dispatch caps subagent count, depth or cost, because a cap is containment and needs a ruled interview. Extra jobs queue first come, first served. An audit finding is a warning on the card, never a denial (R-N12)."
               }
             , notes =
-                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. A tag matches a carve-out tag after lowercasing and dropping every character outside a-z and 0-9, and a tag that starts with a carve-out tag matches too. A goal that contains a carve-out tag after the same normalizing matches as well. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
+                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. Tags and goals match the carve-out stems by normalized substring: NFKC, then A-Z lowercased, then every character outside a-z and 0-9 dropped. A raw tag with a non-ASCII letter after NFKC, or one that slugs to empty, is refused, and a goal with one is uncertain and reroutes a Fable lane to Opus. The receiver recomputes dedupe_key as the sha256 of root_id, LF and goal, and trims observed_models from a reply over 16384 bytes, keeping root and every Fable-observed unit. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
             }
           }
       , enforcement =
@@ -1027,7 +1041,7 @@ in    { `$comment` =
           , { id = "cade-dispatch-root-resolution"
             , severity = "error"
             , rule =
-                "A fixed resolver, not the broker, picks a dispatched job's root seat from its lane and tags. cade.delegate.research, cade.delegate.draft, cade.delegate.business and cade.delegate.marketing get a Fable root as orchestrator. cade.delegate.develop gets an Opus root. Any carve-out tag on any lane reroutes the root to Opus. A goal that contains a carve-out tag reroutes the root to Opus too. Uncertain or missing tags on cade.delegate.develop resolve to Opus. A lane that does not admit the job's custody gets no root, and the job does not run."
+                "A fixed resolver, not the broker, picks a dispatched job's root seat from its lane and tags. cade.delegate.research, cade.delegate.draft, cade.delegate.business and cade.delegate.marketing get a Fable root as orchestrator. cade.delegate.develop gets an Opus root. Any carve-out tag on any lane reroutes the root to Opus. A tag or a goal whose NFKC-normalized form contains a carve-out stem reroutes the root to Opus too. A goal with a non-ASCII letter after NFKC makes the carve-out status uncertain, and an uncertain goal on a Fable lane reroutes the root to Opus. Uncertain or missing tags on cade.delegate.develop resolve to Opus. A lane that does not admit the job's custody gets no root, and the job does not run."
             }
           , { id = "cade-dispatch-carve-out-inheritance"
             , severity = "error"
@@ -1037,7 +1051,7 @@ in    { `$comment` =
           , { id = "cade-dispatch-custody-narrows"
             , severity = "error"
             , rule =
-                "Custody comes from the source item's label, never from the broker. A child's custody stays the same as its parent's or narrows, in the order public, ops, confidential, health. It never widens."
+                "Custody comes from the source item's label, never from the broker. A job's custody keeps or narrows its label's class. A child's custody stays the same as its parent's or narrows, in the order public, ops, confidential, health. It never widens."
             }
           , { id = "cade-broker-routes-only"
             , severity = "error"

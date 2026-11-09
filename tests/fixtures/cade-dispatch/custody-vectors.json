@@ -1,10 +1,10 @@
 {
   "schema": "prompt-toon.cade-dispatch.custody-vectors/v1",
-  "contract": "TIN-7125 contract-v1 2026-11-09",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
   "placeholders": {
     "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
   },
-  "notes": "Contract section 10, second table, and section 3.3. source_label null means the item had no label. Cade trims the label, lowercases it and changes _ to -, then looks it up. A refused row has custody null; an admitted row has reason null.",
+  "notes": "Contract section 10, the second table and the round 3 custody table, and section 3.3. source_label null means the item had no label. Cade trims the label, lowercases it and changes _ to -, then looks it up. A refused row has custody null; an admitted row has reason null. narrowing rows are cade's checks on a claimed custody: rank(claimed) >= rank(label class), for a child rank(claimed) >= rank(parent_custody), then the lane check on the claimed custody. Ranks run public 0, ops 1, confidential 2, health 3. Lab uses the same parent comparison when it mints a child envelope.",
   "vectors": [
     {
       "source_label": "Public",
@@ -78,6 +78,105 @@
     },
     {
       "source_label": "  client  ",
+      "lane": "cade.delegate.develop",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-confidential"
+    },
+    {
+      "source_label": "ééééééééééééééééééééééééééééééééé",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    }
+  ],
+  "narrowing": [
+    {
+      "source_label": "public",
+      "parent_custody": null,
+      "claimed": "ops",
+      "lane": "cade.delegate.business",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "Private",
+      "parent_custody": null,
+      "claimed": "public",
+      "lane": "cade.delegate.business",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-widens"
+    },
+    {
+      "source_label": "public",
+      "parent_custody": "public",
+      "claimed": "ops",
+      "lane": "cade.delegate.business",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "public",
+      "parent_custody": "ops",
+      "claimed": "public",
+      "lane": "cade.delegate.business",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-widens"
+    },
+    {
+      "source_label": "public",
+      "parent_custody": null,
+      "claimed": "ops",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-not-admitted"
+    },
+    {
+      "source_label": "ops",
+      "parent_custody": null,
+      "claimed": "ops",
+      "lane": "cade.delegate.business",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "ops",
+      "parent_custody": "ops",
+      "claimed": "ops",
+      "lane": "cade.delegate.develop",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "ops",
+      "parent_custody": null,
+      "claimed": "confidential",
+      "lane": "cade.delegate.develop",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-confidential"
+    },
+    {
+      "source_label": "public",
+      "parent_custody": null,
+      "claimed": "health",
+      "lane": "cade.delegate.develop",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-health"
+    },
+    {
+      "source_label": "public",
+      "parent_custody": "ops",
+      "claimed": "confidential",
       "lane": "cade.delegate.develop",
       "admitted": false,
       "custody": null,

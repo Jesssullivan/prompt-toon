@@ -33,12 +33,13 @@
       "$ref": "#/$defs/modelId"
     },
     "reroute": {
-      "description": "Set only when a Fable lane moved to Opus.",
+      "description": "Set only when a Fable lane moved to Opus. Contract section 6.1 gives the precedence: own tag hit, inherited hit, goal hit, then a goal with a non-ASCII letter after NFKC.",
       "enum": [
         null,
         "carve-out",
         "carve-out-inherited",
-        "carve-out-inferred"
+        "carve-out-inferred",
+        "carve-out-uncertain"
       ]
     },
     "carve_out_hits": {
@@ -54,7 +55,7 @@
       "$ref": "#/$defs/custody"
     },
     "source_label": {
-      "description": "The source item's label, verbatim, for the card. At most 64 bytes.",
+      "description": "The source item's label, verbatim, for the card. At most 64 UTF-8 bytes, checked as bytes: maxLength counts code points and is only a bound. The receiver uses it for no custody check.",
       "type": "string",
       "minLength": 1,
       "maxLength": 64
@@ -178,7 +179,7 @@
       "$ref": "#/$defs/policyRev"
     },
     "dedupe_key": {
-      "description": "sha256(root_id + LF + hex sha256(goal)).",
+      "description": "The lowercase hex sha256 of the UTF-8 bytes of root_id + LF + goal, the envelope's values exactly as sent with no normalization. The receiver recomputes it and refuses a mismatch with resolution-invalid.",
       "$ref": "#/$defs/sha256"
     },
     "resolved_at": {
@@ -196,7 +197,8 @@
             "enum": [
               "carve-out",
               "carve-out-inherited",
-              "carve-out-inferred"
+              "carve-out-inferred",
+              "carve-out-uncertain"
             ]
           }
         }
