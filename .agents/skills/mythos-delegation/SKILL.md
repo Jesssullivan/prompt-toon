@@ -1,7 +1,7 @@
 ---
 name: mythos-delegation
-description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model per subagent or per lane, deciding whether a fable-class model should run a task or attributing a session to a lane. Core rules - rely on Opus 5.5 (claude-opus-5-5) for mission-critical work such as implementation that merges, merge-gating review, security-sensitive code and host acts; use Sonnet 5.5 and Haiku 5.5 freely for research, drafting and mechanical lanes; never route adversarial, purple-team, red-team or deep-iteration hammering work to fable-class models; Kimi K3.1 Pro (k3.1-pro on the Kimi Code endpoint) serves only the cade.* lanes that name it and never gates a merge; Cade orchestrates cade.* business, marketing and CEO-ops lanes under custody rules.
-when_to_use: Spawning subagents or workflows, picking a model for each lane, routing Cade's children, session attribution or reviewing whether scarce fable tokens, Opus quota and operator attention are spent where they shine.
+description: Route agent work across model classes per the Toon of Mythos delegation policy. Use when orchestrating subagents or workflows, choosing a model per subagent or per lane, deciding whether a fable-class model should run a task or attributing a session to a lane. Core rules - rely on Opus 5.5 (claude-opus-5-5) for mission-critical work such as implementation that merges, merge-gating review, security-sensitive code and host acts; use Sonnet 5.5 and Haiku 5.5 freely for research, drafting and mechanical lanes; never route adversarial, purple-team, red-team or deep-iteration hammering work to fable-class models; Kimi K3.1 Pro (k3.1-pro on the Kimi Code endpoint) serves only the cade.* lanes that name it and never gates a merge; Cade orchestrates cade.* business, marketing and CEO-ops lanes under custody rules; Cade dispatches whole jobs on cade.delegate.* lanes, where Fable leads as orchestrator and Opus runs code, gates and every carve-out unit.
+when_to_use: Spawning subagents or workflows, picking a model for each lane, routing Cade's children, dispatching or running a Cade job, session attribution or reviewing whether scarce fable tokens, Opus quota and operator attention are spent where they shine.
 ---
 
 # Mythos Delegation
@@ -28,6 +28,8 @@ jq -r '.lanes[] | "\(.route) -> \(.persona): \(.purpose)"' policy/delegation.jso
 jq '.budget_fallbacks[] | {id, from_seat, to_seat, lanes, obligations}' policy/delegation.json
 jq '.cade.lanes[] | {route, persona, custody, default_seat, alternate_seats, gate}' policy/delegation.json
 jq '.cade.custody_classes[], .cade.children' policy/delegation.json
+jq '.cade.broker, .cade.dispatch.lanes, .cade.dispatch.units' policy/delegation.json
+jq '.cade.dispatch | {envelope_schema, envelope_fields, receipt_schema, receipt_fields, recipient, reply_kinds}' policy/delegation.json
 
 # no checkout handy
 curl -fsSL https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/delegation.json
@@ -69,9 +71,10 @@ Use Sonnet 5.5 and Haiku 5.5 freely where they fit.
 3. **Haiku 5.5** (`claude-haiku-5-5`) is the default for mechanical lanes:
    locators, inventories, conversions, polling and log summaries. Use it
    freely there.
-4. **fable** takes the synthesis seat only: umbrella orchestration,
-   architecture, engineering judgment and advisory review alongside the
-   operator. Its review never gates a merge. It never takes a critical lane.
+4. **fable** takes the synthesis seat and the orchestrator root of
+   `cade.delegate.*` jobs only: umbrella orchestration, architecture,
+   engineering judgment and advisory review alongside the operator. Its
+   review never gates a merge. It never takes a critical lane.
    It never runs adversarial-analysis, purple-team, red-team,
    deep-iteration-hammering or bulk-execution.
 5. **Budget fallback** (`budget_fallbacks[]`). This is J81(e) as narrowed by
@@ -94,6 +97,8 @@ Use Sonnet 5.5 and Haiku 5.5 freely where they fit.
 under `.seats[]`. Each carries a provider, a cost tier, the personas it
 serves by default and the personas it must never serve. Opus, Sonnet, Haiku
 and Kimi also carry their exact `model_id`. Fable stays provider-managed.
+For a Cade job its id is a config value read from the cade@xoxd.ai account
+after login (`model_id_source: account-config`). The policy never names it.
 `operator` is not a seat: it means the operator takes the lane personally.
 
 Every seat's provider and model ID must sit on the `.providers[]`
@@ -106,8 +111,9 @@ forbidden. The Platform ID `kimi-k3.1-pro` is listed only under the refused
 `moonshot-platform` endpoint, so a consumer can recognise and refuse it. Any
 other provider or model ID fails closed.
 
-`pi` and `pi-k3` are **harness** seats under `.harness_seats[]`. They are
-dispatch identities, not model classes. See "Harness delegation" below.
+`pi`, `pi-k3` and `claude-code@cade` are **harness** seats under
+`.harness_seats[]`. They are dispatch identities, not model classes. See
+"Harness delegation" and "Dispatch from Cade" below.
 
 ## Kimi seat
 
@@ -129,6 +135,8 @@ separate record from the `pi-k3` harness seat.
 - **Engineering:** Kimi authors only on `cade.*` lanes that name it.
   `mythos.*` lanes keep their J81 seats. No `mythos.*` lane resolves to a
   persona that lists kimi.
+- **Broker:** Kimi may route a request to a `cade.*` lane and author the
+  `cade.dispatch/v1` envelope, unattended. See "Dispatch from Cade" below.
 
 ## Cade orchestration
 
@@ -167,7 +175,7 @@ or `cade.review` runs on Opus only, and a health-home child gets no seat.
 Confidential work runs on Opus or on-prem only and never routes to Kimi.
 Public and ops work runs on Opus or Kimi. Health data is never hosted: no
 seat serves the `health` custody class and no `cade.*` lane carries it.
-Fable never serves a `cade.*` lane.
+Fable serves only `cade.delegate.*`, as orchestrator.
 
 ### Children are auto-level workers
 
@@ -192,6 +200,90 @@ merge and never stands in for Jess's approval or a batch confirm. The
 `cade.review` lane runs the review on the provider other than the
 author's. A same-provider review is recorded as same-provider.
 Confidential output is reviewed only on Opus inside its own lane.
+
+## Dispatch from Cade
+
+Cade dispatches a whole job when the work needs more than one turn: a wide
+research fan-out, a long draft or a development task. Kimi on the broker
+seat picks a `cade.delegate.*` lane and the tags, then writes a
+`cade.dispatch/v1` envelope. It gates nothing and never names a model. The
+envelope has no model field. Cade's own code stamps the ids, the depth and
+the custody. Custody comes from the source item's label, never from Kimi.
+This broker rule is new policy (TIN-7125). Kimi may broker unattended.
+
+The envelope travels over swb to `claude:sting:cade-jobs`. A receiver there
+calls only the fixed `cade-job` launcher, which opens a Claude Code session
+on the `claude-code@cade` harness seat. The session runs as user `jess` on
+sting with `CLAUDE_CONFIG_DIR=$HOME/.claude-cade`, signed in to cade@xoxd.ai.
+Jess's own `~/.claude` login is never used for a job.
+
+### Dispatch lanes
+
+| Dispatch route | Root persona | Root seat | Custody |
+| --- | --- | --- | --- |
+| `cade.delegate.research` | fable-orchestrator | fable | public |
+| `cade.delegate.draft` | fable-orchestrator | fable | public |
+| `cade.delegate.business` | fable-orchestrator | fable | public, ops |
+| `cade.delegate.marketing` | fable-orchestrator | fable | public |
+| `cade.delegate.develop` | critical | opus | public, ops |
+
+A fixed resolver reads this policy and picks the root:
+
+- research, draft, business and marketing jobs get a Fable root as
+  orchestrator;
+- develop jobs get an Opus root;
+- any carve-out tag (`adversarial`, `red-team`, `purple-team`,
+  `deep-iteration`) on any lane reroutes the root to Opus;
+- uncertain or missing tags on `cade.delegate.develop` resolve to Opus;
+- a lane that does not admit the job's custody gets no root, and the job
+  does not run.
+
+A tag matches a carve-out tag after lowercasing and dropping every character
+outside a-z and 0-9. A tag that starts with a carve-out tag matches too. No
+dispatch lane admits confidential or health custody in v1.
+
+The Fable id is read from the account. Jess said "fable 5.2", and that id is
+not verified. After Jess's attended login the id is read from the account's
+model list and stored as the job seat's `fable_model_id` config value. The
+policy never names it. Until the id is read, a Fable-root job waits and
+replies `needs-go`.
+
+A job never sends work to another seat directly. It replies
+`dispatch-request` with a child envelope, and Cade resolves and sends it.
+The child keeps the parent's `root_id`, names the parent in
+`parent_job_id`, adds one to `depth` and carries every carve-out tag the
+parent carried. Its custody stays the parent's or narrows, in the order
+public, ops, confidential, health. Custody never widens.
+
+## Inside a Cade job
+
+Fable leads, others work. A Fable root plans, picks each unit's model and
+synthesizes. It never runs a unit itself, and bulk execution stays forbidden
+to fable.
+
+- **Model per unit** (`.cade.dispatch.units`). Research, survey and
+  extraction units run on Sonnet 5.5 or Haiku 5.5. Bulk and mechanical units
+  run on Haiku or Sonnet. Code, gates and every carve-out unit run on Opus
+  5.5 (`claude-opus-5-5`). A unit of unknown kind runs on Opus.
+- **Opus for adversarial units, at any depth.** Every adversarial, red-team,
+  purple-team or deep-iteration unit runs on Opus, inside the job and in
+  every child. Name the model on each agent or workflow unit, and use the
+  named Opus agent definitions for carve-out work. Hooks only warn (R-N12),
+  so the carve-out holds through those definitions and the receipt audit.
+- **Effects.** Keep to the envelope's `allowed_effects`. Spend, external
+  sends, host acts, merges and credential changes reply `needs-go` and wait
+  for Jess. Pull requests open under Cade's own GitHub identity, and Linear
+  comments post under Cade's own Linear identity. Cade never reviews her own
+  PR. The merge gate is an independent Opus review on `mythos.gate.review`.
+- **Report children and depth.** The `cade.dispatch.receipt/v1` receipt
+  records the model that answered each unit, children, peak concurrency,
+  observed depth, tokens, wall time, effects and GO refs. The budget
+  envelope is report-only. Nothing caps subagent count, depth or cost.
+- **Checkpoints go to Cade.** Each lane return in a fan-out is a checkpoint,
+  as the fan-out doctrine below says. Inside a job, send it to Cade, who
+  relays it to Jess on the surface the request came from.
+- **Results.** Write the result doc to the job's notes path and return its
+  `{path, sha256}` in the receipt.
 
 ## Fan-out doctrine
 
@@ -228,6 +320,10 @@ jq '.harness_seats[] | {id, harness, model_lane, posture, delegable_tasks, dispa
 - **Kimi rides `pi-k3`.** The native kimi CLI has no dispatch envelope, so the
   Kimi reviewer runs on the pi harness as the `pi-k3` seat. It has the same
   task envelope and posture as `pi`.
+- **`claude-code@cade` is Cade's job seat.** Its posture is `gated-worker`:
+  its output is work product whose external acts wait for a GO. Its surface
+  is the swb recipient, and the fixed `cade-job` launcher behind it is the
+  only entry. See "Dispatch from Cade" above.
 - **Dispatch is exclusively via lab's bounded `pi-*` launchers.** Never
   execute a raw agent binary as a dispatch or probe surface. That is the
   error-class `harness-dispatch-bounded-only` violation. Lab's GUI-launch
@@ -262,7 +358,10 @@ repo's `just check`. It fails closed when:
 - a budget fallback reaches the merge gate, a host act, the adversarial
   persona, fable or haiku;
 - a pinned rule sentence in the policy or in this skill is weakened;
-- a seat model ID leaves the 5.5 family or drifts between Dhall and JSON;
+- a pinned seat model ID leaves the 5.5 family or drifts between Dhall and
+  JSON;
+- a Fable model ID appears in the policy, the provider allow-list or this
+  skill;
 - fable loses a task prohibition;
 - fable or haiku stops forbidding critical work;
 - a harness seat claims ratification, refutation-of-record or the merge
@@ -284,5 +383,16 @@ repo's `just check`. It fails closed when:
 - a Kimi seat, `pi-k3` included, leaves the `ops` custody class or enters
   the `confidential` or `health` class;
 - the Cade lanes table in this skill disagrees with `.cade.lanes[]`;
+- a `cade.delegate.*` lane loses its root, a Fable root leaves the
+  `fable-orchestrator` persona or `cade.delegate.develop` leaves Opus;
+- a carve-out tag stops rerouting the root to Opus, or a child drops a
+  carve-out tag or widens custody;
+- a code, gate or carve-out unit resolves to anything but Opus, or fable or
+  kimi becomes a worker;
+- the broker gains a gate, names a model or writes custody;
+- dispatch gains a cap on subagent count, depth or cost;
+- the envelope or receipt schema drifts from `.cade.dispatch`;
+- the Dispatch lanes table in this skill disagrees with
+  `.cade.dispatch.lanes[]`;
 - a purpose string is missing, the JSON fails `policy/delegation.schema.json`
   or the Dhall and JSON disagree.

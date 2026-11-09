@@ -13,6 +13,8 @@ SCHEMA_PATH = ROOT / "policy" / "delegation.schema.json"
 DHALL_TYPE_PATH = ROOT / "policy" / "dhall" / "DelegationPolicy.dhall"
 DHALL_SOURCE_PATH = ROOT / "policy" / "dhall" / "delegation.dhall"
 SKILL_PATH = ROOT / ".agents" / "skills" / "mythos-delegation" / "SKILL.md"
+ENVELOPE_SCHEMA_PATH = ROOT / "policy" / "cade-dispatch.schema.json"
+RECEIPT_SCHEMA_PATH = ROOT / "policy" / "cade-dispatch-receipt.schema.json"
 
 FABLE_FORBIDDEN = {
     "adversarial-analysis",
@@ -28,7 +30,7 @@ SEAT_IDS = {"fable", "opus", "sonnet", "haiku", "kimi"}
 
 # Harness seats are dispatch identities, not model classes. Same rule: adding
 # or renaming one moves the Dhall, the JSON, the schema enum, and this set.
-HARNESS_SEAT_IDS = {"pi", "pi-k3"}
+HARNESS_SEAT_IDS = {"pi", "pi-k3", "claude-code@cade"}
 
 # The legs a harness seat can never own, whatever else it is trusted with.
 # Ratification is the operator's WORD. Refutation-of-record is the adversarial
@@ -41,9 +43,19 @@ HARNESS_FORBIDDEN = {
 }
 
 HARNESS_POSTURE = "evidentiary-only"
+# The posture of each harness seat. The review seats are evidentiary-only.
+# Cade's job seat is a gated worker: its output is work product whose
+# external acts wait for a GO (TIN-7125).
+HARNESS_POSTURES = {
+    "pi": HARNESS_POSTURE,
+    "pi-k3": HARNESS_POSTURE,
+    "claude-code@cade": "gated-worker",
+}
 
 # J81 (Jess, 2026-10-23): exact model IDs per seat. Fable stays
-# provider-managed and carries no model_id.
+# provider-managed and carries no model_id. TIN-7125: for Cade jobs the Fable
+# id is a config value read from the cade@xoxd.ai account after login, never a
+# value in the policy, so the seat's model_id_source is account-config.
 MODEL_IDS = {
     "opus": "claude-opus-5-5",
     "sonnet": "claude-sonnet-5-5",
@@ -82,6 +94,16 @@ SEAT_PROVIDERS = {
     "kimi": "kimi",
 }
 SEAT_MODEL_IDS = {**MODEL_IDS, "kimi": "k3.1-pro"}
+SEAT_MODEL_ID_SOURCES = {
+    "fable": "account-config",
+    "opus": "pinned",
+    "sonnet": "pinned",
+    "haiku": "pinned",
+    "kimi": "pinned",
+}
+# Any Fable-class model id string. None may appear in the policy, the
+# provider allow-list or the skill: the id is read from the account.
+FABLE_ID_RE = re.compile(r"claude-fable-[0-9a-z][0-9a-z.-]*")
 # What the Kimi seat may and may never serve (SPR-142). Every persona here is
 # used only by cade.* lanes: Kimi has its own cade-research and cade-drafting
 # personas so that no mythos.* lane can resolve to it.
@@ -93,7 +115,10 @@ KIMI_ALLOWED_PERSONAS = {
     "ceo-ops",
     "evidentiary-review",
 }
-KIMI_FORBIDDEN_PERSONAS = {"fable", "critical", "adversarial"}
+KIMI_FORBIDDEN_PERSONAS = {"fable", "fable-orchestrator", "critical", "adversarial"}
+# The only personas fable serves: the synthesis seat and the orchestrator root
+# of cade.delegate.* jobs (TIN-7125 0a1924b3, "Fable leads, others work").
+FABLE_PERSONAS = {"fable", "fable-orchestrator"}
 
 # Cade lanes (SPR-142). Closed world like the mythos routes: a new cade.*
 # route fails until it is added here on purpose.
@@ -122,8 +147,8 @@ CUSTODY_SEATS = {
 CUSTODY_HARNESS_SEATS = {
     "confidential": set(),
     "health": set(),
-    "ops": {"pi-k3"},
-    "public": {"pi-k3"},
+    "ops": {"pi-k3", "claude-code@cade"},
+    "public": {"pi-k3", "claude-code@cade"},
 }
 # SPR-144: Cade's children run auto-level, and these standing rules bind them.
 CHILD_BINDINGS = {
@@ -138,6 +163,67 @@ CHILD_SEAT_RESOLUTION = "lane-seats-within-parent-custody"
 CHILD_ON_NO_SEAT = "wait"
 CADE_TABLE_HEADER = ["Cade route", "Persona", "Custody", "Default seat", "Alternates"]
 CADE_ROUTE_RE = re.compile(r"cade(?:\.[a-z0-9*-]+)+")
+
+# Cade Dispatch v1 (TIN-7125). The shared contract the lab launcher, the cade
+# resolver and this policy all use. Closed world: a field, lane, tag, kind or
+# status moves here, in the Dhall, the JSON and the schemas together.
+DISPATCH_ROUTES = {
+    "cade.delegate.research": ("fable-orchestrator", "fable"),
+    "cade.delegate.draft": ("fable-orchestrator", "fable"),
+    "cade.delegate.business": ("fable-orchestrator", "fable"),
+    "cade.delegate.marketing": ("fable-orchestrator", "fable"),
+    "cade.delegate.develop": ("critical", "opus"),
+}
+DEVELOP_ROUTE = "cade.delegate.develop"
+ENVELOPE_SCHEMA_ID = "cade.dispatch/v1"
+RECEIPT_SCHEMA_ID = "cade.dispatch.receipt/v1"
+ENVELOPE_FIELDS = (
+    "job_id", "parent_job_id", "depth", "root_id", "lane", "tags", "custody",
+    "goal", "inputs", "allowed_effects", "budget_envelope", "requested_by",
+    "created_at",
+)
+ENVELOPE_OPTIONAL = {"budget_envelope"}
+RECEIPT_FIELDS = (
+    "job_id", "parent_job_id", "depth", "lane", "resolved_root_model",
+    "observed_models", "children", "peak_concurrency", "observed_depth",
+    "tokens", "wall_seconds", "effects", "go_refs", "result", "status",
+    "policy_rev",
+)
+RECIPIENT = "claude:sting:cade-jobs"
+DISPATCH_SURFACE = f"swb:{RECIPIENT}"
+DISPATCH_HARNESS_SEAT = "claude-code@cade"
+REPLY_KINDS = ("reply", "needs-go", "dispatch-request")
+RECEIPT_STATUSES = ("done", "failed", "needs-go", "dispatch-request")
+CARVE_OUT_TAGS = ("adversarial", "red-team", "purple-team", "deep-iteration")
+CUSTODY_ORDER = ("public", "ops", "confidential", "health")
+# Who runs each unit inside a job. Fable never runs one and Kimi never runs
+# inside a Claude Code job.
+UNIT_SEATS = {
+    "research": ["sonnet", "haiku"],
+    "bulk": ["haiku", "sonnet"],
+    "code": ["opus"],
+    "gate": ["opus"],
+    "carve-out": ["opus"],
+}
+OPUS_ONLY_UNITS = {"code", "gate", "carve-out"}
+ENVELOPE_EFFECTS = {"none", "result-doc", "linear-comment", "github-pr"}
+GO_EFFECTS = {"spend", "external-send", "host-act", "merge", "credential-change"}
+BROKER_MAY = {"route", "author-envelope"}
+BROKER_WRITES = {"lane", "tags", "goal", "inputs", "allowed_effects", "budget_envelope"}
+JOB_SEAT = {
+    "host": "sting",
+    "unix_user": "jess",
+    "account": "cade@xoxd.ai",
+    "config_dir": "$HOME/.claude-cade",
+    "operator_login": "never",
+    "key_reach": "accepted",
+}
+CLAUDE_CODE_CADE_FORBIDDEN = HARNESS_FORBIDDEN | {"review-own-pr", "credential-minting"}
+# Key fragments that would put a cap on a job. Dispatch adds accounting and
+# visibility, never containment ("Harnesses run unconstrained").
+CAP_KEY_RE = re.compile(r"(^max|_max$|^min_|cap$|_cap_|limit|ceiling|quota)")
+DISPATCH_TABLE_HEADER = ["Dispatch route", "Root persona", "Root seat", "Custody"]
+DISPATCH_ROUTE_RE = re.compile(r"cade\.delegate(?:\.[a-z0-9*-]+)+")
 
 # Personas that own mission-critical work. Their lanes resolve to opus (or the
 # operator personally) and nothing else.
@@ -244,7 +330,8 @@ RULE_SENTENCES = {
         "Health data is never hosted.",
         "Every seat a cade.* lane names sits in its custody class and in its "
         "persona's model classes.",
-        "Fable never serves a cade.* lane.",
+        "Fable serves only cade.delegate.*, as orchestrator: no route in cade.lanes "
+        "names it.",
     ),
     "cade-children-auto-level": (
         "Cade's children are auto-level workers, not read-only.",
@@ -259,6 +346,54 @@ RULE_SENTENCES = {
         "Cross-provider review is advisory evidence.",
         "It never blocks, never gates a merge and never stands in for Jess's "
         "approval or a batch confirm.",
+    ),
+    "fable-leads-others-work": (
+        "A Fable root plans, picks each unit's model and synthesizes.",
+        "It never runs a unit itself.",
+        "Workers are Sonnet or Haiku for research and bulk work, and Opus for code, "
+        "gates and every carve-out unit at any depth.",
+        "Bulk execution stays forbidden to fable.",
+    ),
+    "cade-dispatch-root-resolution": (
+        "A fixed resolver, not the broker, picks a dispatched job's root seat from "
+        "its lane and tags.",
+        "cade.delegate.develop gets an Opus root.",
+        "Any carve-out tag on any lane reroutes the root to Opus.",
+        "Uncertain or missing tags on cade.delegate.develop resolve to Opus.",
+        "A lane that does not admit the job's custody gets no root, and the job "
+        "does not run.",
+    ),
+    "cade-dispatch-carve-out-inheritance": (
+        "Carve-out tags pass to every child, at any depth.",
+        "A unit or child job that carries a carve-out tag runs on Opus.",
+    ),
+    "cade-dispatch-custody-narrows": (
+        "Custody comes from the source item's label, never from the broker.",
+        "A child's custody stays the same as its parent's or narrows, in the order "
+        "public, ops, confidential, health.",
+        "It never widens.",
+    ),
+    "cade-broker-routes-only": (
+        "New policy (TIN-7125).",
+        "It gates nothing and never names a model: the envelope has no model field "
+        "and the resolver picks the root.",
+        "The broker never sets custody.",
+    ),
+    "fable-id-from-account": (
+        "The Fable model id is a config value read from the cade@xoxd.ai account "
+        "after Jess's attended login.",
+        "This policy never carries it.",
+        "A Fable-root job waits until the id is read.",
+    ),
+    "cade-never-reviews-own-pr": (
+        "A Cade job never reviews a pull request that Cade opened.",
+        "The merge gate for a Cade PR is an independent Opus review on "
+        "mythos.gate.review.",
+    ),
+    "cade-dispatch-accounting-not-caps": (
+        "The budget envelope is report-only.",
+        "Nothing in dispatch caps subagent count, depth or cost: a cap is "
+        "containment and needs a ruled interview.",
     ),
 }
 
@@ -293,6 +428,22 @@ SKILL_SENTENCES = (
     "It never blocks, never gates a merge and never stands in for Jess's approval "
     "or a batch confirm.",
     "Any other provider or model ID fails closed.",
+    "Fable serves only `cade.delegate.*`, as orchestrator.",
+    "Fable leads, others work.",
+    "It never runs a unit itself, and bulk execution stays forbidden to fable.",
+    "It gates nothing and never names a model.",
+    "Custody comes from the source item's label, never from Kimi.",
+    "any carve-out tag (`adversarial`, `red-team`, `purple-team`, "
+    "`deep-iteration`) on any lane reroutes the root to Opus;",
+    "uncertain or missing tags on `cade.delegate.develop` resolve to Opus;",
+    "Custody never widens.",
+    "Every adversarial, red-team, purple-team or deep-iteration unit runs on Opus, "
+    "inside the job and in every child.",
+    "Code, gates and every carve-out unit run on Opus 5.5 (`claude-opus-5-5`).",
+    "Cade never reviews her own PR.",
+    "Nothing caps subagent count, depth or cost.",
+    "Jess's own `~/.claude` login is never used for a job.",
+    "The policy never names it.",
 )
 
 # Load-bearing sentences in the policy's own prose, keyed by (collection,
@@ -371,6 +522,16 @@ FORBIDDEN_GRANTS = (
     "engineering review rides the pi-k3",
     # No ruling extends J81 to Cade's own code work (SPR-142 keeps CORE-5).
     "code work cade delegates runs on the mythos",
+    # TIN-7125: Fable leads and never works; the broker never names a model;
+    # custody never widens; Cade never reviews her own PR.
+    "fable may run a unit",
+    "fable runs the units",
+    "fable may execute",
+    "carve-out work may run on fable",
+    "kimi may name a model",
+    "the broker may gate",
+    "custody may widen",
+    "may review her own pr",
 )
 
 # The skill's lane-to-model table cells (J81).
@@ -507,6 +668,7 @@ def skill_text_violations(policy, skill_text):
     """Pinned skill sentences, the lane table, model IDs and grant phrases."""
     errors = skill_table_violations(policy, skill_text)
     errors.extend(cade_skill_table_violations(policy, skill_text))
+    errors.extend(dispatch_skill_table_violations(policy, skill_text))
     flat = " ".join(skill_text.split())
     for sentence in SKILL_SENTENCES:
         if sentence not in flat:
@@ -514,6 +676,8 @@ def skill_text_violations(policy, skill_text):
     stray = model_ids_in(skill_text) - set(MODEL_IDS.values())
     if stray:
         errors.append(f"skill names model IDs outside the seat registry: {sorted(stray)}")
+    if FABLE_ID_RE.search(skill_text):
+        errors.append("skill names a Fable model id; it is read from the account")
     lowered = flat.lower()
     for phrase in FORBIDDEN_GRANTS:
         if phrase in lowered:
@@ -548,7 +712,18 @@ def prose_violations(policy):
     prose.append(cade.get("children", {}).get("notes", ""))
     for lane in cade.get("lanes", []):
         prose.extend(lane.get(f, "") for f in ("purpose", "gate"))
-    lowered = " ".join(" ".join(prose).split()).lower()
+    prose.append(cade.get("broker", {}).get("notes", ""))
+    dispatch = cade.get("dispatch", {})
+    prose.append(dispatch.get("notes", ""))
+    for key in ("fable_model_id", "job_seat", "accounting"):
+        prose.append(dispatch.get(key, {}).get("notes", ""))
+    for lane in dispatch.get("lanes", []):
+        prose.extend(lane.get(f, "") for f in ("purpose", "gate"))
+    for key in ("units", "effects", "credentials"):
+        prose.extend(record.get("notes", "") for record in dispatch.get(key, []))
+    for seat in policy.get("harness_seats", []):
+        prose.extend(seat.get(f, "") for f in ("purpose", "model_lane", "launcher"))
+    lowered = " ".join(" ".join(str(p) for p in prose if p).split()).lower()
     for phrase in FORBIDDEN_GRANTS:
         if phrase in lowered:
             errors.append(f"policy prose grants: {phrase}")
@@ -948,7 +1123,8 @@ def cade_skill_table_violations(policy, skill_text):
         return ["skill needs exactly one Cade lanes section"]
     before, after = skill_text.split(marker, 1)
     body, _, rest = after.partition("\n#")
-    for line in (before + "\n" + rest).splitlines():
+    outside = strip_section(before + "\n#" + rest, DISPATCH_TABLE_MARKER)
+    for line in outside.splitlines():
         if line.strip().startswith("|") and CADE_ROUTE_RE.search(line):
             errors.append(f"cade table row outside Cade lanes: {line.strip()}")
     lanes = {lane["route"]: lane for lane in policy.get("cade", {}).get("lanes", [])}
@@ -993,6 +1169,427 @@ def cade_skill_table_violations(policy, skill_text):
     return errors
 
 
+DISPATCH_TABLE_MARKER = "\n### Dispatch lanes\n"
+
+
+def strip_section(text, marker):
+    """text without the section that starts at marker, up to the next heading."""
+    if text.count(marker) != 1:
+        return text
+    before, after = text.split(marker, 1)
+    _, sep, rest = after.partition("\n#")
+    return before + sep + rest
+
+
+def dispatch_skill_table_violations(policy, skill_text):
+    """The skill's Dispatch lanes table agrees with .cade.dispatch.lanes[]."""
+    errors = []
+    if skill_text.count(DISPATCH_TABLE_MARKER) != 1:
+        return ["skill needs exactly one Dispatch lanes section"]
+    before, after = skill_text.split(DISPATCH_TABLE_MARKER, 1)
+    body, _, rest = after.partition("\n#")
+    for line in (before + "\n#" + rest).splitlines():
+        if line.strip().startswith("|") and DISPATCH_ROUTE_RE.search(line):
+            errors.append(f"dispatch table row outside Dispatch lanes: {line.strip()}")
+    lanes = {l["route"]: l for l in policy.get("cade", {}).get("dispatch", {}).get("lanes", [])}
+    seen = set()
+    header_seen = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not header_seen:
+            if cells != DISPATCH_TABLE_HEADER:
+                errors.append(f"dispatch table header is {cells}, want {DISPATCH_TABLE_HEADER}")
+            header_seen = True
+            continue
+        if set(stripped) <= set("|-: "):
+            continue
+        routes = DISPATCH_ROUTE_RE.findall(cells[0])
+        if len(cells) != len(DISPATCH_TABLE_HEADER) or line != stripped or len(routes) != 1 or cells[0] != f"`{routes[0]}`":
+            errors.append(f"unparseable dispatch table row: {line!r}")
+            continue
+        route = routes[0]
+        if route in seen:
+            errors.append(f"dispatch table lists {route} twice")
+        seen.add(route)
+        lane = lanes.get(route)
+        if lane is None:
+            errors.append(f"dispatch table route {route} matches no policy lane")
+            continue
+        want = [f"`{route}`", lane["parent_persona"], lane["root_seat"], ", ".join(lane["custody"])]
+        if cells != want:
+            errors.append(f"dispatch table row {cells} disagrees with the policy {want}")
+    if not header_seen:
+        errors.append("Dispatch lanes section has no table")
+    missing = set(lanes) - seen
+    if missing:
+        errors.append(f"dispatch table omits lanes {sorted(missing)}")
+    return errors
+
+
+def normalize_tag(tag):
+    return re.sub(r"[^a-z0-9]", "", str(tag).lower())
+
+
+def carve_out_hits(policy, tags):
+    """The carve-out tags a tag list carries. A tag matches after lowercasing
+    and dropping everything outside a-z and 0-9, and a tag that starts with a
+    carve-out tag matches too (normalized-prefix)."""
+    carve = policy.get("cade", {}).get("dispatch", {}).get("carve_out_tags", [])
+    hits = set()
+    for tag in tags if isinstance(tags, list) else []:
+        norm = normalize_tag(tag)
+        for raw in carve:
+            target = normalize_tag(raw)
+            if target and norm.startswith(target):
+                hits.add(raw)
+    return hits
+
+
+def admit_fable_id(policy, read_id):
+    """A Fable id read from the account, or None when it fails the pattern."""
+    pattern = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {}).get("id_pattern")
+    if not pattern or not isinstance(read_id, str) or not re.fullmatch(pattern, read_id):
+        return None
+    return read_id
+
+
+def resolve_root(policy, envelope, read_fable_id=None):
+    """Reference root resolver for a cade.dispatch/v1 envelope.
+
+    Returns (seat, model_id) for the job root. A Fable root whose id has not
+    been read from the account returns ("fable", None): the job waits. A job
+    whose lane is unknown, whose custody the lane does not admit or whose tags
+    are malformed off the develop lane gets None: no root, the job does not
+    run. Anything uncertain resolves toward Opus, never toward Fable.
+    """
+    dispatch = policy.get("cade", {}).get("dispatch", {})
+    seats = {s.get("id"): s for s in policy.get("seats", [])}
+    lanes = {l.get("route"): l for l in dispatch.get("lanes", [])}
+    lane = lanes.get(envelope.get("lane"))
+    if lane is None or envelope.get("custody") not in lane.get("custody", []):
+        return None
+    carve_seat = dispatch.get("carve_out_seat")
+    if carve_seat != "opus":
+        return None
+    opus = ("opus", seats.get("opus", {}).get("model_id"))
+    tags = envelope.get("tags")
+    tags_ok = isinstance(tags, list) and all(isinstance(tag, str) and tag.strip() for tag in tags)
+    if lane.get("route") == DEVELOP_ROUTE and dispatch.get("develop_uncertain_tags") == "opus":
+        if not tags_ok:
+            return opus
+    if lane.get("root_seat") == "opus":
+        return opus
+    if not tags_ok:
+        return None
+    if dispatch.get("carve_out_match") != "normalized-prefix" or carve_out_hits(policy, tags):
+        return opus
+    if lane.get("root_seat") == "fable" and lane.get("parent_persona") == "fable-orchestrator":
+        return ("fable", admit_fable_id(policy, read_fable_id))
+    return None
+
+
+def child_envelope_violations(policy, parent, child):
+    """A dispatch-request child keeps the parent's root, adds one to its
+    depth, carries every carve-out tag the parent carried and keeps or
+    narrows its custody."""
+    errors = []
+    order = list(policy.get("cade", {}).get("dispatch", {}).get("custody_order", []))
+    if child.get("root_id") != parent.get("root_id"):
+        errors.append("child root_id differs from the parent's")
+    if child.get("parent_job_id") != parent.get("job_id"):
+        errors.append("child parent_job_id is not the parent's job_id")
+    if child.get("job_id") == parent.get("job_id"):
+        errors.append("child reuses the parent's job_id")
+    if child.get("depth") != parent.get("depth", 0) + 1:
+        errors.append("child depth is not the parent's depth plus one")
+    dropped = carve_out_hits(policy, parent.get("tags")) - carve_out_hits(policy, child.get("tags"))
+    if dropped:
+        errors.append(f"child drops carve-out tags {sorted(dropped)}")
+    pc, cc = parent.get("custody"), child.get("custody")
+    if pc not in order or cc not in order or order.index(cc) < order.index(pc):
+        errors.append(f"child custody {cc!r} widens the parent's {pc!r}")
+    return errors
+
+
+def walk_keys(node):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield key
+            yield from walk_keys(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from walk_keys(item)
+
+
+def broker_violations(policy):
+    """TIN-7125, new policy: the broker routes and authors envelopes only."""
+    broker = policy.get("cade", {}).get("broker")
+    if not isinstance(broker, dict):
+        return ["missing cade.broker"]
+    errors = []
+    if broker.get("seat") != "kimi":
+        errors.append("cade.broker must be the kimi seat")
+    if set(broker.get("may", [])) != BROKER_MAY:
+        errors.append(f"cade.broker may {broker.get('may')}, want {sorted(BROKER_MAY)}")
+    if broker.get("gates") != []:
+        errors.append("cade.broker gates nothing")
+    if broker.get("names_model") is not False:
+        errors.append("cade.broker never names a model")
+    writes = set(broker.get("writes", []))
+    if writes != BROKER_WRITES:
+        errors.append(f"cade.broker writes {sorted(writes)}, want {sorted(BROKER_WRITES)}")
+    if "custody" in writes:
+        errors.append("cade.broker never sets custody")
+    if broker.get("new_policy") is not True:
+        errors.append("cade.broker must stay marked as new policy")
+    if broker.get("unattended") != "admitted":
+        errors.append("cade.broker unattended brokering is admitted (TIN-7125 0a1924b3)")
+    return errors
+
+
+def fable_id_violations(policy):
+    """TIN-7125: the Fable id is a config value read from the account. The
+    policy never carries it, in a seat, the allow-list or anywhere else."""
+    errors = []
+    seats = {s.get("id"): s for s in policy.get("seats", [])}
+    for sid, source in SEAT_MODEL_ID_SOURCES.items():
+        if seats.get(sid, {}).get("model_id_source") != source:
+            errors.append(f"seat {sid} model_id_source must be {source}")
+    if "model_id" in seats.get("fable", {}):
+        errors.append("the fable seat carries no model_id: it is read from the account")
+    cfg = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {})
+    want = {
+        "config_key": "fable_model_id",
+        "source": "account",
+        "account": JOB_SEAT["account"],
+        "admitted_when": "read-from-account-after-login",
+        "on_unread": "wait",
+    }
+    for key, value in want.items():
+        if cfg.get(key) != value:
+            errors.append(f"fable_model_id.{key} must be {value!r}")
+    extra = set(cfg) - set(want) - {"id_pattern", "notes"}
+    if extra:
+        errors.append(f"fable_model_id carries {sorted(extra)}; the policy holds no id value")
+    pattern = cfg.get("id_pattern", "")
+    if not pattern.startswith("^claude-fable-"):
+        errors.append("fable_model_id.id_pattern must admit Fable-class ids only")
+    else:
+        for other in SEAT_MODEL_IDS.values():
+            if re.fullmatch(pattern, other):
+                errors.append(f"fable_model_id.id_pattern admits {other}")
+    scrubbed = json.loads(json.dumps(policy))
+    scrubbed.get("cade", {}).get("dispatch", {}).get("fable_model_id", {}).pop("id_pattern", None)
+    hits = sorted(set(FABLE_ID_RE.findall(json.dumps(scrubbed))))
+    if hits:
+        errors.append(f"policy hard-codes Fable ids {hits}")
+    return errors
+
+
+def fable_placement_violations(policy):
+    """Fable serves only the synthesis seat and cade.delegate.* roots, as
+    orchestrator. It never runs a unit and keeps every task prohibition."""
+    errors = []
+    personas = {p["id"]: p for p in policy.get("personas", [])}
+    fable_personas = {pid for pid, p in personas.items() if "fable" in p.get("model_classes", [])}
+    if fable_personas != FABLE_PERSONAS:
+        errors.append(f"personas listing fable are {sorted(fable_personas)}, want {sorted(FABLE_PERSONAS)}")
+    orch = personas.get("fable-orchestrator")
+    if orch is None:
+        errors.append("missing persona fable-orchestrator")
+    else:
+        if orch.get("model_classes") != ["fable"]:
+            errors.append("fable-orchestrator routes to fable only")
+        missing = FABLE_FORBIDDEN - set(orch.get("forbidden_tasks", []))
+        if missing:
+            errors.append(f"fable-orchestrator lost prohibitions {sorted(missing)}")
+    for lane in policy.get("lanes", []):
+        if lane.get("persona") == "fable-orchestrator":
+            errors.append(f"{lane.get('route')}: a mythos lane uses fable-orchestrator")
+    for lane in policy.get("cade", {}).get("lanes", []):
+        if lane.get("persona") in FABLE_PERSONAS:
+            errors.append(f"{lane.get('route')}: a cade.lanes route uses a fable persona")
+    fable = next((s for s in policy.get("seats", []) if s.get("id") == "fable"), {})
+    if set(fable.get("default_personas", [])) != FABLE_PERSONAS:
+        errors.append("fable seat must default to exactly the fable personas")
+    for lane in policy.get("cade", {}).get("dispatch", {}).get("lanes", []):
+        route = str(lane.get("route"))
+        if lane.get("root_seat") == "fable" or lane.get("parent_persona") in FABLE_PERSONAS:
+            if not route.startswith("cade.delegate.") or lane.get("parent_persona") != "fable-orchestrator":
+                errors.append(f"{route}: fable roots only cade.delegate.* as orchestrator")
+    return errors
+
+
+def dispatch_violations(policy):
+    """TIN-7125: Cade Dispatch v1. The shared contract, the lanes and their
+    roots, units, effects, credentials, the job seat, the broker, the Fable
+    id and accounting without caps."""
+    cade = policy.get("cade", {})
+    dispatch = cade.get("dispatch")
+    if not isinstance(dispatch, dict):
+        return ["missing cade.dispatch"]
+    errors = []
+    scalars = {
+        "envelope_schema": ENVELOPE_SCHEMA_ID,
+        "envelope_schema_file": "policy/cade-dispatch.schema.json",
+        "receipt_schema": RECEIPT_SCHEMA_ID,
+        "receipt_schema_file": "policy/cade-dispatch-receipt.schema.json",
+        "recipient": RECIPIENT,
+        "harness_seat": DISPATCH_HARNESS_SEAT,
+        "resolver": "fixed-resolver-reads-this-policy",
+        "carve_out_match": "normalized-prefix",
+        "carve_out_seat": "opus",
+        "develop_uncertain_tags": "opus",
+        "tag_inheritance": "carve-out-tags-pass-to-every-child",
+        "custody_source": "source-item-label",
+        "custody_rule": "narrow-only",
+        "child_dispatch": "dispatch-request-through-cade",
+        "unknown_unit": "opus",
+    }
+    for key, value in scalars.items():
+        if dispatch.get(key) != value:
+            errors.append(f"cade.dispatch.{key} is {dispatch.get(key)!r}, want {value!r}")
+    lists = {
+        "envelope_fields": list(ENVELOPE_FIELDS),
+        "receipt_fields": list(RECEIPT_FIELDS),
+        "reply_kinds": list(REPLY_KINDS),
+        "receipt_statuses": list(RECEIPT_STATUSES),
+        "carve_out_tags": list(CARVE_OUT_TAGS),
+        "custody_order": list(CUSTODY_ORDER),
+    }
+    for key, value in lists.items():
+        if dispatch.get(key) != value:
+            errors.append(f"cade.dispatch.{key} is {dispatch.get(key)!r}, want {value!r}")
+    personas = {p["id"]: p for p in policy.get("personas", [])}
+    seats = {s["id"]: s for s in policy.get("seats", [])}
+    harness_custody = {
+        c.get("id"): set(c.get("harness_seats", [])) for c in cade.get("custody_classes", [])
+    }
+    lane_list = dispatch.get("lanes", [])
+    lanes = {l.get("route"): l for l in lane_list}
+    if len(lanes) != len(lane_list):
+        errors.append("duplicate dispatch routes")
+    if set(lanes) != set(DISPATCH_ROUTES):
+        errors.append(f"dispatch routes {sorted(map(str, lanes))}, want {sorted(DISPATCH_ROUTES)}")
+    for route, lane in lanes.items():
+        parent, root = lane.get("parent_persona"), lane.get("root_seat")
+        if DISPATCH_ROUTES.get(route, (parent, root)) != (parent, root):
+            errors.append(f"{route}: root is {parent}/{root}, want {DISPATCH_ROUTES[route]}")
+        persona = personas.get(parent)
+        if persona is None:
+            errors.append(f"{route}: unknown parent persona {parent}")
+        elif root not in persona.get("model_classes", []):
+            errors.append(f"{route}: root seat {root} is off persona {parent}")
+        if parent in seats.get(root, {}).get("forbidden_personas", []):
+            errors.append(f"{route}: seat {root} forbids persona {parent}")
+        if parent in CRITICAL_PERSONAS and root != "opus":
+            errors.append(f"{route}: a critical root runs on {root}, not opus")
+        for klass in lane.get("custody", []):
+            if klass in ("confidential", "health"):
+                errors.append(f"{route}: admits {klass} custody")
+            if DISPATCH_HARNESS_SEAT not in harness_custody.get(klass, set()):
+                errors.append(f"{route}: {klass} custody does not admit {DISPATCH_HARNESS_SEAT}")
+        if not lane.get("custody"):
+            errors.append(f"{route}: admits no custody class")
+        if not (lane.get("gate") or "").strip() or not (lane.get("purpose") or "").strip():
+            errors.append(f"{route}: gate and purpose are required")
+    units = {u.get("kind"): u.get("seats") for u in dispatch.get("units", [])}
+    if units != UNIT_SEATS:
+        errors.append(f"dispatch units {units}, want {UNIT_SEATS}")
+    for kind, unit_seats in units.items():
+        if {"fable", "kimi"} & set(unit_seats or []):
+            errors.append(f"unit {kind} runs on fable or kimi")
+        if kind in OPUS_ONLY_UNITS and unit_seats != ["opus"]:
+            errors.append(f"unit {kind} must run on opus only")
+    effects = {e.get("id"): e for e in dispatch.get("effects", [])}
+    envelope_effects = {eid for eid, e in effects.items() if e.get("envelope") is True}
+    go_effects = {eid for eid, e in effects.items() if e.get("needs_go") is True}
+    if envelope_effects != ENVELOPE_EFFECTS:
+        errors.append(f"envelope effects {sorted(envelope_effects)}, want {sorted(ENVELOPE_EFFECTS)}")
+    if go_effects != GO_EFFECTS:
+        errors.append(f"GO effects {sorted(go_effects)}, want {sorted(GO_EFFECTS)}")
+    if envelope_effects & go_effects:
+        errors.append(f"effects both in the envelope and behind a GO: {sorted(envelope_effects & go_effects)}")
+    for cred in dispatch.get("credentials", []):
+        if cred.get("agent_mints") is not False or not str(cred.get("minted_by", "")).startswith("jess"):
+            errors.append(f"credential {cred.get('id')} is minted by Jess, never by an agent")
+    accounting = dispatch.get("accounting", {})
+    if accounting.get("budget_envelope") != "report-only":
+        errors.append("the budget envelope is report-only")
+    if accounting.get("containment") != "none":
+        errors.append("dispatch adds no containment")
+    capped = sorted({k for k in walk_keys([dispatch, cade.get("broker", {})]) if CAP_KEY_RE.search(k)})
+    if capped:
+        errors.append(f"dispatch carries cap-shaped keys {capped}; caps need a ruled interview")
+    harness = {h.get("id"): h for h in policy.get("harness_seats", [])}
+    seat = harness.get(DISPATCH_HARNESS_SEAT)
+    if seat is None:
+        errors.append(f"missing harness seat {DISPATCH_HARNESS_SEAT}")
+    else:
+        if seat.get("dispatch_surface") != DISPATCH_SURFACE:
+            errors.append(f"{DISPATCH_HARNESS_SEAT} surface must be {DISPATCH_SURFACE}")
+        if "launcher" not in str(seat.get("launcher", "")).lower():
+            errors.append(f"{DISPATCH_HARNESS_SEAT} must name its fixed launcher")
+        if seat.get("posture") != HARNESS_POSTURES[DISPATCH_HARNESS_SEAT]:
+            errors.append(f"{DISPATCH_HARNESS_SEAT} posture must be gated-worker")
+        missing = CLAUDE_CODE_CADE_FORBIDDEN - set(seat.get("forbidden_tasks", []))
+        if missing:
+            errors.append(f"{DISPATCH_HARNESS_SEAT} must forbid {sorted(missing)}")
+        if str(seat.get("model_lane", "")).startswith("kimi"):
+            errors.append(f"{DISPATCH_HARNESS_SEAT} is a Claude Code seat, not a Kimi seat")
+    job_seat = dispatch.get("job_seat", {})
+    for key, value in JOB_SEAT.items():
+        if job_seat.get(key) != value:
+            errors.append(f"job_seat.{key} is {job_seat.get(key)!r}, want {value!r}")
+    if job_seat.get("config_dir") in ("$HOME/.claude", "~/.claude"):
+        errors.append("a job never uses Jess's own ~/.claude login")
+    errors.extend(broker_violations(policy))
+    errors.extend(fable_id_violations(policy))
+    errors.extend(fable_placement_violations(policy))
+    return errors
+
+
+def dispatch_schema_violations(policy, envelope_schema, receipt_schema):
+    """The envelope and receipt schemas carry the shared contract exactly."""
+    errors = []
+    dispatch = policy.get("cade", {}).get("dispatch", {})
+    for name, schema, fields, optional, schema_id in (
+        ("envelope", envelope_schema, ENVELOPE_FIELDS, ENVELOPE_OPTIONAL, ENVELOPE_SCHEMA_ID),
+        ("receipt", receipt_schema, RECEIPT_FIELDS, set(), RECEIPT_SCHEMA_ID),
+    ):
+        props = schema.get("properties", {})
+        if set(props) - {"schema"} != set(fields):
+            errors.append(f"{name} schema fields {sorted(set(props) - {'schema'})}, want {sorted(fields)}")
+        if props.get("schema") != {"const": schema_id}:
+            errors.append(f"{name} schema field must be const {schema_id}")
+        if set(schema.get("required", [])) != set(fields) - optional:
+            errors.append(f"{name} schema required fields drifted")
+        if schema.get("additionalProperties") is not False:
+            errors.append(f"{name} schema must close its record")
+        lane_enum = set(schema.get("$defs", {}).get("lane", {}).get("enum", []))
+        if lane_enum != set(DISPATCH_ROUTES):
+            errors.append(f"{name} schema lane enum {sorted(lane_enum)}, want {sorted(DISPATCH_ROUTES)}")
+    env_props = envelope_schema.get("properties", {})
+    named = sorted(k for k in env_props if "model" in k or "seat" in k)
+    if named:
+        errors.append(f"envelope carries model fields {named}; the broker never names a model")
+    if set(env_props.get("allowed_effects", {}).get("items", {}).get("enum", [])) != ENVELOPE_EFFECTS:
+        errors.append("envelope allowed_effects enum drifted from the envelope effects")
+    if set(env_props.get("custody", {}).get("enum", [])) != set(CUSTODY_ORDER):
+        errors.append("envelope custody enum must name every custody class")
+    status = receipt_schema.get("properties", {}).get("status", {}).get("enum", [])
+    if status != list(RECEIPT_STATUSES):
+        errors.append(f"receipt status enum {status}, want {list(RECEIPT_STATUSES)}")
+    if envelope_schema.get("$id", "").rsplit("/", 2)[-2:] != dispatch.get("envelope_schema_file", "").split("/"):
+        errors.append("envelope schema $id does not name envelope_schema_file")
+    if receipt_schema.get("$id", "").rsplit("/", 2)[-2:] != dispatch.get("receipt_schema_file", "").split("/"):
+        errors.append("receipt schema $id does not name receipt_schema_file")
+    return errors
+
+
 def dhall_seat_model_ids(dhall_text):
     """Seat model_class -> model_id (None when provider-managed) from Dhall."""
     pattern = re.compile(
@@ -1014,9 +1611,9 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "08b57b6985aadfadf9cb9a57d16fdd4cc038ce6e0f7b504b3127fca20a87f238"
-POLICY_CANONICAL_SHA256 = "7344fc96a5f2b691b7737455669b4e4b02f775fecf42ea8bdf4d3e0693bf0642"
-AGENTS_DELEGATION_SHA256 = "55682a42f1de2524fcd573f41e99d942c72d44fb2605c1ce33e2a28b80edd225"
+SKILL_SHA256 = "2105fc6976fd929a88c3990d0833d95208e1096a866afef0a798c3ac20cf168b"
+POLICY_CANONICAL_SHA256 = "e7be691884bc6882cec805b16430394689f07414620a8aedf0b39067a4767f56"
+AGENTS_DELEGATION_SHA256 = "490d1560e5854a96dc900a54c438e4878bbed04aeceb997989906d2b1452295c"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
 
@@ -1190,11 +1787,13 @@ def load_schema():
 def structural_schema_violations(instance, schema, path="$"):
     """Minimal fail-closed subset validator for degraded envs without jsonschema.
 
-    Covers only what the delegation schema uses: type, const, enum, required,
-    additionalProperties=false, properties, items, minItems, minLength,
-    pattern, uniqueItems, allOf, if/then, not, contains and local $ref into
-    $defs. Unknown constructs are ignored rather than passed
-    silently as valid, which is why jsonschema stays the preferred path.
+    Covers only what the delegation and dispatch schemas use: type (object,
+    array, string, integer, number, boolean, null), const, enum, required,
+    additionalProperties=false, properties, items, minItems, maxItems,
+    minLength, minimum, pattern, uniqueItems, allOf, anyOf, if/then, not,
+    contains and local $ref into $defs. Unknown constructs are ignored rather
+    than passed silently as valid, which is why jsonschema stays the
+    preferred path.
     """
     defs = schema.get("$defs", {})
 
@@ -1218,14 +1817,27 @@ def structural_schema_violations(instance, schema, path="$"):
             return [f"{where}: expected array"]
         if expected == "string" and not isinstance(value, str):
             return [f"{where}: expected string"]
-        if expected == "integer" and not isinstance(value, int):
+        if expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
             return [f"{where}: expected integer"]
-        if "const" in node and value != node["const"]:
+        if expected == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+            return [f"{where}: expected number"]
+        if expected == "boolean" and not isinstance(value, bool):
+            return [f"{where}: expected boolean"]
+        if expected == "null" and value is not None:
+            return [f"{where}: expected null"]
+        if "const" in node and (value != node["const"] or type(value) is not type(node["const"])):
             errors.append(f"{where}: expected const {node['const']!r}")
         if "enum" in node and value not in node["enum"]:
             errors.append(f"{where}: {value!r} not in {node['enum']}")
         if isinstance(value, str) and len(value) < node.get("minLength", 0):
             errors.append(f"{where}: shorter than minLength")
+        if (
+            "minimum" in node
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value < node["minimum"]
+        ):
+            errors.append(f"{where}: below minimum")
         if isinstance(value, str) and "pattern" in node:
             if not re.search(node["pattern"], value):
                 errors.append(f"{where}: {value!r} fails {node['pattern']}")
@@ -1244,6 +1856,8 @@ def structural_schema_violations(instance, schema, path="$"):
         if isinstance(value, list):
             if len(value) < node.get("minItems", 0):
                 errors.append(f"{where}: fewer than minItems")
+            if "maxItems" in node and len(value) > node["maxItems"]:
+                errors.append(f"{where}: more than maxItems")
             if node.get("uniqueItems") and len(
                 {json.dumps(item, sort_keys=True) for item in value}
             ) != len(value):
@@ -1258,6 +1872,8 @@ def structural_schema_violations(instance, schema, path="$"):
                 errors.append(f"{where}: no item matches contains")
         for subschema in node.get("allOf", []):
             errors.extend(walk(value, subschema, where))
+        if "anyOf" in node and all(walk(value, sub, where) for sub in node["anyOf"]):
+            errors.append(f"{where}: matches no anyOf branch")
         if "if" in node and not walk(value, node["if"], where):
             errors.extend(walk(value, node.get("then", {}), where))
         if "not" in node and not walk(value, node["not"], where):
@@ -1277,7 +1893,7 @@ class DelegationPolicyTests(unittest.TestCase):
         cls.harness_seats = {s["id"]: s for s in cls.policy["harness_seats"]}
 
     def test_schema_version(self):
-        self.assertEqual(self.policy["schema_version"], 4)
+        self.assertEqual(self.policy["schema_version"], 5)
 
     def test_owner_linear_issue_shape(self):
         self.assertRegex(self.policy["metadata"]["owner_linear_issue"], r"^[A-Z]+-\d+$")
@@ -1367,14 +1983,22 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertIn("adversarial", self.seats["sonnet"]["forbidden_personas"])
         self.assertNotIn("critical", self.seats["sonnet"]["default_personas"])
 
-    def test_seat_model_ids_pin_the_5_5_family(self):
-        # TIN-7760: the 5.5 pin is kept, and the only other admitted seat is
-        # kimi / k3.1-pro on the kimi-coding endpoint.
+    def test_pinned_seat_model_ids_keep_the_5_5_family_and_fable_reads_the_account(self):
+        # TIN-7760: the 5.5 pin is kept for every pinned seat, and the only
+        # other pinned seat is kimi / k3.1-pro on the kimi-coding endpoint.
+        # TIN-7125: the Fable id is not pinned. It is a config value read from
+        # the cade@xoxd.ai account after login, so the seat carries no id, its
+        # source is account-config and no Fable id sits anywhere in the policy.
         for seat_id, model_id in MODEL_IDS.items():
             self.assertEqual(self.seats[seat_id].get("model_id"), model_id, seat_id)
+            self.assertEqual(self.seats[seat_id]["model_id_source"], "pinned", seat_id)
             self.assertEqual(self.seats[seat_id]["provider"], "anthropic", seat_id)
             self.assertNotIn("endpoint", self.seats[seat_id], seat_id)
         self.assertNotIn("model_id", self.seats["fable"], "fable stays provider-managed")
+        self.assertEqual(self.seats["fable"]["model_id_source"], "account-config")
+        self.assertEqual(fable_id_violations(self.policy), [])
+        anthropic = next(p for p in self.policy["providers"] if p["id"] == "anthropic")
+        self.assertEqual(set(anthropic["model_ids"]), set(MODEL_IDS.values()))
         self.assertEqual(self.seats["kimi"]["model_id"], "k3.1-pro")
         self.assertEqual(self.seats["kimi"]["provider"], "kimi")
         self.assertEqual(self.seats["kimi"]["endpoint"], "kimi-coding")
@@ -1425,9 +2049,17 @@ class DelegationPolicyTests(unittest.TestCase):
             ),
             "fable pinned": lambda d: seat(d, "fable").update(model_id="claude-opus-5-5"),
             "provider dropped": lambda d: seat(d, "haiku").pop("provider"),
+            "fable id hard-coded on the seat": lambda d: seat(d, "fable").update(
+                model_id="claude-fable-5-2"
+            ),
+            "fable id on the allow-list": lambda d: provider(d, "anthropic")["model_ids"].append(
+                "claude-fable-5-2"
+            ),
         }
         for name, fn in cases.items():
-            self.assertTrue(provider_allow_list_violations(mutate(fn)), name)
+            self.assertTrue(
+                provider_allow_list_violations(mutate(fn)) + fable_id_violations(mutate(fn)), name
+            )
         schema_cases = (
             "non-allow-listed provider",
             "kimi off its model",
@@ -1445,6 +2077,8 @@ class DelegationPolicyTests(unittest.TestCase):
             "anthropic widened",
             "fable pinned",
             "provider dropped",
+            "fable id hard-coded on the seat",
+            "fable id on the allow-list",
         )
         for name in schema_cases:
             self.assertTrue(
@@ -1761,9 +2395,11 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertTrue(seat["model_lane"].strip(), seat["id"])
             self.assertTrue(seat["dispatch_surface"].strip(), seat["id"])
 
-    def test_harness_seats_are_evidentiary_only(self):
+    def test_harness_seat_postures(self):
+        # The review seats are evidentiary-only. Cade's job seat is a gated
+        # worker: work product whose external acts wait for a GO (TIN-7125).
         for seat in self.policy["harness_seats"]:
-            self.assertEqual(seat["posture"], HARNESS_POSTURE, seat["id"])
+            self.assertEqual(seat["posture"], HARNESS_POSTURES[seat["id"]], seat["id"])
 
     def test_harness_seats_never_own_the_word_or_refutation_legs(self):
         for seat in self.policy["harness_seats"]:
@@ -1786,10 +2422,18 @@ class DelegationPolicyTests(unittest.TestCase):
             )
 
     def test_harness_dispatch_is_bounded_launchers_not_raw_binaries(self):
+        # A launcher surface names the bounded wrappers. A transport surface
+        # (an swb recipient) names the fixed launcher behind it in launcher.
         for seat in self.policy["harness_seats"]:
             surface = seat["dispatch_surface"]
+            if surface.startswith("swb:"):
+                self.assertIn("launcher", seat.get("launcher", "").lower(), seat["id"])
+                self.assertIn("never a raw binary", seat["launcher"], seat["id"])
+                continue
+            self.assertNotIn("launcher", seat, seat["id"])
             self.assertIn("launcher", surface.lower(), seat["id"])
             self.assertIn(f"{seat['harness']}-*", surface, seat["id"])
+        self.assertEqual(self.harness_seats[DISPATCH_HARNESS_SEAT]["dispatch_surface"], DISPATCH_SURFACE)
 
     def test_kimi_reviewer_rides_the_pi_harness(self):
         # The native kimi CLI has no dispatch envelope, so the Kimi reviewer is
@@ -1998,6 +2642,14 @@ class DelegationPolicyTests(unittest.TestCase):
                 "cade-custody-follows-parent",
                 "cade-children-auto-level",
                 "cross-provider-review-advisory",
+                "fable-leads-others-work",
+                "cade-dispatch-root-resolution",
+                "cade-dispatch-carve-out-inheritance",
+                "cade-dispatch-custody-narrows",
+                "cade-broker-routes-only",
+                "fable-id-from-account",
+                "cade-never-reviews-own-pr",
+                "cade-dispatch-accounting-not-caps",
             }.issubset(errors)
         )
 
@@ -2307,6 +2959,473 @@ class DelegationPolicyTests(unittest.TestCase):
             broken = skill_text.replace(old, new, 1)
             self.assertTrue(skill_text_violations(self.policy, broken), name)
 
+    # Cade Dispatch v1 (TIN-7125).
+
+    @staticmethod
+    def sample_envelope(**overrides):
+        envelope = {
+            "job_id": "j-0001",
+            "parent_job_id": None,
+            "depth": 0,
+            "root_id": "j-0001",
+            "lane": "cade.delegate.research",
+            "tags": ["market-scan"],
+            "custody": "public",
+            "goal": "Survey public pricing pages for three named competitors.",
+            "inputs": [{"ref": "cade-work/brief.md", "sha256": "a" * 64}],
+            "allowed_effects": ["result-doc"],
+            "requested_by": "jess",
+            "created_at": "2026-11-09T20:00:00Z",
+        }
+        envelope.update(overrides)
+        return envelope
+
+    @staticmethod
+    def sample_receipt(**overrides):
+        receipt = {
+            "job_id": "j-0001",
+            "parent_job_id": None,
+            "depth": 0,
+            "lane": "cade.delegate.research",
+            "resolved_root_model": "claude-opus-5-5",
+            "observed_models": [{"unit": "root", "model": "claude-opus-5-5"}],
+            "children": 3,
+            "peak_concurrency": 3,
+            "observed_depth": 1,
+            "tokens": {"input": 1000, "output": 200},
+            "wall_seconds": 61.5,
+            "effects": ["result-doc"],
+            "go_refs": [],
+            "result": {"path": "cade-work/notes/j-0001.md", "sha256": "b" * 64},
+            "status": "done",
+            "policy_rev": "prompt-toon sha256:" + "c" * 64,
+        }
+        receipt.update(overrides)
+        return receipt
+
+    def schema_errors(self, instance, schema):
+        """Both validators, so CI enforces the dispatch schemas without
+        jsonschema and the preferred path agrees with the degraded one."""
+        errors = structural_schema_violations(instance, schema)
+        try:
+            import jsonschema
+        except ImportError:
+            return errors
+        try:
+            jsonschema.validate(instance=instance, schema=schema)
+        except jsonschema.ValidationError as exc:
+            errors.append(f"jsonschema: {exc.message}")
+        return errors
+
+    def test_dispatch_contract_holds(self):
+        self.assertEqual(dispatch_violations(self.policy), [])
+        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(dispatch_schema_violations(self.policy, envelope_schema, receipt_schema), [])
+        dispatch = self.policy["cade"]["dispatch"]
+        self.assertEqual(ROOT / dispatch["envelope_schema_file"], ENVELOPE_SCHEMA_PATH)
+        self.assertEqual(ROOT / dispatch["receipt_schema_file"], RECEIPT_SCHEMA_PATH)
+        for schema in (envelope_schema, receipt_schema):
+            self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
+
+    def test_dispatch_check_fails_closed(self):
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        dispatch = lambda doc: doc["cade"]["dispatch"]
+        lane = lambda doc, route: next(l for l in dispatch(doc)["lanes"] if l["route"] == route)
+        unit = lambda doc, kind: next(u for u in dispatch(doc)["units"] if u["kind"] == kind)
+        effect = lambda doc, eid: next(e for e in dispatch(doc)["effects"] if e["id"] == eid)
+        harness = lambda doc: next(h for h in doc["harness_seats"] if h["id"] == DISPATCH_HARNESS_SEAT)
+        persona = lambda doc, pid: next(p for p in doc["personas"] if p["id"] == pid)
+        klass = lambda doc, cid: next(c for c in doc["cade"]["custody_classes"] if c["id"] == cid)
+        cases = {
+            "develop on fable": lambda d: lane(d, DEVELOP_ROUTE).update(
+                parent_persona="fable-orchestrator", root_seat="fable"
+            ),
+            "research on opus orchestrator": lambda d: lane(d, "cade.delegate.research").update(
+                parent_persona="critical", root_seat="opus"
+            ),
+            "fable root on the critical persona": lambda d: lane(d, DEVELOP_ROUTE).update(root_seat="fable"),
+            "lane dropped": lambda d: dispatch(d)["lanes"].remove(lane(d, "cade.delegate.draft")),
+            "unknown lane": lambda d: dispatch(d)["lanes"].append(
+                dict(lane(d, "cade.delegate.draft"), route="cade.delegate.send")
+            ),
+            "confidential admitted": lambda d: lane(d, "cade.delegate.business")["custody"].append("confidential"),
+            "health admitted": lambda d: lane(d, "cade.delegate.research")["custody"].append("health"),
+            "job seat leaves ops": lambda d: klass(d, "ops")["harness_seats"].remove(DISPATCH_HARNESS_SEAT),
+            "fable runs research units": lambda d: unit(d, "research")["seats"].append("fable"),
+            "kimi runs bulk units": lambda d: unit(d, "bulk")["seats"].append("kimi"),
+            "carve-out on sonnet": lambda d: unit(d, "carve-out")["seats"].append("sonnet"),
+            "code on sonnet": lambda d: unit(d, "code").update(seats=["sonnet"]),
+            "gate unit dropped": lambda d: dispatch(d)["units"].remove(unit(d, "gate")),
+            "unknown unit on sonnet": lambda d: dispatch(d).update(unknown_unit="sonnet"),
+            "carve-out seat moved": lambda d: dispatch(d).update(carve_out_seat="sonnet"),
+            "carve-out tag dropped": lambda d: dispatch(d)["carve_out_tags"].remove("purple-team"),
+            "tags stop inheriting": lambda d: dispatch(d).update(tag_inheritance="root-only"),
+            "custody may widen": lambda d: dispatch(d).update(custody_rule="any"),
+            "custody order swapped": lambda d: dispatch(d).update(
+                custody_order=["ops", "public", "confidential", "health"]
+            ),
+            "custody from the broker": lambda d: dispatch(d).update(custody_source="broker"),
+            "develop uncertain tags on fable": lambda d: dispatch(d).update(develop_uncertain_tags="fable"),
+            "envelope field renamed": lambda d: dispatch(d)["envelope_fields"].__setitem__(0, "id"),
+            "receipt field dropped": lambda d: dispatch(d)["receipt_fields"].remove("observed_depth"),
+            "recipient moved": lambda d: dispatch(d).update(recipient="claude:sting:cade-worker"),
+            "reply kind added": lambda d: dispatch(d)["reply_kinds"].append("approve"),
+            "spend in the envelope": lambda d: effect(d, "spend").update(envelope=True),
+            "host act without a GO": lambda d: effect(d, "host-act").update(needs_go=False),
+            "agent mints a credential": lambda d: dispatch(d)["credentials"][1].update(agent_mints=True),
+            "budget becomes a cap": lambda d: dispatch(d)["accounting"].update(budget_envelope="hard-stop"),
+            "containment added": lambda d: dispatch(d)["accounting"].update(containment="depth-2"),
+            "cap key added": lambda d: dispatch(d)["accounting"].update(max_children=8),
+            "depth limit key added": lambda d: dispatch(d).update(depth_limit=2),
+            "job seat under a separate user": lambda d: dispatch(d)["job_seat"].update(unix_user="cade-worker"),
+            "job seat on Jess's login": lambda d: dispatch(d)["job_seat"].update(config_dir="$HOME/.claude"),
+            "operator login allowed": lambda d: dispatch(d)["job_seat"].update(operator_login="fallback"),
+            "harness surface moved": lambda d: harness(d).update(dispatch_surface="swb:claude:sting:cade-worker"),
+            "harness launcher dropped": lambda d: harness(d).pop("launcher"),
+            "harness reviews its own pr": lambda d: harness(d)["forbidden_tasks"].remove("review-own-pr"),
+            "harness evidentiary": lambda d: harness(d).update(posture="evidentiary-only"),
+            "orchestrator may bulk-execute": lambda d: persona(d, "fable-orchestrator")["forbidden_tasks"].remove(
+                "bulk-execution"
+            ),
+            "orchestrator on a mythos lane": lambda d: next(
+                l for l in d["lanes"] if l["route"] == "mythos.research.wide"
+            ).update(persona="fable-orchestrator"),
+            "fable on a third persona": lambda d: persona(d, "research")["model_classes"].append("fable"),
+            "orchestrator on a cade child lane": lambda d: next(
+                l for l in d["cade"]["lanes"] if l["route"] == "cade.research"
+            ).update(persona="fable-orchestrator"),
+        }
+        for name, fn in cases.items():
+            broken = mutate(fn)
+            found = (
+                dispatch_violations(broken)
+                + cade_violations(broken)
+                + critical_lane_violations(broken)
+                + kimi_violations(broken)
+            )
+            self.assertTrue(found, name)
+        schema_cases = (
+            "develop on fable",
+            "fable root on the critical persona",
+            "unknown lane",
+            "confidential admitted",
+            "health admitted",
+            "job seat leaves ops",
+            "fable runs research units",
+            "kimi runs bulk units",
+            "carve-out on sonnet",
+            "code on sonnet",
+            "unknown unit on sonnet",
+            "carve-out seat moved",
+            "carve-out tag dropped",
+            "tags stop inheriting",
+            "custody may widen",
+            "custody from the broker",
+            "develop uncertain tags on fable",
+            "envelope field renamed",
+            "receipt field dropped",
+            "recipient moved",
+            "reply kind added",
+            "spend in the envelope",
+            "host act without a GO",
+            "agent mints a credential",
+            "budget becomes a cap",
+            "containment added",
+            "cap key added",
+            "depth limit key added",
+            "job seat under a separate user",
+            "job seat on Jess's login",
+            "operator login allowed",
+            "harness surface moved",
+            "harness launcher dropped",
+            "harness reviews its own pr",
+            "harness evidentiary",
+        )
+        for name in schema_cases:
+            self.assertTrue(structural_schema_violations(mutate(cases[name]), self.schema), f"schema: {name}")
+
+    def test_root_resolution(self):
+        # The fixed resolver, not the broker, picks the root. Fable roots
+        # research, draft, business and marketing as orchestrator; develop is
+        # Opus; any carve-out tag reroutes to Opus; uncertain tags on develop
+        # resolve to Opus; a lane that does not admit the custody gets none.
+        opus = ("opus", "claude-opus-5-5")
+        env = self.sample_envelope
+        read = "claude-fable-9-9"
+        for route in ("cade.delegate.research", "cade.delegate.draft", "cade.delegate.marketing"):
+            self.assertEqual(resolve_root(self.policy, env(lane=route), read), ("fable", read), route)
+            self.assertEqual(resolve_root(self.policy, env(lane=route, tags=[]), read), ("fable", read), route)
+        self.assertEqual(
+            resolve_root(self.policy, env(lane="cade.delegate.business", custody="ops"), read), ("fable", read)
+        )
+        self.assertEqual(resolve_root(self.policy, env(), None), ("fable", None), "unread id waits")
+        self.assertEqual(resolve_root(self.policy, env(), "claude-opus-5-5"), ("fable", None), "opus id is not fable")
+        for tags in (
+            ["adversarial"], ["red-team"], ["purple-team"], ["deep-iteration"],
+            ["market-scan", "Red_Team"], ["redteam-pass"], ["adversarial-review"], ["DEEP ITERATION"],
+        ):
+            for route in DISPATCH_ROUTES:
+                custody = "ops" if route in ("cade.delegate.business", DEVELOP_ROUTE) else "public"
+                self.assertEqual(
+                    resolve_root(self.policy, env(lane=route, tags=tags, custody=custody), read), opus, (route, tags)
+                )
+        for tags in (None, "red-team", [None], [""], ["ok", 3]):
+            envelope = env(lane=DEVELOP_ROUTE, tags=tags)
+            self.assertEqual(resolve_root(self.policy, envelope, read), opus, tags)
+            self.assertIsNone(resolve_root(self.policy, env(tags=tags), read), tags)
+        missing = env(lane=DEVELOP_ROUTE)
+        del missing["tags"]
+        self.assertEqual(resolve_root(self.policy, missing, read), opus)
+        self.assertEqual(resolve_root(self.policy, env(lane=DEVELOP_ROUTE, tags=[]), read), opus)
+        for custody in ("confidential", "health", "unknown"):
+            for route in DISPATCH_ROUTES:
+                self.assertIsNone(resolve_root(self.policy, env(lane=route, custody=custody), read), (route, custody))
+        self.assertIsNone(resolve_root(self.policy, env(custody="ops"), read), "research admits public only")
+        self.assertIsNone(resolve_root(self.policy, env(lane="cade.delegate.unknown"), read))
+        self.assertIsNone(resolve_root(self.policy, env(lane="cade.research"), read))
+        # The resolver never lands a carve-out or develop job on fable,
+        # whatever the read id is.
+        for route in DISPATCH_ROUTES:
+            for tags in (["red-team"], ["adversarial"]):
+                root = resolve_root(self.policy, env(lane=route, tags=tags, custody="public"), read)
+                self.assertEqual(root, opus, route)
+        # A weakened policy fails toward Opus or no root, never toward Fable.
+        broken = json.loads(json.dumps(self.policy))
+        broken["cade"]["dispatch"]["carve_out_match"] = "exact"
+        self.assertEqual(resolve_root(broken, env(), read), opus)
+
+    def test_child_envelopes_inherit_carve_outs_and_only_narrow_custody(self):
+        parent = self.sample_envelope(tags=["red-team", "market-scan"], custody="ops", lane="cade.delegate.business")
+        good = self.sample_envelope(
+            job_id="j-0002", parent_job_id="j-0001", depth=1, root_id="j-0001",
+            tags=["red-team"], custody="ops", lane="cade.delegate.business",
+        )
+        self.assertEqual(child_envelope_violations(self.policy, parent, good), [])
+        self.assertEqual(
+            child_envelope_violations(self.policy, parent, dict(good, custody="confidential")), []
+        )
+        cases = {
+            "carve-out dropped": dict(good, tags=["market-scan"]),
+            "custody widened": dict(good, custody="public"),
+            "unknown custody": dict(good, custody="internal"),
+            "depth skipped": dict(good, depth=2),
+            "depth reset": dict(good, depth=0),
+            "new root": dict(good, root_id="j-0002"),
+            "orphaned": dict(good, parent_job_id=None),
+            "job id reused": dict(good, job_id="j-0001"),
+        }
+        for name, child in cases.items():
+            self.assertTrue(child_envelope_violations(self.policy, parent, child), name)
+        # A child of a carve-out parent resolves to Opus on every lane.
+        for route in DISPATCH_ROUTES:
+            child = dict(good, lane=route, custody="public" if route != "cade.delegate.business" else "ops")
+            if child["custody"] in next(
+                l for l in self.policy["cade"]["dispatch"]["lanes"] if l["route"] == route
+            )["custody"]:
+                self.assertEqual(resolve_root(self.policy, child, "claude-fable-9-9")[0], "opus", route)
+
+    def test_fable_id_is_read_from_the_account(self):
+        cfg = self.policy["cade"]["dispatch"]["fable_model_id"]
+        self.assertEqual(admit_fable_id(self.policy, "claude-fable-9-9"), "claude-fable-9-9")
+        for bad in ("claude-opus-5-5", "claude-sonnet-5-5", "k3.1-pro", "", None, "fable", "claude-fable-"):
+            self.assertIsNone(admit_fable_id(self.policy, bad), bad)
+        self.assertNotIn("value", cfg)
+        self.assertNotIn("model_id", cfg)
+
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        fid = lambda doc: doc["cade"]["dispatch"]["fable_model_id"]
+        cases = {
+            "id value in the config": lambda d: fid(d).update(value="claude-fable-5-2"),
+            "id in the notes": lambda d: fid(d).update(notes="Use claude-fable-5-1 for now."),
+            "id in a seat note": lambda d: d["seats"][0].update(notes="Runs claude-fable-5-2."),
+            "pattern admits opus": lambda d: fid(d).update(id_pattern="^claude-[a-z]+-.*$"),
+            "admitted before login": lambda d: fid(d).update(admitted_when="always"),
+            "unread falls back": lambda d: fid(d).update(on_unread="opus"),
+            "source pinned": lambda d: d["seats"][0].update(model_id_source="pinned"),
+            "opus from the account": lambda d: d["seats"][1].update(model_id_source="account-config"),
+        }
+        for name, fn in cases.items():
+            self.assertTrue(fable_id_violations(mutate(fn)), name)
+        for name in (
+            "id value in the config",
+            "pattern admits opus",
+            "admitted before login",
+            "unread falls back",
+            "source pinned",
+            "opus from the account",
+        ):
+            self.assertTrue(structural_schema_violations(mutate(cases[name]), self.schema), f"schema: {name}")
+
+    def test_broker_routes_and_authors_only(self):
+        self.assertEqual(broker_violations(self.policy), [])
+        broker = self.policy["cade"]["broker"]
+        self.assertTrue(broker["new_policy"], "the broker rule is marked as new policy")
+        self.assertEqual(broker["seat"], "kimi")
+
+        def mutate(fn):
+            broken = json.loads(json.dumps(self.policy))
+            fn(broken)
+            return broken
+
+        b = lambda doc: doc["cade"]["broker"]
+        cases = {
+            "broker gates": lambda d: b(d)["gates"].append("merge"),
+            "broker names a model": lambda d: b(d).update(names_model=True),
+            "broker sets custody": lambda d: b(d)["writes"].append("custody"),
+            "broker may merge": lambda d: b(d)["may"].append("merge"),
+            "broker on opus": lambda d: b(d).update(seat="opus"),
+            "new policy mark dropped": lambda d: b(d).update(new_policy=False),
+            "unattended revoked": lambda d: b(d).update(unattended="attended-only"),
+        }
+        for name, fn in cases.items():
+            self.assertTrue(broker_violations(mutate(fn)), name)
+            self.assertTrue(structural_schema_violations(mutate(fn), self.schema), f"schema: {name}")
+
+    def test_dispatch_schemas_accept_and_reject(self):
+        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        good_envelopes = (
+            self.sample_envelope(),
+            self.sample_envelope(schema=ENVELOPE_SCHEMA_ID, budget_envelope={"tokens": 500000, "mode": "report-only"}),
+            self.sample_envelope(budget_envelope=12.5),
+            self.sample_envelope(job_id="j-2", parent_job_id="j-1", depth=1, root_id="j-1", tags=[]),
+            self.sample_envelope(lane=DEVELOP_ROUTE, custody="ops", allowed_effects=["github-pr", "result-doc"]),
+            self.sample_envelope(allowed_effects=["none"], inputs=[]),
+        )
+        for envelope in good_envelopes:
+            self.assertEqual(self.schema_errors(envelope, envelope_schema), [], envelope)
+        bad_envelopes = {
+            "model field": self.sample_envelope(model="claude-opus-5-5"),
+            "seat field": self.sample_envelope(root_seat="fable"),
+            "unknown lane": self.sample_envelope(lane="cade.research"),
+            "spend allowed": self.sample_envelope(allowed_effects=["spend"]),
+            "host act allowed": self.sample_envelope(allowed_effects=["host-act"]),
+            "none with others": self.sample_envelope(allowed_effects=["none", "result-doc"]),
+            "no effects": self.sample_envelope(allowed_effects=[]),
+            "root with a parent": self.sample_envelope(parent_job_id="j-0"),
+            "child without a parent": self.sample_envelope(depth=1),
+            "negative depth": self.sample_envelope(depth=-1),
+            "colon in job id": self.sample_envelope(job_id="j:1"),
+            "bad input digest": self.sample_envelope(inputs=[{"ref": "x", "sha256": "abc"}]),
+            "bad tag": self.sample_envelope(tags=["Red Team"]),
+            "unknown custody": self.sample_envelope(custody="internal"),
+            "wrong schema id": self.sample_envelope(schema="cade.dispatch/v2"),
+            "budget cap mode": self.sample_envelope(budget_envelope={"tokens": 5, "mode": "hard-stop"}),
+            "bad timestamp": self.sample_envelope(created_at="yesterday"),
+        }
+        missing_goal = self.sample_envelope()
+        del missing_goal["goal"]
+        bad_envelopes["missing goal"] = missing_goal
+        missing_tags = self.sample_envelope()
+        del missing_tags["tags"]
+        bad_envelopes["missing tags"] = missing_tags
+        for name, envelope in bad_envelopes.items():
+            self.assertTrue(structural_schema_violations(envelope, envelope_schema), name)
+        good_receipts = (
+            self.sample_receipt(),
+            self.sample_receipt(schema=RECEIPT_SCHEMA_ID, tokens=1200),
+            self.sample_receipt(status="needs-go", resolved_root_model=None, result=None, go_refs=["needs-go:fable-id"]),
+            self.sample_receipt(status="failed", result=None),
+            self.sample_receipt(
+                job_id="j-2", parent_job_id="j-1", depth=1, status="dispatch-request",
+                effects=[{"effect": "github-pr", "ref": "https://example.invalid/pr/1"}],
+            ),
+        )
+        for receipt in good_receipts:
+            self.assertEqual(self.schema_errors(receipt, receipt_schema), [], receipt)
+        bad_receipts = {
+            "done without a result": self.sample_receipt(result=None),
+            "unknown status": self.sample_receipt(status="approved"),
+            "negative children": self.sample_receipt(children=-1),
+            "fractional depth": self.sample_receipt(observed_depth=1.5),
+            "boolean concurrency": self.sample_receipt(peak_concurrency=True),
+            "model row without unit": self.sample_receipt(observed_models=[{"model": "claude-opus-5-5"}]),
+            "unknown effect": self.sample_receipt(effects=["deploy"]),
+            "extra field": self.sample_receipt(reroute="carve-out"),
+            "bad result digest": self.sample_receipt(result={"path": "x", "sha256": "z"}),
+        }
+        missing_rev = self.sample_receipt()
+        del missing_rev["policy_rev"]
+        bad_receipts["missing policy_rev"] = missing_rev
+        for name, receipt in bad_receipts.items():
+            self.assertTrue(structural_schema_violations(receipt, receipt_schema), name)
+
+    def test_dispatch_schema_contract_fails_closed(self):
+        envelope_schema = json.loads(ENVELOPE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        receipt_schema = json.loads(RECEIPT_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+        def broken(schema, fn):
+            copy = json.loads(json.dumps(schema))
+            fn(copy)
+            return copy
+
+        env_cases = {
+            "model field added": lambda s: s["properties"].update(model={"type": "string"}),
+            "field dropped": lambda s: s["properties"].pop("root_id"),
+            "budget required": lambda s: s["required"].append("budget_envelope"),
+            "record opened": lambda s: s.update(additionalProperties=True),
+            "spend admitted": lambda s: s["properties"]["allowed_effects"]["items"]["enum"].append("spend"),
+            "lane added": lambda s: s["$defs"]["lane"]["enum"].append("cade.delegate.send"),
+        }
+        for name, fn in env_cases.items():
+            self.assertTrue(
+                dispatch_schema_violations(self.policy, broken(envelope_schema, fn), receipt_schema), name
+            )
+        rec_cases = {
+            "status added": lambda s: s["properties"]["status"]["enum"].append("approved"),
+            "field dropped": lambda s: s["properties"].pop("observed_models"),
+            "required relaxed": lambda s: s["required"].remove("go_refs"),
+        }
+        for name, fn in rec_cases.items():
+            self.assertTrue(
+                dispatch_schema_violations(self.policy, envelope_schema, broken(receipt_schema, fn)), name
+            )
+
+    def test_dispatch_skill_table_fails_closed(self):
+        skill_text = SKILL_PATH.read_text(encoding="utf-8")
+        self.assertEqual(dispatch_skill_table_violations(self.policy, skill_text), [])
+        develop = "| `cade.delegate.develop` | critical | opus | public, ops |"
+        research = "| `cade.delegate.research` | fable-orchestrator | fable | public |"
+        cases = {
+            "develop on fable": (develop, develop.replace("| critical | opus |", "| fable-orchestrator | fable |")),
+            "research widened": (research, research.replace("| public |", "| public, confidential |")),
+            "row dropped": (develop + "\n", ""),
+            "duplicate row": (research, research + "\n" + research),
+            "second table": (
+                "## Inside a Cade job",
+                "| `cade.delegate.develop` | fable-orchestrator | fable | public |\n\n## Inside a Cade job",
+            ),
+        }
+        for name, (old, new) in cases.items():
+            self.assertIn(old, skill_text, name)
+            self.assertTrue(skill_text_violations(self.policy, skill_text.replace(old, new, 1)), name)
+        self.assertTrue(skill_text_violations(
+            self.policy, skill_text.replace("## Inside a Cade job", "Use claude-fable-5-1.\n\n## Inside a Cade job", 1)
+        ))
+
+    def test_structural_validator_handles_dispatch_constructs(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "n": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+                "b": {"type": "boolean", "const": False},
+                "xs": {"type": "array", "maxItems": 1},
+                "f": {"type": "number"},
+            },
+        }
+        self.assertEqual(structural_schema_violations({"n": None, "b": False, "xs": [1], "f": 1.5}, schema), [])
+        for bad in ({"n": -1}, {"n": "x"}, {"b": 0}, {"b": True}, {"xs": [1, 2]}, {"f": True}, {"f": "1"}):
+            self.assertTrue(structural_schema_violations(bad, schema), bad)
+
     def test_dhall_json_structural_equality(self):
         dhall_to_json = shutil.which("dhall-to-json")
         if dhall_to_json is None:
@@ -2327,7 +3446,9 @@ class DelegationPolicyTests(unittest.TestCase):
             self.assertIn(f'model_class = "{seat}"', dhall_text, seat)
         for harness_seat in self.harness_seats:
             self.assertIn(f'id = "{harness_seat}"', dhall_text, harness_seat)
-        for lane in self.policy["lanes"] + self.policy["cade"]["lanes"]:
+        for lane in (
+            self.policy["lanes"] + self.policy["cade"]["lanes"] + self.policy["cade"]["dispatch"]["lanes"]
+        ):
             self.assertIn(f'route = "{lane["route"]}"', dhall_text, lane["route"])
         for provider in self.policy["providers"]:
             self.assertIn(f'id = "{provider["id"]}"', dhall_text, provider["id"])

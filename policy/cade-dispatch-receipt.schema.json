@@ -1,0 +1,303 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch-receipt.schema.json",
+  "title": "cade.dispatch.receipt/v1 job receipt",
+  "description": "The receipt a Cade job returns (TIN-7125). It records lineage, the root the resolver picked, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. It is accounting, not a cap. The schema id travels in the optional schema field or in the swb message.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "parent_job_id",
+    "depth",
+    "lane",
+    "resolved_root_model",
+    "observed_models",
+    "children",
+    "peak_concurrency",
+    "observed_depth",
+    "tokens",
+    "wall_seconds",
+    "effects",
+    "go_refs",
+    "result",
+    "status",
+    "policy_rev"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch.receipt/v1"
+    },
+    "job_id": {
+      "$ref": "#/$defs/jobId"
+    },
+    "parent_job_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/jobId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lane": {
+      "$ref": "#/$defs/lane"
+    },
+    "resolved_root_model": {
+      "description": "The root model id the resolver picked, or null when the job got no root, for example while the Fable id is unread.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "observed_models": {
+      "description": "The model that answered each unit, read from the session's own events, the root included as unit root.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unit",
+          "model"
+        ],
+        "properties": {
+          "unit": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "model": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "children": {
+      "description": "Subagents and child jobs spawned.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "peak_concurrency": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observed_depth": {
+      "description": "The deepest subagent depth seen.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "wall_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "effects": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/effectId"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "effect",
+              "ref"
+            ],
+            "properties": {
+              "effect": {
+                "$ref": "#/$defs/effectId"
+              },
+              "ref": {
+                "$ref": "#/$defs/nonEmptyString"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "go_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "result": {
+      "description": "The result doc, or null when the job produced none.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "done",
+        "failed",
+        "needs-go",
+        "dispatch-request"
+      ]
+    },
+    "policy_rev": {
+      "description": "The prompt-toon policy the resolver read, for example its version and the sha256 of policy/delegation.json.",
+      "$ref": "#/$defs/nonEmptyString"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "done"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "depth"
+        ],
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "parent_job_id"
+        ],
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "jobId": {
+      "description": "A job id. It also names the tmux session job-<id>, so it holds no colon, dot or space.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "lane": {
+      "description": "A cade.delegate.* lane in policy/delegation.json .cade.dispatch.lanes.",
+      "enum": [
+        "cade.delegate.research",
+        "cade.delegate.draft",
+        "cade.delegate.business",
+        "cade.delegate.marketing",
+        "cade.delegate.develop"
+      ]
+    },
+    "effectId": {
+      "description": "An effect in policy/delegation.json .cade.dispatch.effects.",
+      "enum": [
+        "none",
+        "result-doc",
+        "linear-comment",
+        "github-pr",
+        "spend",
+        "external-send",
+        "host-act",
+        "merge",
+        "credential-change"
+      ]
+    }
+  }
+}

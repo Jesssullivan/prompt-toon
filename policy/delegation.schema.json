@@ -27,7 +27,7 @@
     },
     "schema_version": {
       "type": "integer",
-      "const": 4
+      "const": 5
     },
     "metadata": {
       "type": "object",
@@ -161,6 +161,7 @@
         "required": [
           "id",
           "model_class",
+          "model_id_source",
           "provider",
           "cost_tier",
           "default_personas",
@@ -173,6 +174,10 @@
           "model_id": {
             "description": "Exact model the seat runs (J81). Omitted for a provider-managed seat such as fable.",
             "$ref": "#/$defs/modelId"
+          },
+          "model_id_source": {
+            "description": "Where the seat's model id comes from. pinned: this policy names it. account-config: a config value read from the account after login and never written here (TIN-7125). Only fable is account-config.",
+            "enum": ["pinned", "account-config"]
           },
           "provider": {
             "description": "The providers[] entry whose allow-list admits this seat's model_id.",
@@ -198,7 +203,7 @@
         "allOf": [
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "fable" } } },
-            "then": { "allOf": [ { "not": { "required": ["model_id"] } }, { "not": { "required": ["endpoint"] } } ], "properties": { "provider": { "const": "anthropic" } } }
+            "then": { "allOf": [ { "not": { "required": ["model_id"] } }, { "not": { "required": ["endpoint"] } } ], "properties": { "provider": { "const": "anthropic" }, "model_id_source": { "const": "account-config" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "kimi" } } },
@@ -206,6 +211,7 @@
               "required": ["model_id", "endpoint"],
               "properties": {
                 "model_id": { "const": "k3.1-pro" },
+                "model_id_source": { "const": "pinned" },
                 "provider": { "const": "kimi" },
                 "endpoint": { "const": "kimi-coding" },
                 "default_personas": {
@@ -223,23 +229,23 @@
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "opus" } } },
-            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-opus-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-opus-" }, "model_id_source": { "const": "pinned" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "sonnet" } } },
-            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-sonnet-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-sonnet-" }, "model_id_source": { "const": "pinned" }, "provider": { "const": "anthropic" } } }
           },
           {
             "if": { "required": ["model_class"], "properties": { "model_class": { "const": "haiku" } } },
-            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-haiku-" }, "provider": { "const": "anthropic" } } }
+            "then": { "required": ["model_id"], "not": { "required": ["endpoint"] }, "properties": { "model_id": { "pattern": "^claude-haiku-" }, "model_id_source": { "const": "pinned" }, "provider": { "const": "anthropic" } } }
           }
         ]
       }
     },
     "harness_seats": {
-      "description": "Agent-harness dispatch identities Fable may delegate bounded technical work to. A harness seat is not a model class and never appears in a persona's model_classes: it names the harness, the model lane it rides, the exact task envelope it may receive, the launcher surface dispatch must go through, and its evidentiary-only posture.",
+      "description": "Agent-harness dispatch identities Fable or Cade may delegate bounded work to. A harness seat is not a model class and never appears in a persona's model_classes: it names the harness, the model lane it rides, the exact task envelope it may receive, the surface dispatch must go through, the fixed launcher behind a transport surface, and its posture.",
       "type": "array",
-      "minItems": 2,
+      "minItems": 3,
       "uniqueItems": true,
       "items": {
         "type": "object",
@@ -272,11 +278,41 @@
             "items": { "$ref": "#/$defs/identifier" }
           },
           "dispatch_surface": { "$ref": "#/$defs/nonEmptyString" },
+          "launcher": {
+            "description": "The fixed launcher behind a transport surface such as an swb recipient. Omitted when the surface is itself the launcher.",
+            "$ref": "#/$defs/nonEmptyString"
+          },
           "posture": {
-            "description": "Harness output is evidence for the synthesis seat. There is no other posture: a harness seat never carries the operator WORD leg.",
-            "enum": ["evidentiary-only"]
+            "description": "evidentiary-only: the output is evidence for the synthesis seat or the Opus merge gate. gated-worker: the Cade job seat's output is work product whose external acts wait for a GO. No harness seat carries the operator WORD leg or gates a merge.",
+            "enum": ["evidentiary-only", "gated-worker"]
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["harness"], "properties": { "harness": { "const": "pi" } } },
+            "then": { "not": { "required": ["launcher"] }, "properties": { "posture": { "const": "evidentiary-only" } } }
+          },
+          {
+            "if": { "required": ["id"], "properties": { "id": { "const": "claude-code@cade" } } },
+            "then": {
+              "required": ["launcher"],
+              "properties": {
+                "harness": { "const": "claude-code" },
+                "dispatch_surface": { "const": "swb:claude:sting:cade-jobs" },
+                "posture": { "const": "gated-worker" },
+                "forbidden_tasks": {
+                  "allOf": [
+                    { "contains": { "const": "word-leg-ratification" } },
+                    { "contains": { "const": "adversarial-refutation-of-record" } },
+                    { "contains": { "const": "merge-gating-review" } },
+                    { "contains": { "const": "review-own-pr" } },
+                    { "contains": { "const": "credential-minting" } }
+                  ]
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "personas": {
@@ -386,10 +422,10 @@
       }
     },
     "cade": {
-      "description": "Cade orchestration (TIN-7760): the orchestrator, the advisory cross-provider review, the auto-level child rule, custody classes and the cade.* lanes.",
+      "description": "Cade orchestration (TIN-7760, TIN-7125): the orchestrator, the advisory cross-provider review, the auto-level child rule, custody classes, the cade.* lanes, the broker and dispatch.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["orchestrator", "cross_provider_review", "children", "custody_classes", "lanes"],
+      "required": ["orchestrator", "cross_provider_review", "children", "custody_classes", "lanes", "broker", "dispatch"],
       "properties": {
         "orchestrator": { "$ref": "#/$defs/nonEmptyString" },
         "cross_provider_review": { "$ref": "#/$defs/nonEmptyString" },
@@ -471,7 +507,7 @@
                 "then": {
                   "properties": {
                     "seats": { "contains": { "const": "kimi" } },
-                    "harness_seats": { "contains": { "const": "pi-k3" } }
+                    "harness_seats": { "allOf": [ { "contains": { "const": "pi-k3" } }, { "contains": { "const": "claude-code@cade" } } ] }
                   }
                 }
               }
@@ -522,6 +558,705 @@
                 }
               }
             ]
+          }
+        },
+        "broker": {
+          "description": "The Cade broker (TIN-7125, new policy). Kimi may route a request to a cade.* lane and author cade.dispatch/v1 envelopes. It gates nothing, never names a model and never sets custody.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "seat",
+            "may",
+            "gates",
+            "names_model",
+            "writes",
+            "unattended",
+            "new_policy",
+            "notes"
+          ],
+          "properties": {
+            "seat": {
+              "const": "kimi"
+            },
+            "may": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "route",
+                  "author-envelope"
+                ]
+              }
+            },
+            "gates": {
+              "description": "What the broker may gate: nothing.",
+              "type": "array",
+              "not": {
+                "contains": {}
+              }
+            },
+            "names_model": {
+              "type": "boolean",
+              "const": false
+            },
+            "writes": {
+              "description": "Envelope fields the broker writes. Cade's own code stamps the rest, custody from the source item's label included.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "lane",
+                  "tags",
+                  "goal",
+                  "inputs",
+                  "allowed_effects",
+                  "budget_envelope"
+                ]
+              }
+            },
+            "unattended": {
+              "const": "admitted"
+            },
+            "new_policy": {
+              "type": "boolean",
+              "const": true
+            },
+            "notes": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
+          }
+        },
+        "dispatch": {
+          "description": "Cade dispatch (TIN-7125): the shared envelope and receipt contract, transport, root resolution, carve-out reroute and inheritance, custody narrowing, units, the Fable id, the job seat, effects, credentials and accounting. Nothing here caps count, depth or cost.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "envelope_schema",
+            "envelope_schema_file",
+            "envelope_fields",
+            "receipt_schema",
+            "receipt_schema_file",
+            "receipt_fields",
+            "recipient",
+            "reply_kinds",
+            "receipt_statuses",
+            "harness_seat",
+            "resolver",
+            "carve_out_tags",
+            "carve_out_match",
+            "carve_out_seat",
+            "develop_uncertain_tags",
+            "tag_inheritance",
+            "custody_source",
+            "custody_order",
+            "custody_rule",
+            "child_dispatch",
+            "fable_model_id",
+            "job_seat",
+            "lanes",
+            "units",
+            "unknown_unit",
+            "effects",
+            "credentials",
+            "accounting",
+            "notes"
+          ],
+          "properties": {
+            "envelope_schema": {
+              "const": "cade.dispatch/v1"
+            },
+            "envelope_schema_file": {
+              "const": "policy/cade-dispatch.schema.json"
+            },
+            "envelope_fields": {
+              "type": "array",
+              "minItems": 13,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "job_id",
+                  "parent_job_id",
+                  "depth",
+                  "root_id",
+                  "lane",
+                  "tags",
+                  "custody",
+                  "goal",
+                  "inputs",
+                  "allowed_effects",
+                  "budget_envelope",
+                  "requested_by",
+                  "created_at"
+                ]
+              }
+            },
+            "receipt_schema": {
+              "const": "cade.dispatch.receipt/v1"
+            },
+            "receipt_schema_file": {
+              "const": "policy/cade-dispatch-receipt.schema.json"
+            },
+            "receipt_fields": {
+              "type": "array",
+              "minItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "job_id",
+                  "parent_job_id",
+                  "depth",
+                  "lane",
+                  "resolved_root_model",
+                  "observed_models",
+                  "children",
+                  "peak_concurrency",
+                  "observed_depth",
+                  "tokens",
+                  "wall_seconds",
+                  "effects",
+                  "go_refs",
+                  "result",
+                  "status",
+                  "policy_rev"
+                ]
+              }
+            },
+            "recipient": {
+              "const": "claude:sting:cade-jobs"
+            },
+            "reply_kinds": {
+              "type": "array",
+              "minItems": 3,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "reply",
+                  "needs-go",
+                  "dispatch-request"
+                ]
+              }
+            },
+            "receipt_statuses": {
+              "type": "array",
+              "minItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "done",
+                  "failed",
+                  "needs-go",
+                  "dispatch-request"
+                ]
+              }
+            },
+            "harness_seat": {
+              "const": "claude-code@cade"
+            },
+            "resolver": {
+              "const": "fixed-resolver-reads-this-policy"
+            },
+            "carve_out_tags": {
+              "type": "array",
+              "minItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "adversarial",
+                  "red-team",
+                  "purple-team",
+                  "deep-iteration"
+                ]
+              }
+            },
+            "carve_out_match": {
+              "const": "normalized-prefix"
+            },
+            "carve_out_seat": {
+              "const": "opus"
+            },
+            "develop_uncertain_tags": {
+              "const": "opus"
+            },
+            "tag_inheritance": {
+              "const": "carve-out-tags-pass-to-every-child"
+            },
+            "custody_source": {
+              "const": "source-item-label"
+            },
+            "custody_order": {
+              "description": "Custody classes from widest to narrowest. A child's custody may stay or move right, never left.",
+              "type": "array",
+              "minItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/custodyId"
+              }
+            },
+            "custody_rule": {
+              "const": "narrow-only"
+            },
+            "child_dispatch": {
+              "const": "dispatch-request-through-cade"
+            },
+            "fable_model_id": {
+              "description": "The Fable id is a config value read from the account after login. The policy never carries a value.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "config_key",
+                "source",
+                "account",
+                "admitted_when",
+                "id_pattern",
+                "on_unread",
+                "notes"
+              ],
+              "properties": {
+                "config_key": {
+                  "const": "fable_model_id"
+                },
+                "source": {
+                  "const": "account"
+                },
+                "account": {
+                  "const": "cade@xoxd.ai"
+                },
+                "admitted_when": {
+                  "const": "read-from-account-after-login"
+                },
+                "id_pattern": {
+                  "type": "string",
+                  "pattern": "^\\^claude-fable-"
+                },
+                "on_unread": {
+                  "const": "wait"
+                },
+                "notes": {
+                  "$ref": "#/$defs/nonEmptyString"
+                }
+              }
+            },
+            "job_seat": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "host",
+                "unix_user",
+                "account",
+                "config_dir",
+                "operator_login",
+                "key_reach",
+                "notes"
+              ],
+              "properties": {
+                "host": {
+                  "const": "sting"
+                },
+                "unix_user": {
+                  "const": "jess"
+                },
+                "account": {
+                  "const": "cade@xoxd.ai"
+                },
+                "config_dir": {
+                  "description": "A Claude Code config dir of its own. Jess's own ~/.claude is never a job's.",
+                  "type": "string",
+                  "pattern": "^\\$HOME/\\.claude-[a-z0-9-]+$"
+                },
+                "operator_login": {
+                  "const": "never"
+                },
+                "key_reach": {
+                  "const": "accepted"
+                },
+                "notes": {
+                  "$ref": "#/$defs/nonEmptyString"
+                }
+              }
+            },
+            "lanes": {
+              "type": "array",
+              "minItems": 5,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "route",
+                  "parent_persona",
+                  "root_seat",
+                  "custody",
+                  "gate",
+                  "purpose"
+                ],
+                "properties": {
+                  "route": {
+                    "$ref": "#/$defs/dispatchRoute"
+                  },
+                  "parent_persona": {
+                    "enum": [
+                      "fable-orchestrator",
+                      "critical"
+                    ]
+                  },
+                  "root_seat": {
+                    "enum": [
+                      "fable",
+                      "opus"
+                    ]
+                  },
+                  "custody": {
+                    "description": "Custody classes the lane admits from the source item's label. Each one must list the claude-code@cade harness seat, so confidential and health are out.",
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "enum": [
+                        "public",
+                        "ops"
+                      ]
+                    }
+                  },
+                  "gate": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "purpose": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "required": [
+                        "parent_persona"
+                      ],
+                      "properties": {
+                        "parent_persona": {
+                          "const": "fable-orchestrator"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "root_seat": {
+                          "const": "fable"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "parent_persona"
+                      ],
+                      "properties": {
+                        "parent_persona": {
+                          "const": "critical"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "root_seat": {
+                          "const": "opus"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "route"
+                      ],
+                      "properties": {
+                        "route": {
+                          "const": "cade.delegate.develop"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "parent_persona": {
+                          "const": "critical"
+                        },
+                        "root_seat": {
+                          "const": "opus"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "root_seat"
+                      ],
+                      "properties": {
+                        "root_seat": {
+                          "const": "fable"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "parent_persona": {
+                          "const": "fable-orchestrator"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "units": {
+              "type": "array",
+              "minItems": 5,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "seats",
+                  "notes"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "research",
+                      "bulk",
+                      "code",
+                      "gate",
+                      "carve-out"
+                    ]
+                  },
+                  "seats": {
+                    "description": "Worker seats in preference order. Fable never runs a unit and Kimi never runs inside a Claude Code job.",
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "enum": [
+                        "opus",
+                        "sonnet",
+                        "haiku"
+                      ]
+                    }
+                  },
+                  "notes": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "code",
+                            "gate",
+                            "carve-out"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "seats": {
+                          "items": {
+                            "const": "opus"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "unknown_unit": {
+              "const": "opus"
+            },
+            "effects": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "envelope",
+                  "needs_go",
+                  "identity",
+                  "notes"
+                ],
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "none",
+                      "result-doc",
+                      "linear-comment",
+                      "github-pr",
+                      "spend",
+                      "external-send",
+                      "host-act",
+                      "merge",
+                      "credential-change"
+                    ]
+                  },
+                  "envelope": {
+                    "type": "boolean"
+                  },
+                  "needs_go": {
+                    "type": "boolean"
+                  },
+                  "identity": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "notes": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "required": [
+                        "needs_go"
+                      ],
+                      "properties": {
+                        "needs_go": {
+                          "const": true
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "envelope": {
+                          "const": false
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "enum": [
+                            "spend",
+                            "external-send",
+                            "host-act",
+                            "merge",
+                            "credential-change"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "needs_go": {
+                          "const": true
+                        },
+                        "envelope": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "credentials": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "provider",
+                  "holder",
+                  "minted_by",
+                  "agent_mints",
+                  "notes"
+                ],
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "cade-claude",
+                      "cade-linear",
+                      "cade-github"
+                    ]
+                  },
+                  "provider": {
+                    "enum": [
+                      "anthropic",
+                      "linear",
+                      "github"
+                    ]
+                  },
+                  "holder": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "minted_by": {
+                    "enum": [
+                      "jess-attended-login",
+                      "jess-in-provider-ui"
+                    ]
+                  },
+                  "agent_mints": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "notes": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                }
+              }
+            },
+            "accounting": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "budget_envelope",
+                "containment",
+                "queue",
+                "audit",
+                "notes"
+              ],
+              "properties": {
+                "budget_envelope": {
+                  "const": "report-only"
+                },
+                "containment": {
+                  "const": "none"
+                },
+                "queue": {
+                  "const": "fifo"
+                },
+                "audit": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                },
+                "notes": {
+                  "$ref": "#/$defs/nonEmptyString"
+                }
+              }
+            },
+            "notes": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
           }
         }
       }
@@ -596,11 +1331,15 @@
     },
     "harnessSeatId": {
       "description": "First-class harness-seat names. Adding one is a policy change, not a string edit.",
-      "enum": ["pi", "pi-k3"]
+      "enum": ["pi", "pi-k3", "claude-code@cade"]
     },
     "harnessId": {
-      "description": "The agent harness a seat dispatches through. Kimi has no dispatch envelope of its own, so the Kimi reviewer rides the pi harness as pi-k3.",
-      "enum": ["pi"]
+      "description": "The agent harness a seat dispatches through. Kimi has no dispatch envelope of its own, so the Kimi reviewer rides the pi harness as pi-k3. Cade's job seat runs Claude Code.",
+      "enum": ["pi", "claude-code"]
+    },
+    "dispatchRoute": {
+      "description": "Cade dispatch lanes (TIN-7125). Adding one is a policy change, not a string edit.",
+      "enum": ["cade.delegate.research", "cade.delegate.draft", "cade.delegate.business", "cade.delegate.marketing", "cade.delegate.develop"]
     },
     "modelClass": {
       "description": "A seat name, or the operator taking the lane personally.",

@@ -15,6 +15,7 @@ Text only, so the JSON stays easy to compare.
 | Dhall source | Rendered artifact | Gate |
 |---|---|---|
 | `dhall/DelegationPolicy.dhall`, `dhall/delegation.dhall` | `delegation.json` | `tests/test_delegation_policy.py` |
+| Hand-written JSON Schema | `cade-dispatch.schema.json`, `cade-dispatch-receipt.schema.json` | `tests/test_delegation_policy.py` |
 | `dhall/IoPolicy.dhall`, `dhall/io.dhall` | `io.json` | `tests/test_io_policy.py` |
 | `dhall/RedactionPolicy.dhall`, `dhall/redaction.dhall` | `redaction.json` | `tests/test_redaction_policy.py` |
 
@@ -23,6 +24,10 @@ Text only, so the JSON stays easy to compare.
   `haiku` and `kimi`), the provider allow-list and its endpoints, the Cade
   custody classes, the child seat resolution and the `cade.*` route shape. It closes every record and constrains severities
   to an enum.
+- `cade-dispatch.schema.json` and `cade-dispatch-receipt.schema.json` are
+  the `cade.dispatch/v1` job envelope and the `cade.dispatch.receipt/v1`
+  receipt (TIN-7125). `delegation.json` `.cade.dispatch` names their fields,
+  and the gate holds the three in step.
 - `io.json` holds the enforcement gate, thresholds, surfaces, trust tiers
   and failure modes. The gate stays locked, with every surface disabled,
   until TIN-2695 and TIN-2699 close and INV-1 to INV-6 hold.
@@ -68,7 +73,8 @@ Delegation:
   resolves to a persona that lists kimi.
 - Every `cade.*` lane names a default seat and alternates inside its
   persona and its custody class. Confidential custody is Opus only and
-  health custody has no hosted seat. Fable never serves a `cade.*` lane.
+  health custody has no hosted seat. Fable serves only `cade.delegate.*`,
+  as orchestrator.
   Cade's children run auto-level, keep every standing-rule binding, follow
   the parent home's custody and never reroute to another provider. A
   child's effective seats are its lane's seats within the parent home's
@@ -77,6 +83,16 @@ Delegation:
   the `pi-k3` harness seat included, sits in the ops class (SPR-182).
   `harness_seats` records it, and child seat resolution never reads it.
   Cross-provider review is advisory.
+- Cade dispatch (TIN-7125). The broker on the kimi seat routes and authors
+  envelopes only: it gates nothing, never names a model and never sets
+  custody. A fixed resolver gives `cade.delegate.research`, `.draft`,
+  `.business` and `.marketing` a Fable root on the `fable-orchestrator`
+  persona and `cade.delegate.develop` an Opus root. Any carve-out tag
+  reroutes the root to Opus, uncertain tags on develop resolve to Opus and
+  carve-out tags pass to every child. A child's custody keeps or narrows the
+  parent's. Code, gate and carve-out units run on Opus only; fable and kimi
+  never run a unit. The Fable id is read from the account and never appears
+  in the policy. Dispatch carries accounting and no cap.
 - `opus-quota-exhausted` is the only budget fallback. It lets Sonnet
   continue `mythos.implement.merge` and `mythos.gate.security`. Merges wait
   for an Opus review. No host act or credential change runs on Sonnet. The

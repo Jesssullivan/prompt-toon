@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Jesssullivan/prompt-toon/main/policy/cade-dispatch.schema.json",
+  "title": "cade.dispatch/v1 job envelope",
+  "description": "A job Cade sends over swb to claude:sting:cade-jobs (TIN-7125). The broker writes lane, tags, goal, inputs, allowed_effects and budget_envelope. Cade's own code stamps the rest, custody from the source item's label included. There is no model field: the resolver in policy/delegation.json .cade.dispatch picks the root. The schema id travels in the optional schema field or in the swb message.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "parent_job_id",
+    "depth",
+    "root_id",
+    "lane",
+    "tags",
+    "custody",
+    "goal",
+    "inputs",
+    "allowed_effects",
+    "requested_by",
+    "created_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "cade.dispatch/v1"
+    },
+    "job_id": {
+      "$ref": "#/$defs/jobId"
+    },
+    "parent_job_id": {
+      "description": "The parent job, or null for a root job.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/jobId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "description": "0 for a root job, parent depth plus one for a child.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "root_id": {
+      "description": "The root job's id. A root job's root_id is its own job_id.",
+      "$ref": "#/$defs/jobId"
+    },
+    "lane": {
+      "$ref": "#/$defs/lane"
+    },
+    "tags": {
+      "description": "Task tags. adversarial, red-team, purple-team and deep-iteration are the carve-out tags: any one reroutes the root to Opus and passes to every child.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      }
+    },
+    "custody": {
+      "description": "From the source item's label, never from the broker. No dispatch lane admits confidential or health in v1, so such a job gets no root.",
+      "enum": [
+        "public",
+        "ops",
+        "confidential",
+        "health"
+      ]
+    },
+    "goal": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "sha256"
+        ],
+        "properties": {
+          "ref": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "allowed_effects": {
+      "description": "Effects the job may have without a GO. Spend, external sends, host acts, merges and credential changes are never listed: the job replies needs-go instead. none stands alone.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "none",
+          "result-doc",
+          "linear-comment",
+          "github-pr"
+        ]
+      }
+    },
+    "budget_envelope": {
+      "description": "Optional and report-only. The card posts status lines at 50, 80 and 100 percent. Nothing stops at the limit.",
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tokens": {
+              "type": "number",
+              "minimum": 0
+            },
+            "wall_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "usd": {
+              "type": "number",
+              "minimum": 0
+            },
+            "mode": {
+              "const": "report-only"
+            }
+          }
+        }
+      ]
+    },
+    "requested_by": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "created_at": {
+      "description": "RFC 3339 timestamp.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "depth"
+        ],
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "parent_job_id"
+        ],
+        "properties": {
+          "parent_job_id": {
+            "type": "null"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "depth": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "allowed_effects"
+        ],
+        "properties": {
+          "allowed_effects": {
+            "contains": {
+              "const": "none"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "allowed_effects": {
+            "maxItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "jobId": {
+      "description": "A job id. It also names the tmux session job-<id>, so it holds no colon, dot or space.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "lane": {
+      "description": "A cade.delegate.* lane in policy/delegation.json .cade.dispatch.lanes.",
+      "enum": [
+        "cade.delegate.research",
+        "cade.delegate.draft",
+        "cade.delegate.business",
+        "cade.delegate.marketing",
+        "cade.delegate.develop"
+      ]
+    }
+  }
+}

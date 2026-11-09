@@ -57,15 +57,18 @@ let Provider =
 {-
 model_id names the exact model a seat runs (J81). It is Optional because the
 fable seat stays provider-managed; dhall-to-json omits the field when None.
-provider names the providers[] entry whose allow-list admits that model_id.
-endpoint names the admitted provider endpoint whose model_ids hold that
-model_id. It is set for a seat whose provider keys model ids by endpoint and
-omitted otherwise.
+model_id_source says where the id comes from: pinned (this policy names it)
+or account-config (a config value read from the account after login, never
+written here; TIN-7125). provider names the providers[] entry whose
+allow-list admits a pinned model_id. endpoint names the admitted provider
+endpoint whose model_ids hold that model_id. It is set for a seat whose
+provider keys model ids by endpoint and omitted otherwise.
 -}
 let Seat =
       { id : Text
       , model_class : Text
       , model_id : Optional Text
+      , model_id_source : Text
       , provider : Text
       , endpoint : Optional Text
       , cost_tier : Text
@@ -76,10 +79,14 @@ let Seat =
 
 {-
 A harness seat is a *dispatch* identity, not a model class. It names an agent
-harness Fable can hand bounded technical work to, the lane that harness runs
-on, the exact task envelope it may receive, and the launcher surface that
-dispatch is allowed to go through. Its posture is evidentiary-only: harness
-output is evidence for the synthesis seat, never the operator WORD leg.
+harness Fable or Cade can hand bounded work to, the lane that harness runs on,
+the exact task envelope it may receive, and the surface that dispatch is
+allowed to go through. launcher names the fixed launcher behind a transport
+surface such as an swb recipient; it is omitted when the surface is itself
+the launcher. Posture is evidentiary-only for the review seats: their output
+is evidence for the synthesis seat. The gated-worker posture is the Cade job
+seat's: its output is work product whose external acts wait for a GO. No
+harness seat carries the operator WORD leg.
 -}
 let HarnessSeat =
       { id : Text
@@ -89,6 +96,7 @@ let HarnessSeat =
       , delegable_tasks : List Text
       , forbidden_tasks : List Text
       , dispatch_surface : Text
+      , launcher : Optional Text
       , posture : Text
       }
 
@@ -173,12 +181,164 @@ let CadeChildren =
       , notes : Text
       }
 
+{-
+The Cade broker (TIN-7125, new policy). The broker seat may do only what may
+lists: route a request to a cade.* lane and author cade.dispatch/v1
+envelopes. gates lists what it may gate, and it is empty. names_model is
+False: an envelope has no model field, and the dispatch resolver picks the
+root. writes lists the envelope fields the broker writes; Cade's own code
+stamps every other field, custody from the source item's label included.
+new_policy marks a rule that v0.4.0 did not carry: kimi-never-gates had no
+clause about naming a model.
+-}
+let CadeBroker =
+      { seat : Text
+      , may : List Text
+      , gates : List Text
+      , names_model : Bool
+      , writes : List Text
+      , unattended : Text
+      , new_policy : Bool
+      , notes : Text
+      }
+
+{-
+A dispatch lane is a cade.delegate.* route that sends a whole job to a Claude
+Code job session. parent_persona and root_seat name the job root: the
+fable-orchestrator persona on the fable seat, or the critical persona on
+opus. custody lists the custody classes the lane admits from the source
+item's label.
+-}
+let DispatchLane =
+      { route : Text
+      , parent_persona : Text
+      , root_seat : Text
+      , custody : List Text
+      , gate : Text
+      , purpose : Text
+      }
+
+{-
+A unit kind inside a job and the seats that may run it, in preference order.
+-}
+let DispatchUnit =
+      { kind : Text
+      , seats : List Text
+      , notes : Text
+      }
+
+{-
+The Fable model id for a job root. It is a config value read from the
+account after Jess's attended login, never a value in this policy.
+id_pattern only checks that a read id is a Fable-class id.
+-}
+let FableModelId =
+      { config_key : Text
+      , source : Text
+      , account : Text
+      , admitted_when : Text
+      , id_pattern : Text
+      , on_unread : Text
+      , notes : Text
+      }
+
+{-
+Where a job runs and whose login it uses.
+-}
+let JobSeat =
+      { host : Text
+      , unix_user : Text
+      , account : Text
+      , config_dir : Text
+      , operator_login : Text
+      , key_reach : Text
+      , notes : Text
+      }
+
+{-
+An effect a job may have. envelope says whether an envelope may list it in
+allowed_effects. needs_go says the job replies needs-go and waits for Jess
+instead. identity names the credential the effect acts under.
+-}
+let DispatchEffect =
+      { id : Text
+      , envelope : Bool
+      , needs_go : Bool
+      , identity : Text
+      , notes : Text
+      }
+
+{-
+A credential Cade's jobs act under. minted_by names who creates it; an agent
+never mints one.
+-}
+let DispatchCredential =
+      { id : Text
+      , provider : Text
+      , holder : Text
+      , minted_by : Text
+      , agent_mints : Bool
+      , notes : Text
+      }
+
+{-
+What a receipt accounts for. containment is "none": dispatch records counts
+and spend and never caps them.
+-}
+let DispatchAccounting =
+      { budget_envelope : Text
+      , containment : Text
+      , queue : Text
+      , audit : List Text
+      , notes : Text
+      }
+
+{-
+Cade dispatch (TIN-7125): the transport, the shared envelope and receipt
+contract, the root resolver, the carve-out reroute and inheritance, custody
+narrowing, the units inside a job, the Fable id, the job seat, effects,
+credentials and accounting.
+-}
+let CadeDispatch =
+      { envelope_schema : Text
+      , envelope_schema_file : Text
+      , envelope_fields : List Text
+      , receipt_schema : Text
+      , receipt_schema_file : Text
+      , receipt_fields : List Text
+      , recipient : Text
+      , reply_kinds : List Text
+      , receipt_statuses : List Text
+      , harness_seat : Text
+      , resolver : Text
+      , carve_out_tags : List Text
+      , carve_out_match : Text
+      , carve_out_seat : Text
+      , develop_uncertain_tags : Text
+      , tag_inheritance : Text
+      , custody_source : Text
+      , custody_order : List Text
+      , custody_rule : Text
+      , child_dispatch : Text
+      , fable_model_id : FableModelId
+      , job_seat : JobSeat
+      , lanes : List DispatchLane
+      , units : List DispatchUnit
+      , unknown_unit : Text
+      , effects : List DispatchEffect
+      , credentials : List DispatchCredential
+      , accounting : DispatchAccounting
+      , notes : Text
+      }
+
 let Cade =
       { orchestrator : Text
       , cross_provider_review : Text
       , children : CadeChildren
       , custody_classes : List CustodyClass
       , lanes : List CadeLane
+      , broker : CadeBroker
+      , dispatch : CadeDispatch
       }
 
 let Attribution =
@@ -215,6 +375,15 @@ in  { Metadata
     , CustodyClass
     , CadeLane
     , CadeChildren
+    , CadeBroker
+    , DispatchLane
+    , DispatchUnit
+    , FableModelId
+    , JobSeat
+    , DispatchEffect
+    , DispatchCredential
+    , DispatchAccounting
+    , CadeDispatch
     , Cade
     , Attribution
     , Policy
