@@ -226,6 +226,7 @@ RECEIVER = {
     "drop_reasons": ["sender-not-allowed", "sender-unbound", "ticket-not-allowed"],
     "body_label": BODY_LABEL,
     "relay_prefix": "Cade relays (unverified):",
+    "halt_ack_split": "halted-jobs-in-stop-order",
 }
 # Reply and refusal reasons and who raises them (contract section 5.3).
 # Cade's own reasons never reach the wire.
@@ -262,7 +263,16 @@ CUSTODY_LABEL_CLASSES = {
     "confidential": (["confidential", "client", "client-raw"], "custody-confidential"),
     "health": (["health"], "custody-health"),
 }
-LOGIN_ISOLATION_PATHS = ("~/.claude-cade", "~/.claude-cade/.claude.json", "~/.claude-cade/.credentials.json")
+LOGIN_ISOLATION_PATHS = (
+    "~/.claude",
+    "~/.claude-cade",
+    "~/.claude-cade/.claude.json",
+    "~/.claude-cade/.credentials.json",
+)
+# Contract section 3.3, round 4 (R4-c): trim removes ASCII whitespace only,
+# U+0009 to U+000D and U+0020. Python strip() with no argument also removes
+# U+001C to U+001F, U+0085 and the Unicode spaces, so it is not the rule.
+ASCII_WHITESPACE = "\t\n\v\f\r "
 OPUS_ID = "claude-opus-5-5"
 CARVE_OUT_TAGS = ("adversarial", "red-team", "purple-team", "deep-iteration")
 # Contract section 6.1, round 3 (R3-a): tags and goals hit a canonical
@@ -278,6 +288,15 @@ CARVE_OUT_STEMS = (
     ("deep-iterat", "deep-iteration"),
 )
 CARVE_OUT_NON_ASCII = {"tag": "request-invalid", "goal": "carve-out-uncertain"}
+# Contract section 6.1, round 4 (R4-a): Jess ruled "Current rule, accept the
+# gap" (TIN-7125 f38799d2). These input classes still give a Fable root, and
+# no resolver adds matching for them.
+CARVE_OUT_ACCEPTED_GAP = {
+    "ruling": "TIN-7125 f38799d2",
+    "answer": "Current rule, accept the gap",
+    "classes": ["symbol-or-format-encoding", "leetspeak", "synonym"],
+    "added_matching": "none",
+}
 REPLY_LIMIT_BYTES = 16384
 CUSTODY_ORDER = ("public", "ops", "confidential", "health")
 # Who runs each unit inside a job. Fable never runs one and Kimi never runs
@@ -1459,13 +1478,18 @@ def lane_custody_reason(policy, lane_route, custody):
 
 
 def custody_from_label(policy, label):
-    """Cade's custody class for a source label (contract section 3.3).
-    Returns (custody, reason): one of them is None."""
+    """Cade's custody class for a source label (contract section 3.3). The
+    label is trimmed of ASCII whitespace only (R4-c), lowercased and has _
+    changed to -. Returns (custody, reason): one of them is None."""
     labels = policy.get("cade", {}).get("dispatch", {}).get("custody_labels", {})
     unknown = labels.get("unknown", "custody-label-unknown")
-    if labels.get("normalize") != "trim-lowercase-underscore-to-hyphen" or not isinstance(label, str):
+    if (
+        labels.get("normalize") != "trim-lowercase-underscore-to-hyphen"
+        or labels.get("trim") != "ascii-whitespace"
+        or not isinstance(label, str)
+    ):
         return None, unknown
-    norm = label.strip().lower().replace("_", "-")
+    norm = label.strip(ASCII_WHITESPACE).lower().replace("_", "-")
     for klass in labels.get("classes", []):
         if norm in klass.get("labels", []):
             result = klass.get("v1_result")
@@ -1864,9 +1888,12 @@ def trim_reply(policy, reply, receipt_file_bytes, limit=REPLY_LIMIT_BYTES, seria
     entry and never an entry whose model matches fableId, and trimmed records
     the count and the receipt file's digest. A reply that still does not fit
     becomes kind failed, reason reply-too-large, receipt null. The receipt
-    file itself is never changed."""
+    file itself is never changed. A halt ack, kind halted with receipt null,
+    is split by halt_acks instead and never reaches reply-too-large (R4-b)."""
     if len(serialize(reply)) <= limit:
         return reply
+    if reply.get("kind") == "halted" and reply.get("receipt") is None:
+        raise ValueError("a halt ack over the limit is split with halt_acks, never trimmed")
     digest = hashlib.sha256(receipt_file_bytes).hexdigest()
     pattern = policy.get("cade", {}).get("dispatch", {}).get("fable_model_id", {}).get("id_pattern")
     receipt = reply.get("receipt")
@@ -1900,10 +1927,52 @@ def trim_reply(policy, reply, receipt_file_bytes, limit=REPLY_LIMIT_BYTES, seria
     }
 
 
+def halt_ack(job_id, jobs, halt_msg_id):
+    """One halted ack (contract section 5.3): receipt null, reason halt."""
+    return {
+        "schema": REPLY_SCHEMA_ID,
+        "kind": "halted",
+        "job_id": job_id,
+        "receipt": None,
+        "reason": "halt",
+        "halted_jobs": list(jobs),
+        "halt_msg_id": halt_msg_id,
+    }
+
+
+def halt_acks(job_id, stopped, halt_msg_id, limit=REPLY_LIMIT_BYTES, serialize=reply_wire_bytes):
+    """Contract section 5.4, round 4 (R4-b). A halt ack has receipt null and
+    nothing to trim. The stopped job ids go, in stop order, into whole halted
+    acks with the same job_id, reason and halt_msg_id. Each ack takes the
+    next ids, as many as fit within limit, so every id is in exactly one ack
+    and no ack is empty. A halt that stopped no job gets one ack with an
+    empty list. A single id always fits, because a jobId is at most 64 bytes
+    and a halt_msg_id at most 500."""
+    acks, current = [], []
+    for job in stopped:
+        if current and len(serialize(halt_ack(job_id, current + [job], halt_msg_id))) > limit:
+            acks.append(halt_ack(job_id, current, halt_msg_id))
+            current = []
+        current.append(job)
+        if len(serialize(halt_ack(job_id, current, halt_msg_id))) > limit:
+            raise ValueError(f"one halt ack for {job!r} is over {limit} bytes")
+    acks.append(halt_ack(job_id, current, halt_msg_id))
+    return acks
+
+
+def fit_reply(policy, reply, receipt_file_bytes=b"", limit=REPLY_LIMIT_BYTES, serialize=reply_wire_bytes):
+    """The replies the receiver sends for one reply (contract section 5.4):
+    the split acks for a halt ack, else the one trimmed or refused reply."""
+    if reply.get("kind") == "halted" and reply.get("receipt") is None:
+        return halt_acks(reply.get("job_id"), reply.get("halted_jobs", []), reply.get("halt_msg_id"), limit, serialize)
+    return [trim_reply(policy, reply, receipt_file_bytes, limit, serialize)]
+
+
 def login_isolation_violations(home):
     """Contract section 8, read from a real HOME tree. Every path compares by
     real path, and files also by (st_dev, st_ino), which catches a hard
-    link."""
+    link. Round 4 (R4-d) adds ~/.claude resolving into ~/.claude-cade and
+    the job's credentials linked to ~/.claude.json."""
     errors = []
     home = Path(home)
     cade = home / ".claude-cade"
@@ -1925,6 +1994,8 @@ def login_isolation_violations(home):
         return ["~/.claude-cade is missing or a symlink"]
     if inside(cade, operator_dir):
         errors.append("~/.claude-cade resolves to or inside ~/.claude")
+    if inside(home / ".claude", Path(os.path.realpath(cade))):
+        errors.append("~/.claude resolves to or inside ~/.claude-cade")
     cade_json = cade / ".claude.json"
     if os.path.lexists(cade_json):
         if Path(os.path.realpath(cade_json)) == Path(os.path.realpath(operator_json)):
@@ -1935,6 +2006,10 @@ def login_isolation_violations(home):
             errors.append("~/.claude-cade/.claude.json is a hard link to ~/.claude.json")
     creds = cade / ".credentials.json"
     if os.path.lexists(creds):
+        if Path(os.path.realpath(creds)) == Path(os.path.realpath(operator_json)):
+            errors.append("~/.claude-cade/.credentials.json is the operator's ~/.claude.json")
+        if same_inode(creds, operator_json):
+            errors.append("~/.claude-cade/.credentials.json is a hard link to ~/.claude.json")
         if inside(creds, operator_dir):
             errors.append("~/.claude-cade/.credentials.json resolves inside ~/.claude")
         if same_inode(creds, home / ".claude" / ".credentials.json"):
@@ -2100,6 +2175,8 @@ def dispatch_violations(policy):
             errors.append(f"cade.dispatch.{key} is {dispatch.get(key)!r}, want {value!r}")
     if dispatch.get("carve_out_non_ascii") != CARVE_OUT_NON_ASCII:
         errors.append(f"cade.dispatch.carve_out_non_ascii must be {CARVE_OUT_NON_ASCII}")
+    if dispatch.get("carve_out_accepted_gap") != CARVE_OUT_ACCEPTED_GAP:
+        errors.append(f"cade.dispatch.carve_out_accepted_gap must be {CARVE_OUT_ACCEPTED_GAP}")
     stems = policy_stems(dispatch)
     if stems != list(CARVE_OUT_STEMS):
         errors.append(f"cade.dispatch.carve_out_stems is {stems!r}, want {list(CARVE_OUT_STEMS)!r}")
@@ -2133,6 +2210,7 @@ def dispatch_violations(policy):
         errors.append(f"cade.dispatch.custody_labels.classes drifted from {CUSTODY_LABEL_CLASSES}")
     for key, value in {
         "normalize": "trim-lowercase-underscore-to-hyphen",
+        "trim": "ascii-whitespace",
         "unknown": "custody-label-unknown",
         "not_admitted": "custody-not-admitted",
         "widens": "custody-widens",
@@ -2377,8 +2455,8 @@ def dhall_seat_model_ids(dhall_text):
 #
 # To update after a reviewed edit: run this module and copy the digest the
 # failure prints.
-SKILL_SHA256 = "8af572012dcb9caf69a3a0923e32de06eeead739f54353fd09e8e9e9629661c9"
-POLICY_CANONICAL_SHA256 = "b7aae0b1f8f385284dfbbb6a41c8f4d64b7d4e5118e45e03ad5693698d32c127"
+SKILL_SHA256 = "db2ba1d78ae237f86400340767ef8c64ae320a81da8a94bb90af036c3e13833d"
+POLICY_CANONICAL_SHA256 = "6c5c8c3abce9f47f4da91a12d1b2c909695090c2195b9b64bc58214e08a30929"
 AGENTS_DELEGATION_SHA256 = "490d1560e5854a96dc900a54c438e4878bbed04aeceb997989906d2b1452295c"
 AGENTS_PATH = ROOT / "AGENTS.md"
 
@@ -3861,7 +3939,14 @@ class DelegationPolicyTests(unittest.TestCase):
             "unknown label admitted": lambda d: dispatch(d)["custody_labels"].update(unknown="public"),
             "labels stop normalizing": lambda d: dispatch(d)["custody_labels"].update(normalize="exact"),
             "login isolation by name only": lambda d: dispatch(d)["job_seat"]["login_isolation"].update(compare="name"),
-            "claude.json check dropped": lambda d: dispatch(d)["job_seat"]["login_isolation"]["paths"].pop(1),
+            "claude.json check dropped": lambda d: dispatch(d)["job_seat"]["login_isolation"]["paths"].pop(2),
+            "operator dir check dropped": lambda d: dispatch(d)["job_seat"]["login_isolation"]["paths"].pop(0),
+            "accepted gap without its ruling": lambda d: dispatch(d)["carve_out_accepted_gap"].update(ruling="none"),
+            "accepted gap widened": lambda d: dispatch(d)["carve_out_accepted_gap"]["classes"].append("non-ascii-letter"),
+            "accepted gap adds matching": lambda d: dispatch(d)["carve_out_accepted_gap"].update(added_matching="digit-folding"),
+            "accepted gap dropped": lambda d: dispatch(d).pop("carve_out_accepted_gap"),
+            "labels trim unicode whitespace": lambda d: dispatch(d)["custody_labels"].update(trim="unicode-whitespace"),
+            "halt acks dropped when large": lambda d: dispatch(d)["receiver"].update(halt_ack_split="drop"),
             "oauth env inherited": lambda d: dispatch(d)["job_seat"]["login_isolation"]["refused_env"].remove(
                 "CLAUDE_CODE_OAUTH_TOKEN"
             ),
@@ -3957,6 +4042,13 @@ class DelegationPolicyTests(unittest.TestCase):
             "labels stop normalizing",
             "login isolation by name only",
             "claude.json check dropped",
+            "operator dir check dropped",
+            "accepted gap without its ruling",
+            "accepted gap widened",
+            "accepted gap adds matching",
+            "accepted gap dropped",
+            "labels trim unicode whitespace",
+            "halt acks dropped when large",
             "oauth env inherited",
             "env kept",
             "fable unread waits",
@@ -4330,6 +4422,159 @@ class DelegationPolicyTests(unittest.TestCase):
         self.assertEqual(trim_reply(self.policy, small, b"{}", limit=exact), small)
         self.assertNotEqual(trim_reply(self.policy, small, b"{}", limit=exact - 1), small)
 
+    def test_carve_out_accepted_gap(self):
+        # Round 4 (R4-a): Jess ruled "Current rule, accept the gap" (TIN-7125
+        # f38799d2). Symbol and format encodings of the stems, leetspeak and
+        # plain synonyms still give a Fable root on a Fable lane, the same way
+        # in every implementer, and no resolver adds matching for them.
+        dispatch = self.policy["cade"]["dispatch"]
+        self.assertEqual(dispatch["carve_out_accepted_gap"], CARVE_OUT_ACCEPTED_GAP)
+        self.assertIn("TIN-7125 f38799d2", dispatch["notes"])
+        self.assertIn("Current rule, accept the gap", dispatch["notes"])
+        rows = load_fixture("resolution-vectors.json")["accepted_gap"]
+        self.assertEqual({v["class"] for v in rows}, set(CARVE_OUT_ACCEPTED_GAP["classes"]))
+        for v in rows:
+            name = (v["class"], v["raw_tags"], v["goal"])
+            tags = [slug_tag(raw) for raw in v["raw_tags"]]
+            self.assertEqual(tags, v["tags"], name)
+            self.assertEqual(stamp_tags(self.policy, v["raw_tags"], v["goal"]), v["tags"], name)
+            envelope = self.sample_envelope(lane=v["lane"], tags=tags, goal=v["goal"], custody="public")
+            self.assertEqual(resolve_root_class(self.policy, envelope), (v["root_class"], v["reroute"], v["hits"]), name)
+            self.assertEqual(resolve_root(self.policy, envelope, TEST_FABLE_ID), ("fable", TEST_FABLE_ID), name)
+            self.assertFalse(goal_uncertain(v["goal"]), name)
+            # develop keeps its Opus root for the same input.
+            self.assertEqual(resolve_root_class(self.policy, dict(envelope, lane=DEVELOP_ROUTE))[0], "opus", name)
+            text = "".join(v["raw_tags"]) + v["goal"]
+            if v["class"] == "symbol-or-format-encoding":
+                # Every non-ASCII character is a symbol or a format character,
+                # which nonascii does not count (only category L).
+                odd = [ch for ch in text if ord(ch) > 0x7F]
+                self.assertTrue(odd, name)
+                self.assertTrue(all(unicodedata.category(ch)[0] in "SC" for ch in odd), name)
+            elif v["class"] == "leetspeak":
+                # Folding the digits would hit a stem, and norm never folds them.
+                folded = v["raw_tags"][0].translate(str.maketrans("0134", "oiea"))
+                self.assertTrue(carve_out_hits(self.policy, [folded]), name)
+            else:
+                self.assertTrue(text.isascii(), name)
+        # The R3-a cases the gap does not cover still reach Opus.
+        for goal in ("Red-team the parser", "\uff32\uff45\uff44\uff0d\uff54\uff45\uff41\uff4d the parser", "R\u0435d team the parser"):
+            self.assertEqual(resolve_root_class(self.policy, self.sample_envelope(goal=goal))[0], "opus", goal)
+
+    def test_custody_label_trim(self):
+        # Round 4 (R4-c): trim removes U+0009 to U+000D and U+0020 only.
+        rows = load_fixture("custody-vectors.json")["trim"]
+        self.assertGreaterEqual(len(rows), 10)
+        for v in rows:
+            name = repr(v["source_label"])
+            if v["admitted"]:
+                self.assertEqual(admit_custody(self.policy, v["source_label"], v["lane"]), v["custody"], name)
+            else:
+                self.assertRefuses(v["reason"], admit_custody, self.policy, v["source_label"], v["lane"])
+        research = "cade.delegate.research"
+        for ch in ASCII_WHITESPACE:
+            self.assertEqual(admit_custody(self.policy, ch + "Public" + ch, research), "public", repr(ch))
+        # What Python strip() or JavaScript trim() would remove beyond ASCII
+        # whitespace stays, so the label matches no row.
+        for ch in "\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u200a\u2028\u2029\u202f\u205f\u3000\ufeff":
+            self.assertRefuses("custody-label-unknown", admit_custody, self.policy, ch + "public", research)
+            self.assertRefuses("custody-label-unknown", admit_custody, self.policy, "public" + ch, research)
+        broken = json.loads(json.dumps(self.policy))
+        broken["cade"]["dispatch"]["custody_labels"]["trim"] = "unicode-whitespace"
+        self.assertRefuses("custody-label-unknown", admit_custody, broken, "public", research)
+
+    def test_halt_ack_split(self):
+        # Round 4 (R4-b): a halt ack has receipt null and nothing to trim, so
+        # one over the limit is split, never dropped and never reply-too-large.
+        fixture = load_fixture("trim-vectors.json")
+        schemas = load_wire_schemas()
+        limit = fixture["limit_bytes"]
+        self.assertEqual(self.policy["cade"]["dispatch"]["receiver"]["halt_ack_split"], "halted-jobs-in-stop-order")
+        rows = fixture["halt_acks"]
+        self.assertTrue(any(v["split"] for v in rows))
+        for v in rows:
+            name = v["name"]
+            whole = halt_ack(v["job_id"], v["stopped"], v["halt_msg_id"])
+            self.assertEqual(len(reply_wire_bytes(whole)) > limit, v["split"], name)
+            acks = halt_acks(v["job_id"], v["stopped"], v["halt_msg_id"], limit)
+            self.assertEqual(len(acks) > 1, v["split"], name)
+            self.assertEqual([j for a in acks for j in a["halted_jobs"]], v["stopped"], name)
+            for ack in acks:
+                self.assertLessEqual(len(reply_wire_bytes(ack)), limit, name)
+                self.assertEqual(self.schema_errors(ack, schemas[REPLY_SCHEMA_ID]), [], name)
+                self.assertEqual(reply_semantic_violations(ack), [], name)
+                self.assertEqual(
+                    (ack["kind"], ack["job_id"], ack["receipt"], ack["reason"], ack["halt_msg_id"]),
+                    ("halted", v["job_id"], None, "halt", v["halt_msg_id"]),
+                    name,
+                )
+                self.assertEqual(bool(ack["halted_jobs"]), bool(v["stopped"]), name)
+            # Each ack but the last is full: the next id would not fit.
+            for ack, after in zip(acks, acks[1:]):
+                grown = halt_ack(v["job_id"], ack["halted_jobs"] + after["halted_jobs"][:1], v["halt_msg_id"])
+                self.assertGreater(len(reply_wire_bytes(grown)), limit, name)
+            self.assertEqual(fit_reply(self.policy, whole, limit=limit), acks, name)
+            if v["split"]:
+                self.assertRaises(ValueError, trim_reply, self.policy, whole, b"", limit)
+        # The largest one-id ack fits with room: a 64-byte id and a
+        # 500-character halt_msg_id.
+        self.assertLess(len(reply_wire_bytes(halt_ack("j" * 64, ["j" * 64], "x" * 500))), limit // 8)
+        # A reply that carries a receipt still goes through trimming.
+        small = fixture["vectors"][0]["reply"]
+        self.assertEqual(fit_reply(self.policy, small), [small])
+
+    def test_unicode_skew_fails_closed(self):
+        # Round 4 (R4-e): cade on Node 22.23.4 (Unicode 17.0) and a Python
+        # receiver on Unicode 15.1 disagree on 8945 letters and 37 NFKC
+        # mappings. Every disagreement is refused with resolution-disagrees.
+        fixture = load_fixture("unicode-skew.json")
+        measured = fixture["measured"]
+        self.assertEqual((measured["uncertain_differs"], measured["uncertain_node_only"], measured["norm_differs"]), (8945, 8945, 37))
+        schemas = load_wire_schemas()
+        defaults = load_fixture("receiver-vectors.json")["defaults"]
+        older = tuple(int(x) for x in unicodedata.unidata_version.split(".")) < (16,)
+        self.assertGreaterEqual(len(fixture["samples"]), 6)
+        for s in fixture["samples"]:
+            name = s["code_point"]
+            envelope = self.sample_envelope(goal=s["goal"])
+            mine = resolve_root_class(self.policy, envelope)
+            node = s["node"]
+            differs = (mine[0], set(mine[2])) != (node["root_class"], set(node["carve_out_hits"]))
+            if older:
+                self.assertTrue(differs, name)
+            resolution = build_resolution(self.policy, envelope, "public", TEST_FABLE_ID)
+            resolution.update(
+                root_class=node["root_class"],
+                root_model=OPUS_ID if node["root_class"] == "opus" else TEST_FABLE_ID,
+                reroute=node["reroute"],
+                carve_out_hits=node["carve_out_hits"],
+                child_policy=child_policy(self.policy, node["root_class"], node["carve_out_hits"]),
+            )
+            body = BODY_LABEL + "\n" + json.dumps(
+                {"schema": REQUEST_SCHEMA_ID, "kind": "dispatch", "envelope": envelope, "resolution": resolution}
+            )
+            message = {"from": defaults["from"], "ticket": defaults["ticket"], "body": body}
+            decision = receiver_decide(self.policy, schemas, message, defaults["context"])
+            if differs:
+                self.assertEqual(decision, {"action": "reply", "kind": "failed", "reason": "resolution-disagrees"}, name)
+            else:
+                self.assertEqual(decision["action"], "launch", name)
+            # On develop both roots are Opus, so only the hit set differs, and
+            # that alone is refused.
+            if set(mine[2]) != set(node["carve_out_hits"]):
+                develop = dict(envelope, lane=DEVELOP_ROUTE)
+                resolution = build_resolution(self.policy, develop, "public", TEST_FABLE_ID)
+                self.assertEqual(resolution["root_class"], "opus", name)
+                resolution.update(
+                    carve_out_hits=node["carve_out_hits"],
+                    child_policy=child_policy(self.policy, "opus", node["carve_out_hits"]),
+                )
+                body = BODY_LABEL + "\n" + json.dumps(
+                    {"schema": REQUEST_SCHEMA_ID, "kind": "dispatch", "envelope": develop, "resolution": resolution}
+                )
+                decision = receiver_decide(self.policy, schemas, dict(message, body=body), defaults["context"])
+                self.assertEqual(decision, {"action": "reply", "kind": "failed", "reason": "resolution-disagrees"}, name)
+
     def test_body_framing(self):
         # Contract section 4.1. A relay line is refused for what it is, before
         # the JSON parse could refuse it for something else.
@@ -4430,6 +4675,40 @@ class DelegationPolicyTests(unittest.TestCase):
         }
         for name, fn in cases.items():
             self.assertTrue(broken(fn), name)
+        # Round 4 (R4-d): each row is caught by its own check.
+        def operator_dir_to(home, target):
+            (home / ".claude").unlink()
+            os.symlink(target, home / ".claude")
+
+        new_rows = {
+            "operator dir is the config dir": (
+                lambda h, c, r: operator_dir_to(h, c), "~/.claude resolves to or inside ~/.claude-cade"
+            ),
+            "operator dir inside the config dir": (
+                lambda h, c, r: ((c / "sub").mkdir(), operator_dir_to(h, c / "sub")),
+                "~/.claude resolves to or inside ~/.claude-cade",
+            ),
+            "operator dir at a missing path inside the config dir": (
+                lambda h, c, r: operator_dir_to(h, c / "missing"), "~/.claude resolves to or inside ~/.claude-cade"
+            ),
+            "credentials linked to ~/.claude.json": (
+                lambda h, c, r: relink(c / ".credentials.json", h / ".claude.json"),
+                "~/.claude-cade/.credentials.json is the operator's ~/.claude.json",
+            ),
+            "credentials linked to a missing ~/.claude.json": (
+                lambda h, c, r: (relink(c / ".credentials.json", h / ".claude.json"), (h / ".claude.json").unlink()),
+                "~/.claude-cade/.credentials.json is the operator's ~/.claude.json",
+            ),
+            "credentials hard-linked to ~/.claude.json": (
+                lambda h, c, r: hardlink(c / ".credentials.json", h / ".claude.json"),
+                "~/.claude-cade/.credentials.json is a hard link to ~/.claude.json",
+            ),
+        }
+        for name, (fn, message) in new_rows.items():
+            self.assertIn(message, broken(fn), name)
+        # A missing ~/.claude, or a real directory, is not in the config dir.
+        self.assertEqual(broken(lambda h, c, r: (h / ".claude").unlink()), [])
+        self.assertEqual(broken(lambda h, c, r: ((h / ".claude").unlink(), (h / ".claude").mkdir())), [])
 
     def test_wire_samples_accept_and_reject(self):
         # Accept and reject samples for every contract object. A reject fails

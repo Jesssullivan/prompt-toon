@@ -662,6 +662,7 @@
             "carve_out_normalize",
             "carve_out_stems",
             "carve_out_non_ascii",
+            "carve_out_accepted_gap",
             "carve_out_seat",
             "develop_uncertain_tags",
             "tag_inheritance",
@@ -813,7 +814,8 @@
                 "unknown_sender",
                 "drop_reasons",
                 "body_label",
-                "relay_prefix"
+                "relay_prefix",
+                "halt_ack_split"
               ],
               "properties": {
                 "allowed_senders": {
@@ -849,6 +851,10 @@
                 },
                 "relay_prefix": {
                   "const": "Cade relays (unverified):"
+                },
+                "halt_ack_split": {
+                  "description": "A halt ack has a null receipt and nothing to trim. When it is over 16384 bytes the receiver splits halted_jobs, in the order it stopped the jobs, across as many whole halted acks as it needs (wire contract section 5.4, round 4, R4-b).",
+                  "const": "halted-jobs-in-stop-order"
                 }
               }
             },
@@ -981,6 +987,15 @@
               "description": "A raw tag with a non-ASCII letter after NFKC is refused with tag. A goal with one makes the carve-out status uncertain, which reroutes a Fable lane to Opus with goal as the reroute.",
               "const": { "tag": "request-invalid", "goal": "carve-out-uncertain" }
             },
+            "carve_out_accepted_gap": {
+              "description": "Inputs the carve-out rule knowingly leaves on a Fable root (wire contract section 6.1, round 4, R4-a). Jess ruled Current rule, accept the gap on TIN-7125 f38799d2. No resolver adds matching for these classes, and inside a job the carve-out holds for them only through section 6.2.",
+              "const": {
+                "ruling": "TIN-7125 f38799d2",
+                "answer": "Current rule, accept the gap",
+                "classes": ["symbol-or-format-encoding", "leetspeak", "synonym"],
+                "added_matching": "none"
+              }
+            },
             "carve_out_seat": {
               "const": "opus"
             },
@@ -999,6 +1014,7 @@
               "additionalProperties": false,
               "required": [
                 "normalize",
+                "trim",
                 "classes",
                 "unknown",
                 "not_admitted",
@@ -1007,6 +1023,10 @@
               "properties": {
                 "normalize": {
                   "const": "trim-lowercase-underscore-to-hyphen"
+                },
+                "trim": {
+                  "description": "The characters normalize trims from both ends of a label: U+0009 to U+000D and U+0020, nothing else (wire contract section 3.3, round 4, R4-c).",
+                  "const": "ascii-whitespace"
                 },
                 "classes": {
                   "type": "array",
@@ -1229,8 +1249,8 @@
                     },
                     "paths": {
                       "type": "array",
-                      "minItems": 3,
-                      "maxItems": 3,
+                      "minItems": 4,
+                      "maxItems": 4,
                       "uniqueItems": true,
                       "items": {
                         "type": "object",
@@ -1242,6 +1262,7 @@
                         "properties": {
                           "path": {
                             "enum": [
+                              "~/.claude",
                               "~/.claude-cade",
                               "~/.claude-cade/.claude.json",
                               "~/.claude-cade/.credentials.json"

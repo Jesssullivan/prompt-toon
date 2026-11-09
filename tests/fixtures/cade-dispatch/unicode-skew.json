@@ -1,0 +1,86 @@
+{
+  "schema": "prompt-toon.cade-dispatch.unicode-skew/v1",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 4",
+  "placeholders": {
+    "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
+  },
+  "notes": "Contract section 11, round 4 (R4-e). Measured on sting on 2026-11-09 over every code point from U+0080 to U+10FFFF except the surrogates, running the section 6.1 nonascii(nfkc(c)) and norm(c) in both runtimes. Node 22.23.4 (ICU 78.3, Unicode 17.0) and Python 3.13.15 (Unicode 15.1.0) disagree on uncertain for 8945 code points, all of them a letter in Node only, and on norm for 37 code points: U+A7F1 and the outlined letters and digits U+1CCD6 to U+1CCF9, which Node's NFKC maps to ASCII. samples are goals whose resolution differs between the two. node is cade 0a2d62e5 resolveDispatch on Node 22.23.4, on lane research with tags market-scan and custody public. A receiver whose Unicode data disagrees with node refuses the request with resolution-disagrees, so no sample runs a job.",
+  "measured": {
+    "node": "22.23.4",
+    "icu": "78.3",
+    "node_unicode": "17.0",
+    "python": "3.13.15",
+    "python_unicode": "15.1.0",
+    "uncertain_differs": 8945,
+    "uncertain_node_only": 8945,
+    "norm_differs": 37,
+    "norm_differs_first": "U+A7F1",
+    "norm_differs_range": "U+1CCD6 to U+1CCF9"
+  },
+  "samples": [
+    {
+      "code_point": "U+088F",
+      "goal": "Survey ࢏ pricing pages",
+      "node": {
+        "root_class": "opus",
+        "reroute": "carve-out-uncertain",
+        "carve_out_hits": []
+      },
+      "why": "a letter in Unicode 17.0, unassigned in 15.1"
+    },
+    {
+      "code_point": "U+1C89",
+      "goal": "Survey Ᲊ pricing pages",
+      "node": {
+        "root_class": "opus",
+        "reroute": "carve-out-uncertain",
+        "carve_out_hits": []
+      },
+      "why": "a letter in Unicode 17.0, unassigned in 15.1"
+    },
+    {
+      "code_point": "U+A7CB",
+      "goal": "Survey Ɤ pricing pages",
+      "node": {
+        "root_class": "opus",
+        "reroute": "carve-out-uncertain",
+        "carve_out_hits": []
+      },
+      "why": "a letter in Unicode 17.0, unassigned in 15.1"
+    },
+    {
+      "code_point": "U+A7F1",
+      "goal": "Run an adver꟱arial pass on the parser",
+      "node": {
+        "root_class": "opus",
+        "reroute": "carve-out-inferred",
+        "carve_out_hits": [
+          "adversarial"
+        ]
+      },
+      "why": "Node NFKC maps it to s, Python leaves it unassigned and norm drops it"
+    },
+    {
+      "code_point": "U+1CCD6",
+      "goal": "𜳧𜳚𜳙𜳩𜳚𜳖𜳢 the parser",
+      "node": {
+        "root_class": "opus",
+        "reroute": "carve-out-inferred",
+        "carve_out_hits": [
+          "red-team"
+        ]
+      },
+      "why": "outlined letters that Node NFKC maps to ASCII"
+    },
+    {
+      "code_point": "U+1CCED",
+      "goal": "red𜳭team the parser",
+      "node": {
+        "root_class": "fable",
+        "reroute": null,
+        "carve_out_hits": []
+      },
+      "why": "Node keeps an outlined x between the stems, Python drops it and finds redteam"
+    }
+  ]
+}

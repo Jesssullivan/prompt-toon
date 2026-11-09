@@ -1,10 +1,10 @@
 {
   "schema": "prompt-toon.cade-dispatch.resolution-vectors/v1",
-  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 4",
   "placeholders": {
     "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
   },
-  "notes": "Contract section 10, the first table and the round 3 resolution table, and sections 4.4 and 6.1. raw_tags is Kimi's list. lab_stamped is the parent's carve-out tags that lab wrote into a child's own tags. tags is the slugged raw tags plus lab_stamped, which is what the resolver sees before cade appends canonical tags. parent_tags is the parent ledger row's tags, or null for a root job. hits is carve_out_hits. reroute is computed on tags, before cade appends the canonical tag for each hit. A fable root resolves to the recorded Fable id, which the test injects. refused_tags are raw tags cade refuses with request-invalid before it sends anything. dedupe pins the dedupe_key formula on exact values.",
+  "notes": "Contract section 10, the first table and the round 3 resolution table, and sections 4.4 and 6.1. raw_tags is Kimi's list. lab_stamped is the parent's carve-out tags that lab wrote into a child's own tags. tags is the slugged raw tags plus lab_stamped, which is what the resolver sees before cade appends canonical tags. parent_tags is the parent ledger row's tags, or null for a root job. hits is carve_out_hits. reroute is computed on tags, before cade appends the canonical tag for each hit. A fable root resolves to the recorded Fable id, which the test injects. refused_tags are raw tags cade refuses with request-invalid before it sends anything. dedupe pins the dedupe_key formula on exact values. accepted_gap rows are the round 4 known, accepted gap (section 6.1, R4-a, TIN-7125 f38799d2 \"Current rule, accept the gap\"): symbol and format encodings of the stems, leetspeak and plain synonyms. Each still resolves to Fable on a Fable lane with no hit and reroute null, and every implementer must resolve it the same way. No resolver adds matching for them.",
   "vectors": [
     {
       "raw_tags": [],
@@ -457,6 +457,186 @@
       "root_id": "job-20261109-pricing-1",
       "goal": "Survey public pricing pages for three named competitors and summarize the tiers.",
       "dedupe_key": "78896a2c96bd9d812ce86c7944e528cc8405869f11fe55516474cee2e6d1f388"
+    }
+  ],
+  "accepted_gap": [
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🅡🅔🅓 🅣🅔🅐🅜 the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative circled letters, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🆁🅴🅳 🆃🅴🅰🅼 the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative squared letters, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🇷🇪🇩 team the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "regional indicators, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "⠗⠑⠙⠤⠞⠑⠁⠍ the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "Braille, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Check the parser 󠁲󠁥󠁤󠀠󠁴󠁥󠁡󠁭󠀠󠁩󠁴",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "invisible tag characters U+E0020 to U+E007F, Cf"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "🅡🅔🅓-team the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "negative circled letters mixed with ASCII, So"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [
+        "pricing-🅡🅔🅓🅣🅔🅐🅜"
+      ],
+      "tags": [
+        "pricing"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "So in a raw tag falls in a run that becomes a hyphen"
+    },
+    {
+      "class": "symbol-or-format-encoding",
+      "raw_tags": [
+        "x󠁲󠁥󠁤󠁴󠁥󠁡󠁭"
+      ],
+      "tags": [
+        "x"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "Cf tag characters in a raw tag"
+    },
+    {
+      "class": "leetspeak",
+      "raw_tags": [
+        "red-t3am"
+      ],
+      "tags": [
+        "red-t3am"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "digits are kept and never folded"
+    },
+    {
+      "class": "leetspeak",
+      "raw_tags": [
+        "r3d-team"
+      ],
+      "tags": [
+        "r3d-team"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "digits are kept and never folded"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [
+        "pentest"
+      ],
+      "tags": [
+        "pentest"
+      ],
+      "goal": "Check the parser",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Hammer the parser with hostile inputs",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [],
+      "tags": [],
+      "goal": "Break the auth flow like an attacker would",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
+    },
+    {
+      "class": "synonym",
+      "raw_tags": [
+        "deep-iter"
+      ],
+      "tags": [
+        "deep-iter"
+      ],
+      "goal": "Check the claim",
+      "lane": "cade.delegate.research",
+      "hits": [],
+      "root_class": "fable",
+      "reroute": null,
+      "why": "not a stem"
     }
   ]
 }

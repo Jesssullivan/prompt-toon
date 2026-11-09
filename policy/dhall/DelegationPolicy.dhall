@@ -256,7 +256,7 @@ let LoginIsolationPath =
 {-
 Section 8 of the TIN-7125 wire contract: cade-job refuses with
 login-isolation unless the job's config dir and its two login files are its
-own.
+own, and Jess's ~/.claude does not resolve into the job's config dir.
 -}
 let LoginIsolation =
       { compare : Text
@@ -307,6 +307,7 @@ let DispatchReceiver =
       , drop_reasons : List Text
       , body_label : Text
       , relay_prefix : Text
+      , halt_ack_split : Text
       }
 
 {-
@@ -321,10 +322,13 @@ let CustodyLabelClass =
 
 {-
 Custody from the source item's label (wire contract section 3.3). Any label
-outside the table, and no label, refuses with unknown.
+outside the table, and no label, refuses with unknown. trim names the
+characters the normalize step removes from both ends: ascii-whitespace is
+U+0009 to U+000D and U+0020 only (round 4, R4-c).
 -}
 let CustodyLabels =
       { normalize : Text
+      , trim : Text
       , classes : List CustodyLabelClass
       , unknown : Text
       , not_admitted : Text
@@ -358,6 +362,20 @@ Opus with goal as the reroute.
 let CarveOutNonAscii =
       { tag : Text
       , goal : Text
+      }
+
+{-
+The inputs the carve-out rule knowingly leaves on a Fable root (wire contract
+section 6.1, round 4, R4-a). ruling is the TIN-7125 comment that accepted the
+gap, classes names each accepted input class, and added_matching is none:
+no resolver adds matching for them. Inside a job the carve-out holds for
+them only through section 6.2.
+-}
+let CarveOutAcceptedGap =
+      { ruling : Text
+      , answer : Text
+      , classes : List Text
+      , added_matching : Text
       }
 
 {-
@@ -434,6 +452,7 @@ let CadeDispatch =
       , carve_out_normalize : Text
       , carve_out_stems : List CarveOutStem
       , carve_out_non_ascii : CarveOutNonAscii
+      , carve_out_accepted_gap : CarveOutAcceptedGap
       , carve_out_seat : Text
       , develop_uncertain_tags : Text
       , tag_inheritance : Text
@@ -511,6 +530,7 @@ in  { Metadata
     , DispatchReason
     , CarveOutStem
     , CarveOutNonAscii
+    , CarveOutAcceptedGap
     , DispatchEffect
     , DispatchCredential
     , DispatchAccounting

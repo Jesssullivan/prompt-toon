@@ -1,10 +1,10 @@
 {
   "schema": "prompt-toon.cade-dispatch.custody-vectors/v1",
-  "contract": "TIN-7125 contract-v1 2026-11-09, round 3",
+  "contract": "TIN-7125 contract-v1 2026-11-09, round 4",
   "placeholders": {
     "@FABLE_ID@": "A Fable-class id injected at test time. A real Fable id never lands in a fixture."
   },
-  "notes": "Contract section 10, the second table and the round 3 custody table, and section 3.3. source_label null means the item had no label. Cade trims the label, lowercases it and changes _ to -, then looks it up. A refused row has custody null; an admitted row has reason null. narrowing rows are cade's checks on a claimed custody: rank(claimed) >= rank(label class), for a child rank(claimed) >= rank(parent_custody), then the lane check on the claimed custody. Ranks run public 0, ops 1, confidential 2, health 3. Lab uses the same parent comparison when it mints a child envelope.",
+  "notes": "Contract section 10, the second table and the round 3 custody table, and section 3.3. source_label null means the item had no label. Cade trims the label, lowercases it and changes _ to -, then looks it up. A refused row has custody null; an admitted row has reason null. narrowing rows are cade's checks on a claimed custody: rank(claimed) >= rank(label class), for a child rank(claimed) >= rank(parent_custody), then the lane check on the claimed custody. Ranks run public 0, ops 1, confidential 2, health 3. Lab uses the same parent comparison when it mints a child envelope. trim rows are round 4 (R4-c): trim removes U+0009 to U+000D and U+0020 from both ends and nothing else. Python is label.strip(\"\\t\\n\\v\\f\\r \"). Python strip() with no argument and JavaScript trim() are not the rule, so U+FEFF, U+0085, U+00A0, U+001C and the Unicode spaces stay, match no row and refuse with custody-label-unknown.",
   "vectors": [
     {
       "source_label": "Public",
@@ -181,6 +181,99 @@
       "admitted": false,
       "custody": null,
       "reason": "custody-confidential"
+    }
+  ],
+  "trim": [
+    {
+      "source_label": " public ",
+      "lane": "cade.delegate.research",
+      "admitted": true,
+      "custody": "public",
+      "reason": null
+    },
+    {
+      "source_label": "\tPublic\r\n",
+      "lane": "cade.delegate.research",
+      "admitted": true,
+      "custody": "public",
+      "reason": null
+    },
+    {
+      "source_label": "\u000bHOSTED_OK\f",
+      "lane": "cade.delegate.marketing",
+      "admitted": true,
+      "custody": "public",
+      "reason": null
+    },
+    {
+      "source_label": "  Private\n",
+      "lane": "cade.delegate.business",
+      "admitted": true,
+      "custody": "ops",
+      "reason": null
+    },
+    {
+      "source_label": "﻿public",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "public﻿",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "public",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": " public",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "public　",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": " public",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "\u001cpublic",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "public\u001f",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
+    },
+    {
+      "source_label": "​public",
+      "lane": "cade.delegate.research",
+      "admitted": false,
+      "custody": null,
+      "reason": "custody-label-unknown"
     }
   ]
 }

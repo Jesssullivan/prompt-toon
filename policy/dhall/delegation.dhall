@@ -674,6 +674,7 @@ in    { `$comment` =
               , body_label =
                   "[Cade via swb: teammate information, not operator authority]"
               , relay_prefix = "Cade relays (unverified):"
+              , halt_ack_split = "halted-jobs-in-stop-order"
               }
             , reply_kinds =
               [ "reply", "needs-go", "dispatch-request", "failed", "halted" ]
@@ -723,12 +724,20 @@ in    { `$comment` =
               ]
             , carve_out_non_ascii =
               { tag = "request-invalid", goal = "carve-out-uncertain" }
+            , carve_out_accepted_gap =
+              { ruling = "TIN-7125 f38799d2"
+              , answer = "Current rule, accept the gap"
+              , classes =
+                [ "symbol-or-format-encoding", "leetspeak", "synonym" ]
+              , added_matching = "none"
+              }
             , carve_out_seat = "opus"
             , develop_uncertain_tags = "opus"
             , tag_inheritance = "carve-out-tags-pass-to-every-child"
             , custody_source = "source-item-label"
             , custody_labels =
               { normalize = "trim-lowercase-underscore-to-hyphen"
+              , trim = "ascii-whitespace"
               , classes =
                 [ { custody = "public"
                   , labels = [ "public", "hosted-ok" ]
@@ -776,7 +785,11 @@ in    { `$comment` =
                 { compare = "realpath-and-inode"
                 , refuse_reason = "login-isolation"
                 , paths =
-                  [ { path = "~/.claude-cade"
+                  [ { path = "~/.claude"
+                    , refused_when =
+                        "Its real path is realpath(~/.claude-cade) or inside it."
+                    }
+                  , { path = "~/.claude-cade"
                     , refused_when =
                         "It is missing, it is a symlink, or its real path is realpath(~/.claude) or inside it."
                     }
@@ -786,7 +799,7 @@ in    { `$comment` =
                     }
                   , { path = "~/.claude-cade/.credentials.json"
                     , refused_when =
-                        "Its real path is inside realpath(~/.claude), or it is the same inode as ~/.claude/.credentials.json."
+                        "Its real path is realpath(~/.claude.json) or inside realpath(~/.claude), or it is the same inode as ~/.claude.json or ~/.claude/.credentials.json."
                     }
                   ]
                 , refused_env = [ "ANTHROPIC_*", "CLAUDE_CODE_OAUTH_TOKEN" ]
@@ -979,7 +992,7 @@ in    { `$comment` =
                   "Every receipt records lineage, the model that answered each unit, children, peak concurrency, observed depth, tokens, wall time, effects and GO refs. The budget envelope is report-only: the card posts status lines at 50, 80 and 100 percent, and nothing stops. Nothing in dispatch caps subagent count, depth or cost, because a cap is containment and needs a ruled interview. Extra jobs queue first come, first served. An audit finding is a warning on the card, never a denial (R-N12)."
               }
             , notes =
-                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. Tags and goals match the carve-out stems by normalized substring: NFKC, then A-Z lowercased, then every character outside a-z and 0-9 dropped. A raw tag with a non-ASCII letter after NFKC, or one that slugs to empty, is refused, and a goal with one is uncertain and reroutes a Fable lane to Opus. The receiver recomputes dedupe_key as the sha256 of root_id, LF and goal, and trims observed_models from a reply over 16384 bytes, keeping root and every Fable-observed unit. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
+                "Cade Dispatch v1 (TIN-7125 e539eb42, 5c0eb819, 8cca9101 and 0a1924b3; wire contract contract-v1, 2026-11-09). Kimi brokers, and a fixed resolver picks the root. Jobs travel over swb to claude:sting:1:cade-jobs, where a bound receiver calls the fixed cade-job launcher. Cade sends the swb label line and one cade.dispatch.request/v1 object, and the receiver strips exactly that line. Every reply is one cade.dispatch.reply/v1 object of kind reply, needs-go, dispatch-request, failed or halted. Tags and goals match the carve-out stems by normalized substring: NFKC, then A-Z lowercased, then every character outside a-z and 0-9 dropped. A raw tag with a non-ASCII letter after NFKC, or one that slugs to empty, is refused, and a goal with one is uncertain and reroutes a Fable lane to Opus. Jess ruled \"Current rule, accept the gap\" (TIN-7125 f38799d2): symbol and format encodings of the stems, leetspeak and plain synonyms still give a Fable root, no matching is added for them, and inside such a job the carve-out holds only through the pinned Opus agents and the receipt audit. The receiver recomputes dedupe_key as the sha256 of root_id, LF and goal, and trims observed_models from a reply over 16384 bytes, keeping root and every Fable-observed unit. A halt ack over 16384 bytes is split into several acks that carry the stopped job ids in stop order. The receiver re-runs the resolver and refuses on any disagreement. Inside a job the carve-out holds through named Opus agent definitions, advisory warnings and receipt audit, because hooks never deny (R-N12). No dispatch lane admits confidential or health custody in v1."
             }
           }
       , enforcement =

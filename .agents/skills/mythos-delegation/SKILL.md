@@ -252,6 +252,16 @@ letter after NFKC is uncertain, and an uncertain goal on a Fable lane reroutes
 the root to Opus. No dispatch lane admits confidential or health custody in
 v1.
 
+Jess ruled "Current rule, accept the gap" (TIN-7125 `f38799d2`). The rule
+above is the deterministic layer, and no matching is added to it. Three
+input classes still give a Fable root on a Fable lane: symbol and format
+encodings of the stems, such as negative circled letters, regional
+indicators, Braille and invisible tag characters; leetspeak, such as
+`red-t3am`; and plain synonyms, such as `pentest`, `attacker` and `hammer`.
+For these the carve-out holds only inside the job, through the named Opus
+agents and the receipt audit. A Fable root that meets adversarial work in
+such a job hands it to an Opus unit.
+
 The Fable id is read from the account. Jess said "fable 5.2", and that id is
 not verified. After Jess's attended login the id is read from the account's
 model list and stored as the job seat's `fable_model_id` config value. The
